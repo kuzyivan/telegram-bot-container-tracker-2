@@ -1,73 +1,67 @@
 import os
-import logging
-import asyncio
 import sqlite3
+import re
+import asyncio
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from mail_reader import start_mail_checking, init_db
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from mail_reader import start_mail_checking
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Константы окружения
-TOKEN = os.getenv('TELEGRAM_TOKEN')
+# Настройки из переменных окружения
+TOKEN = os.getenv('TOKEN')
 DB_FILE = 'tracking.db'
 
 if not TOKEN:
     raise ValueError("❌ Переменная окружения TOKEN не задана!")
 
-# Обработчики команд
+# Команда start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("\ud83d\ude80 Отправьте номер контейнера для отслеживания.")
+    await update.message.reply_text("Привет! Отправь номер контейнера, чтобы получить информацию о нём 🚛")
 
-async def track_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    container_number = update.message.text.strip().upper()
-    if not container_number:
-        await update.message.reply_text("\u2753 Введите корректный номер контейнера.")
+# Поиск контейнера
+async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip().upper()
+
+    # Проверка на валидный номер контейнера (буквы + цифры, 11 символов)
+    if not re.match(r'^[A-Z]{4}\d{7}$', query):
+        await update.message.reply_text("❗ Пожалуйста, отправьте корректный номер контейнера (например, MSKU1234567).")
         return
+
+    waiting_message = await update.message.reply_text("🔍 Ищу контейнер в базе данных...")
+    await asyncio.sleep(1)  # имитация загрузки
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT departure_station, arrival_station, operation_station, operation_type, operation_datetime, waybill_number, distance_left
-        FROM tracking
-        WHERE container_number = ?
-        ORDER BY operation_datetime DESC
-        LIMIT 1
-    """, (container_number,))
-    result = cursor.fetchone()
+    cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
+    rows = cursor.fetchall()
     conn.close()
 
-    if result:
-        departure, arrival, op_station, op_type, op_datetime, waybill, distance = result
-        message = (
-            f"\ud83d\udce6 Контейнер: <b>{container_number}</b>\n"
-            f"\ud83d\udecd\ufe0f Отправление: {departure}\n"
-            f"\ud83d\udecd\ufe0f Назначение: {arrival}\n"
-            f"\ud83d\udecb\ufe0f Станция операции: {op_station}\n"
-            f"\u2705 Операция: {op_type}\n"
-            f"\ud83d\udd52 Время операции: {op_datetime}\n"
-            f"\ud83d\udce6 Накладная: {waybill}\n"
-            f"\ud83d\udd0d Осталось км: {distance}"
-        )
-        await update.message.reply_html(message)
-    else:
-        await update.message.reply_text("\u274c Контейнер не найден в базе данных.")
+    await waiting_message.delete()
 
-# Основная функция запуска бота
-async def main():
-    logger.info("\u2705 Инициализация базы данных...")
-    init_db()
+    if not rows:
+        await update.message.reply_text("❌ Контейнер не найден в базе данных.")
+    else:
+        messages = []
+        for row in rows:
+            message = (f"\U0001F69A Контейнер: {row[1]}\n"
+                       f"Откуда: {row[2]}\n"
+                       f"Куда: {row[3]}\n"
+                       f"Станция операции: {row[4]}\n"
+                       f"Операция: {row[5]}\n"
+                       f"Дата/время: {row[6]}\n"
+                       f"Накладная: {row[7]}\n"
+                       f"Осталось км: {row[8]}")
+            messages.append(message)
+        await update.message.reply_text('\n\n'.join(messages))
+
+# Запуск бота
+if __name__ == '__main__':
     start_mail_checking()
 
-    app = Application.builder().token(TOKEN).build()
+    app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track_container))
 
-    logger.info("\ud83d\ude80 Бот запущен!")
-    await app.run_polling()
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), find_container))
 
-if __name__ == '__main__':
-    asyncio.run(main())
+    print("✨ Бот запущен!")
+    app.run_polling()
