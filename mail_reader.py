@@ -5,17 +5,18 @@ import pandas as pd
 from imap_tools import MailBox, AND
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Настройки из переменных окружения
+# Настройки
 EMAIL = os.getenv('EMAIL')
 PASSWORD = os.getenv('PASSWORD')
 DOWNLOAD_FOLDER = 'downloads'
 DB_FILE = 'tracking.db'
-DAYS_TO_KEEP = 5  # дней хранить скачанные файлы
+DAYS_TO_KEEP = 5
 
-# Создаём папку для загрузки, если её нет
+# Создаем папку для скачивания файлов
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Инициализация базы данных
+
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -36,20 +37,22 @@ def init_db():
     conn.close()
     print("✅ База данных инициализирована.")
 
-# Удаление старых файлов из папки загрузки
+# Очистка старых файлов
+
 def cleanup_old_files():
     now = time.time()
     for filename in os.listdir(DOWNLOAD_FOLDER):
-        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-        if os.path.isfile(file_path):
-            age_days = (now - os.path.getctime(file_path)) / (60 * 60 * 24)
+        path = os.path.join(DOWNLOAD_FOLDER, filename)
+        if os.path.isfile(path):
+            age_days = (now - os.path.getctime(path)) / (60 * 60 * 24)
             if age_days > DAYS_TO_KEEP:
-                os.remove(file_path)
+                os.remove(path)
                 print(f"🗑 Удалён старый файл: {filename}")
 
-# Проверка почты и загрузка новых файлов
+# Проверка почты
+
 def check_mail():
-    print("\n📩 Проверка почты...")
+    print("📩 Проверка почты...")
     cleanup_old_files()
     print(f"DEBUG: EMAIL={EMAIL!r}, PASSWORD_SET={bool(PASSWORD)}")
     try:
@@ -58,29 +61,26 @@ def check_mail():
             for msg in mailbox.fetch(AND(seen=False)):
                 for att in msg.attachments:
                     fname = att.filename or ''
-                    print(f"DEBUG: Найдено вложение: {fname!r}")
+                    print(f"DEBUG: Вложение: {fname!r}")
                     if fname.lower().endswith('.xlsx'):
                         fp = os.path.join(DOWNLOAD_FOLDER, fname)
                         with open(fp, 'wb') as f:
                             f.write(att.payload)
                         print(f"📥 Скачан файл: {fp}")
                         process_excel(fp)
-                mailbox.flag(msg.uid, MailBox.flags.SEEN, True)
+                # Пометить сообщение как прочитанное
+                mailbox.flag(msg.uid, ['\\Seen'], True)
     except Exception as e:
         print(f"❌ Ошибка при проверке почты: {e}")
 
-# Обработка Excel и запись в базу
-def process_excel(filepath):
-    print(f"\n🔍 Обработка Excel файла: {filepath}")
-    try:
-        df = pd.read_excel(filepath, header=3)  # Читаем с 4-й строки!
-        print(f"DEBUG: Загружено строк: {len(df)}")
-        print(f"DEBUG: Названия колонок: {list(df.columns)}")
-        df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
+# Обработка Excel файла
 
+def process_excel(filepath):
+    try:
+        df = pd.read_excel(filepath, header=3)  # Строка 4 в Excel
+        df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
         if 'Номер контейнера' not in df.columns:
-            print("❗ В файле нет нужной колонки 'Номер контейнера'.")
-            return
+            raise ValueError("Не найдена колонка 'Номер контейнера'")
 
         df = df.dropna(subset=['Номер контейнера'])
         df = df.rename(columns={
@@ -94,15 +94,15 @@ def process_excel(filepath):
             'Расстояние оставшееся': 'distance_left'
         })
         df['operation_datetime'] = df['operation_datetime'].astype(str)
-        
         conn = sqlite3.connect(DB_FILE)
         df.to_sql('tracking', conn, if_exists='append', index=False)
         conn.close()
-        print(f"✅ Успешно добавлено записей в БД: {len(df)}")
+        print(f"✅ Обработано {len(df)} записей из {os.path.basename(filepath)}")
     except Exception as e:
-        print(f"❌ Ошибка обработки файла {filepath}: {e}")
+        print(f"❌ Ошибка обработки {filepath}: {e}")
 
 # Запуск фоновой проверки почты
+
 def start_mail_checking():
     init_db()
     scheduler = BackgroundScheduler()
