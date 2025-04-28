@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Константы окружения
-TOKEN = os.getenv('TOKEN')
+TOKEN = os.getenv('TELEGRAM_TOKEN')
 DB_FILE = 'tracking.db'
 
 if not TOKEN:
