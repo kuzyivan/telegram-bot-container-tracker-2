@@ -72,7 +72,7 @@ def check_mail():
 # Обработка Excel и запись в базу
 def process_excel(filepath):
     try:
-        df = pd.read_excel(filepath, header=2)
+        df = pd.read_excel(filepath, header=4)
         df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
         df = df.dropna(subset=['Номер контейнера'])
         df = df.rename(columns={
