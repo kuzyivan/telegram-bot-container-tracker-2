@@ -14,15 +14,15 @@ PORT = int(os.getenv('PORT', 10000))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 DB_FILE = 'tracking.db'
 
-if not TOKEN:
-    raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
-
 # Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Проверка существования базы данных и таблицы
+if not TOKEN:
+    logger.error("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
+    raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
 
+# Проверка существования базы данных и таблицы
 def check_database():
     if not os.path.exists(DB_FILE):
         logger.warning("⚠️ Файл базы данных tracking.db не найден. Будет создан новый файл.")
@@ -63,7 +63,7 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
         rows = cursor.fetchall()
     except Exception as e:
-        logger.error(f"Ошибка при работе с базой данных: {e}")
+        logger.error(f"❌ Ошибка при работе с базой данных: {e}")
         await update.message.reply_text("❌ Ошибка при обращении к базе данных.")
         return
     finally:
@@ -94,8 +94,11 @@ if __name__ == '__main__':
     if not check_database():
         ensure_database_exists()
 
+    logger.info("✅ База данных инициализирована.")
+
     logger.info("📩 Проверка почты...")
     start_mail_checking()
+
     logger.info("🔄 Планировщик бэкапа базы данных запущен.")
     start_backup_scheduler()
 
@@ -107,8 +110,8 @@ if __name__ == '__main__':
     logger.info("✨ Бот запущен!")
 
     if WEBHOOK_URL:
-        logger.info(f"Используется вебхук: {WEBHOOK_URL}")
+        logger.info(f"🌐 Используется вебхук: {WEBHOOK_URL}")
         app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=WEBHOOK_URL)
     else:
-        logger.info("Используется polling режим.")
+        logger.info("🔁 Используется polling режим.")
         app.run_polling()
