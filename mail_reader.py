@@ -5,7 +5,6 @@ import asyncio
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from mail_reader import start_mail_checking, ensure_database_exists
 from backup_db import start_backup_scheduler
 
 # Настройки из переменных окружения
