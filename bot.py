@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 # Проверка существования базы данных и таблицы
 def check_database():
     if not os.path.exists(DB_FILE):
-        raise FileNotFoundError("❌ Файл базы данных tracking.db не найден!")
+        logger.error("❌ Файл базы данных tracking.db не найден!")
+        return False
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -32,9 +33,13 @@ def check_database():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tracking';")
         table_exists = cursor.fetchone()
         if not table_exists:
-            raise ValueError("❌ Таблица 'tracking' отсутствует в базе данных!")
+            logger.error("❌ Таблица 'tracking' отсутствует в базе данных!")
+            return False
     finally:
         conn.close()
+
+    logger.info("✅ База данных инициализирована.")
+    return True
 
 # Команда start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -83,20 +88,22 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Запуск бота
 if __name__ == '__main__':
-    check_database()
-    start_mail_checking()
-    start_backup_scheduler()
+    if check_database():
+        start_mail_checking()
+        start_backup_scheduler()
 
-    app = ApplicationBuilder().token(TOKEN).build()
+        app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), find_container))
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), find_container))
 
-    logger.info("✨ Бот запущен!")
+        logger.info("✨ Бот запущен!")
 
-    if WEBHOOK_URL:
-        logger.info(f"Используется вебхук: {WEBHOOK_URL}")
-        app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=WEBHOOK_URL)
+        if WEBHOOK_URL:
+            logger.info(f"Используется вебхук: {WEBHOOK_URL}")
+            app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=WEBHOOK_URL)
+        else:
+            logger.info("Используется polling режим.")
+            app.run_polling()
     else:
-        logger.info("Используется polling режим.")
-        app.run_polling()
+        logger.error("❌ Бот остановлен из-за ошибок с базой данных.")
