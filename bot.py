@@ -7,11 +7,11 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from mail_reader import start_mail_checking
 
 # Настройки из переменных окружения
-TOKEN = os.getenv('TOKEN')
+TOKEN = os.getenv('TELEGRAM_TOKEN')  # <-- исправлено здесь
 DB_FILE = 'tracking.db'
 
 if not TOKEN:
-    raise ValueError("❌ Переменная окружения TOKEN не задана!")
+    raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
 
 # Команда start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
