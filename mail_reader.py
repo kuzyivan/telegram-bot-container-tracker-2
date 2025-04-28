@@ -16,7 +16,6 @@ DAYS_TO_KEEP = 5
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Инициализация базы данных
-
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -38,7 +37,6 @@ def init_db():
     print("✅ База данных инициализирована.")
 
 # Очистка старых файлов
-
 def cleanup_old_files():
     now = time.time()
     for filename in os.listdir(DOWNLOAD_FOLDER):
@@ -50,13 +48,13 @@ def cleanup_old_files():
                 print(f"🗑 Удалён старый файл: {filename}")
 
 # Загрузка и обработка писем
-
 def check_mail():
     print("📩 Проверка почты...")
     cleanup_old_files()
     try:
         with MailBox('imap.yandex.ru').login(EMAIL, PASSWORD) as mailbox:
-            for msg in mailbox.fetch(AND(seen=False, subject=lambda x: x and x.startswith('Отчёт слежения TrackerTG №'))):
+            # Фильтр по непрочитанным письмам с темой, начинающейся на нужную строку
+            for msg in mailbox.fetch(AND(seen=False, subject__startswith='Отчёт слежения TrackerTG №')):
                 for att in msg.attachments:
                     if att.filename.startswith('103') and att.filename.endswith('.xlsx'):
                         fp = os.path.join(DOWNLOAD_FOLDER, att.filename)
@@ -69,12 +67,10 @@ def check_mail():
         print(f"❌ Ошибка при проверке почты: {e}")
 
 # Обработка Excel
-
 def process_excel(filepath):
     try:
-        # Заголовки на 3-й строке (header=2)
         df = pd.read_excel(filepath, header=2)
-        df.columns = [c.strip() for c in df.columns]
+        df.columns = [str(c).strip().replace('\ufeff','') for c in df.columns]
         df = df.dropna(subset=['Номер контейнера'])
         df = df.rename(columns={
             'Номер контейнера':'container_number',
@@ -86,7 +82,6 @@ def process_excel(filepath):
             'Номер накладной':'waybill_number',
             'Расстояние оставшееся':'distance_left'
         })
-        # В SQLite
         conn = sqlite3.connect(DB_FILE)
         df.to_sql('tracking', conn, if_exists='append', index=False)
         conn.close()
@@ -95,7 +90,6 @@ def process_excel(filepath):
         print(f"❌ Ошибка обработки {filepath}: {e}")
 
 # Планировщик
-
 def start_mail_checking():
     init_db()
     scheduler = BackgroundScheduler()
