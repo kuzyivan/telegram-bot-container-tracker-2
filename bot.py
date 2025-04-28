@@ -1,130 +1,116 @@
 import os
 import logging
-import pandas as pd
+import sqlite3
 import re
-import asyncio
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, 
-    CommandHandler, 
-    MessageHandler, 
-    ContextTypes, 
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
     filters,
+    ContextTypes,
 )
 from mail_reader import start_mail_checking
 from backup_db import start_backup_scheduler
 
-# Переменные окружения
-GOOGLE_SHEET_CSV = "https://docs.google.com/spreadsheets/d/16PZrxpzsfBkF7hGN4OKDx6CRfIqySES4oLL9OoxOV8Q/export?format=csv"
-PORT = int(os.environ.get("PORT", 10000))  # Render сам подставит нужный порт
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-BOT_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+# Путь к базе данных, созданной mail_reader.py
+DB_FILE = 'tracking.db'
+PORT = int(os.getenv('PORT', 10000))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+BOT_TOKEN = os.getenv('TELEGRAM_TOKEN')
 
-# Настройка логирования
+# Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация приложения Telegram
-telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
+# Инициализация Telegram-приложения
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Привет! Я бот для отслеживания контейнеров по железной дороге.\n\n"
-        "Просто пришли мне номер контейнера или список контейнеров!"
+        "👋 Привет! Я AtermTrackBot. Напиши номер контейнера, и я покажу его последний статус."  
     )
 
 # /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "❓ Помощь:\n\n"
-        "Отправь номер контейнера или список — и я покажу их статус."
+        "❓ Просто отправь номер контейнера или несколько номеров через пробел/запятую, и я отвечу последними данными."
     )
 
-# /refresh
-async def refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ Данные обновляются автоматически!")
-
-# Обработка контейнеров
+# Обработчик текстовых сообщений с номерами контейнеров
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message_text = update.message.text.strip().upper()
-    container_list = re.split(r'[\s,;:\n\r\.]+', message_text)
-    container_list = [c for c in container_list if c]
+    text = update.message.text.strip().upper()
+    containers = [c for c in re.split(r'[\s,;:\n\r\.]+', text) if c]
+    if not containers:
+        await update.message.reply_text("⚠️ Не найдено ни одного контейнера в сообщении.")
+        return
 
     try:
-        df = pd.read_csv(GOOGLE_SHEET_CSV)
-        df.columns = [str(col).strip().replace('\ufeff', '') for col in df.columns]
-        df["Дата и время операции"] = pd.to_datetime(df["Дата и время операции"], format="%d.%m.%Y %H:%M:%S", errors='coerce')
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        placeholders = ','.join('?' for _ in containers)
+        query = f"""
+            SELECT container_number, departure_station, arrival_station,
+                   operation_station, operation_type, operation_datetime,
+                   waybill_number, distance_left
+            FROM tracking
+            WHERE container_number IN ({placeholders})
+            ORDER BY operation_datetime DESC
+        """
+        rows = cursor.execute(query, containers).fetchall()
+        conn.close()
 
-        result_df = (
-            df[df["Номер контейнера"].isin(container_list)]
-            .sort_values("Дата и время операции", ascending=False)
-            .drop_duplicates(subset=["Номер контейнера"])
-        )
-
-        if result_df.empty:
-            await update.message.reply_text("⚠️ Контейнеры не найдены.")
+        if not rows:
+            await update.message.reply_text("⚠️ Контейнеры не найдены в базе.")
             return
 
-        grouped = result_df.groupby(["Станция отправления", "Станция назначения"])
+        latest = {}
+        for row in rows:
+            cn = row[0]
+            if cn not in latest:
+                latest[cn] = row
+
+        routes = {}
+        for row in latest.values():
+            cn, dep, arr, op_station, op_type, op_dt, waybill, dist = row
+            route_key = (dep, arr)
+            routes.setdefault(route_key, []).append((cn, op_station, op_type, op_dt, waybill, dist))
+
         reply = "📦 Отчёт по контейнерам:\n"
-
-        for (start_station, end_station), group in grouped:
-            reply += f"\n🚆 *Маршрут:* {start_station} → {end_station}\n"
-            for _, row in group.iterrows():
-                station_name = str(row.get("Станция операции", "Неизвестно")).split("(")[0].strip().upper()
-                date_op = row["Дата и время операции"]
-                eta_str = "неизвестна"
-
-                if pd.notnull(row.get("Расстояние оставшееся")):
-                    try:
-                        km = float(row["Расстояние оставшееся"])
-                        eta_days = int(round(km / 600))
-                        eta_str = f"через {eta_days} дн." if eta_days > 0 else "менее суток"
-                    except Exception:
-                        pass
-
-                date_op_str = "неизвестна" if pd.isnull(date_op) else date_op.strftime('%Y-%m-%d %H:%M')
-
-                if "выгрузка из вагона" in str(row.get('Операция', '')).lower():
-                    reply += (
-                        f"🕓 Дата операции: {date_op_str}\n"
-                        f"📬 Контейнер прибыл на станцию назначения!\n"
-                    )
-                else:
-                    reply += (
-                        f"📦 № Контейнера: `{row['Номер контейнера']}`\n"
-                        f"📍 Дислокация: {station_name}\n"
-                        f"⚙️ Операция: {row.get('Операция', 'Неизвестно')}\n"
-                        f"🕓 Дата операции: {date_op_str}\n"
-                        f"📅 Прогноз прибытия: {eta_str}\n"
-                    )
-
-        await update.message.reply_text(reply, parse_mode="Markdown")
+        for (dep, arr), ops in routes.items():
+            reply += f"\n🚆 Маршрут: {dep} → {arr}\n"
+            for cn, op_station, op_type, op_dt, waybill, dist in ops:
+                station = (op_station or 'Неизвестно').split('(')[0].strip().upper()
+                dt_str = op_dt if isinstance(op_dt, str) else str(op_dt)
+                reply += (
+                    f"📦 {cn}\n"
+                    f"📍 Станция: {station}\n"
+                    f"⚙️ Операция: {op_type}\n"
+                    f"🕓 Время: {dt_str}\n"
+                    f"📦 Накладная: {waybill}\n"
+                    f"📅 Осталось км: {dist}\n"
+                )
+        await update.message.reply_text(reply)
 
     except Exception as e:
-        logger.exception("Ошибка при обработке запроса")
-        await update.message.reply_text("⚠️ Ошибка при обработке запроса. Попробуйте позже.")
+        logger.exception("Ошибка при запросе контейнеров")
+        await update.message.reply_text("⚠️ Произошла ошибка при обработке. Попробуйте позже.")
 
-# Регистрируем команды и обработчики
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("help", help_command))
-telegram_app.add_handler(CommandHandler("refresh", refresh))
-telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track))
+# Регистрация хендлеров
+app.add_handler(CommandHandler('start', start))
+app.add_handler(CommandHandler('help', help_command))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track))
 
-# Запуск
 if __name__ == '__main__':
-    start_mail_checking()       # Фоновая проверка почты
-    start_backup_scheduler()    # Фоновый бэкап базы
+    # Запуск фоновых задач
+    start_mail_checking()
+    start_backup_scheduler()
 
-    # Асинхронный запуск вебхука
-    async def run():
-        await telegram_app.start()
-        await telegram_app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-        await telegram_app.updater.start_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            webhook_url=f"{WEBHOOK_URL}/webhook"
-        )
-
-    asyncio.run(run())
+    # Запуск бота через webhook
+    app.run_webhook(
+        listen='0.0.0.0',
+        port=PORT,
+        url_path='webhook',
+        webhook_url=f"{WEBHOOK_URL}/webhook"
+    )
