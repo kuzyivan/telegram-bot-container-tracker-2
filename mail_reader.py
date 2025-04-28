@@ -19,6 +19,7 @@ DB_FILE = 'tracking.db'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Проверка базы данных
+
 def ensure_database_exists():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -36,6 +37,7 @@ def ensure_database_exists():
     conn.close()
 
 # Проверка почты и скачивание Excel-файлов
+
 def check_mail():
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
@@ -61,6 +63,7 @@ def check_mail():
         logger.error(f"❌ Ошибка при проверке почты: {e}")
 
 # Обработка Excel-файла
+
 def process_file(filepath):
     try:
         df = pd.read_excel(filepath, skiprows=3)  # Начинаем с 4 строки
@@ -82,7 +85,7 @@ def process_file(filepath):
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM tracking")
+        cursor.execute("DELETE FROM tracking")  # Очистить таблицу перед загрузкой
         cursor.executemany("INSERT INTO tracking (container_number, from_station, to_station, current_station, operation, operation_date, waybill, km_left) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", records)
         conn.commit()
         conn.close()
@@ -91,6 +94,7 @@ def process_file(filepath):
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
 # Стартовый метод
+
 def start_mail_checking():
     logger.info("📩 Запущена проверка почты...")
     ensure_database_exists()
