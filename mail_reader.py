@@ -19,7 +19,6 @@ DAYS_TO_KEEP = 5                   # дней хранить скачанные 
 ios.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Инициализация базы данных
-
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -41,7 +40,6 @@ def init_db():
     print("✅ База данных инициализирована.")
 
 # Удаление старых файлов из папки задароженных
-
 def cleanup_old_files():
     now = time.time()
     for filename in os.listdir(DOWNLOAD_FOLDER):
@@ -53,7 +51,6 @@ def cleanup_old_files():
                 print(f"🗑 Удалён старый файл: {filename}")
 
 # Проверка почты и загрузка новых файлов
-
 def check_mail():
     print("📩 Проверка почты...")
     cleanup_old_files()
@@ -71,7 +68,7 @@ def check_mail():
             ))
             print(f"DEBUG: Найдено писем: {len(msgs)}")
             for msg in msgs:
-                print(f"DEBUG: Обрабатываем письмо: {{msg.subject!r}}")
+                print(f"DEBUG: Обрабатываем письмо: {msg.subject!r}")
                 # Смотрим имена всех вложений
                 filenames = [att.filename for att in msg.attachments]
                 print(f"DEBUG: Вложений: {filenames}")
@@ -89,7 +86,6 @@ def check_mail():
         print(f"❌ Ошибка при проверке почты: {e}")
 
 # Обработка Excel и запись в базу
-
 def process_excel(filepath):
     try:
         # Заголовки находятся на третьей строке (header=2)
@@ -120,7 +116,6 @@ def process_excel(filepath):
         print(f"❌ Ошибка обработки {filepath}: {e}")
 
 # Запуск фоновой проверки почты
-
 def start_mail_checking():
     init_db()
     scheduler = BackgroundScheduler()
