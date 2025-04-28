@@ -22,6 +22,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Проверка существования базы данных и таблицы
+
 def check_database():
     if not os.path.exists(DB_FILE):
         logger.error("❌ Файл базы данных tracking.db не найден!")
@@ -71,8 +72,10 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await waiting_message.delete()
 
     if not rows:
+        logger.info(f"Контейнер {query} не найден в базе данных.")
         await update.message.reply_text("❌ Контейнер не найден в базе данных.")
     else:
+        logger.info(f"Контейнер {query} найден, найдено записей: {len(rows)}.")
         messages = []
         for row in rows:
             message = (f"\U0001F69A Контейнер: {row[1]}\n"
@@ -89,7 +92,9 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Запуск бота
 if __name__ == '__main__':
     if check_database():
+        logger.info("📩 Проверка почты...")
         start_mail_checking()
+        logger.info("🔄 Планировщик бэкапа базы данных запущен.")
         start_backup_scheduler()
 
         app = ApplicationBuilder().token(TOKEN).build()
