@@ -58,27 +58,27 @@ def check_mail():
     try:
         with MailBox('imap.yandex.ru').login(EMAIL, PASSWORD) as mailbox:
             print("DEBUG: Вход в почту успешен")
-            # Фильтр только по непрочитанным письмам и теме, начинающейся с нужного префикса
-            msgs = mailbox.fetch(
-                AND(
-                    seen=False,
-                    subject__startswith='Отчёт слежения TrackerTG №'
-                )
-            )
-            msgs = list(msgs)
-            print(f"DEBUG: Найдено писем: {len(msgs)}")
+            # Загружаем все непрочитанные письма
+            all_msgs = list(mailbox.fetch(AND(seen=False)))
+            print(f"DEBUG: Всего непрочитанных писем: {len(all_msgs)}")
+            # Отбираем по теме
+            prefix = 'Отчёт слежения TrackerTG №'
+            msgs = [msg for msg in all_msgs if msg.subject and msg.subject.startswith(prefix)]
+            print(f"DEBUG: Письем с нужным префиксом темы: {len(msgs)}")
             for msg in msgs:
-                subject = msg.subject or ''
+                subject = msg.subject
                 print(f"DEBUG: Обрабатываем письмо: {subject!r}")
                 filenames = [att.filename for att in msg.attachments]
                 print(f"DEBUG: Вложений: {filenames}")
                 for att in msg.attachments:
-                    if att.filename and att.filename.startswith('103') and att.filename.endswith('.xlsx'):
-                        fp = os.path.join(DOWNLOAD_FOLDER, att.filename)
+                    fname = att.filename or ''
+                    if fname.startswith('103') and fname.endswith('.xlsx'):
+                        fp = os.path.join(DOWNLOAD_FOLDER, fname)
                         with open(fp, 'wb') as f:
                             f.write(att.payload)
                         print(f"📥 Скачан файл: {fp}")
                         process_excel(fp)
+                # Помечаем письмо прочитанным
                 mailbox.flag(msg.uid, MailBox.flags.SEEN, True)
     except Exception as e:
         print(f"❌ Ошибка при проверке почты: {e}")
@@ -99,6 +99,7 @@ def process_excel(filepath):
             'Номер накладной': 'waybill_number',
             'Расстояние оставшееся': 'distance_left'
         })
+        # Приводим дату к строке
         df['operation_datetime'] = df['operation_datetime'].astype(str)
         conn = sqlite3.connect(DB_FILE)
         df.to_sql('tracking', conn, if_exists='append', index=False)
@@ -113,5 +114,6 @@ def start_mail_checking():
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_mail, 'interval', minutes=40)
     scheduler.start()
+    # Запускаем сразу при старте
     check_mail()
     print("🔄 Фоновая проверка почты запущена.")
