@@ -54,25 +54,24 @@ def cleanup_old_files():
 def check_mail():
     print("📩 Проверка почты...")
     cleanup_old_files()
-    # DEBUG: выводим параметры логина
     print(f"DEBUG: EMAIL={EMAIL!r}, PASSWORD_SET={bool(PASSWORD)}")
     try:
         with MailBox('imap.yandex.ru').login(EMAIL, PASSWORD) as mailbox:
             print("DEBUG: Вход в почту успешен")
-            # Фильтруем непрочитанные письма по теме
-            msgs = list(mailbox.fetch(
+            # Фильтр только по непрочитанным письмам и теме, начинающейся с нужного префикса
+            msgs = mailbox.fetch(
                 AND(
                     seen=False,
-                    subject=lambda x: isinstance(x, str) and x.startswith('Отчёт слежения TrackerTG №')
+                    subject__startswith='Отчёт слежения TrackerTG №'
                 )
-            ))
+            )
+            msgs = list(msgs)
             print(f"DEBUG: Найдено писем: {len(msgs)}")
             for msg in msgs:
-                print(f"DEBUG: Обрабатываем письмо: {msg.subject!r}")
-                # Смотрим имена всех вложений
+                subject = msg.subject or ''
+                print(f"DEBUG: Обрабатываем письмо: {subject!r}")
                 filenames = [att.filename for att in msg.attachments]
                 print(f"DEBUG: Вложений: {filenames}")
-                # Скачиваем подходящие файлы
                 for att in msg.attachments:
                     if att.filename and att.filename.startswith('103') and att.filename.endswith('.xlsx'):
                         fp = os.path.join(DOWNLOAD_FOLDER, att.filename)
@@ -80,7 +79,6 @@ def check_mail():
                             f.write(att.payload)
                         print(f"📥 Скачан файл: {fp}")
                         process_excel(fp)
-                # Отмечаем письмо как прочитанное
                 mailbox.flag(msg.uid, MailBox.flags.SEEN, True)
     except Exception as e:
         print(f"❌ Ошибка при проверке почты: {e}")
@@ -88,13 +86,9 @@ def check_mail():
 # Обработка Excel и запись в базу
 def process_excel(filepath):
     try:
-        # Заголовки находятся на третьей строке (header=2)
         df = pd.read_excel(filepath, header=2)
-        # Нормализуем имена колонок: убираем BOM и пробелы
         df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
-        # Оставляем только строки с номером контейнера
         df = df.dropna(subset=['Номер контейнера'])
-        # Переименовываем столбцы под структуру БД
         df = df.rename(columns={
             'Номер контейнера': 'container_number',
             'Станция отправления': 'departure_station',
@@ -105,9 +99,7 @@ def process_excel(filepath):
             'Номер накладной': 'waybill_number',
             'Расстояние оставшееся': 'distance_left'
         })
-        # Приводим дату-время к строкам для SQLite
         df['operation_datetime'] = df['operation_datetime'].astype(str)
-        # Записываем в таблицу tracking
         conn = sqlite3.connect(DB_FILE)
         df.to_sql('tracking', conn, if_exists='append', index=False)
         conn.close()
@@ -121,6 +113,5 @@ def start_mail_checking():
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_mail, 'interval', minutes=40)
     scheduler.start()
-    # Вызываем проверку сразу после старта
     check_mail()
     print("🔄 Фоновая проверка почты запущена.")
