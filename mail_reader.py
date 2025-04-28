@@ -16,7 +16,7 @@ DB_FILE = 'tracking.db'
 DAYS_TO_KEEP = 5                   # дней хранить скачанные файлы
 
 # Создаём папку для загрузки, если её нет
-ios.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Инициализация базы данных
 def init_db():
@@ -39,7 +39,7 @@ def init_db():
     conn.close()
     print("✅ База данных инициализирована.")
 
-# Удаление старых файлов из папки задароженных
+# Удаление старых файлов из папки загрузки
 def cleanup_old_files():
     now = time.time()
     for filename in os.listdir(DOWNLOAD_FOLDER):
