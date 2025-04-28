@@ -1,116 +1,111 @@
 import os
-import logging
+import time
 import sqlite3
-import re
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-)
-from mail_reader import start_mail_checking
-from backup_db import start_backup_scheduler
+import pandas as pd
+from imap_tools import MailBox, AND
+from apscheduler.schedulers.background import BackgroundScheduler
 
-# Путь к базе данных, созданной mail_reader.py
+# Настройки из переменных окружения
+EMAIL = os.getenv('EMAIL')         # bottrack@yandex.ru
+PASSWORD = os.getenv('PASSWORD')   # пароль от почты
+DOWNLOAD_FOLDER = 'downloads'
 DB_FILE = 'tracking.db'
-PORT = int(os.getenv('PORT', 10000))
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-BOT_TOKEN = os.getenv('TELEGRAM_TOKEN')
+DAYS_TO_KEEP = 5                   # дней хранить скачанные файлы
 
-# Логирование
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Создаём папку для загрузки, если её нет
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-# Инициализация Telegram-приложения
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+# Инициализация базы данных
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tracking (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            container_number TEXT,
+            departure_station TEXT,
+            arrival_station TEXT,
+            operation_station TEXT,
+            operation_type TEXT,
+            operation_datetime TEXT,
+            waybill_number TEXT,
+            distance_left INTEGER
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    print("✅ База данных инициализирована.")
 
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Привет! Я AtermTrackBot. Напиши номер контейнера, и я покажу его последний статус."  
-    )
+# Удаление старых файлов из папки загрузки
+def cleanup_old_files():
+    now = time.time()
+    for filename in os.listdir(DOWNLOAD_FOLDER):
+        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
+        if os.path.isfile(file_path):
+            age_days = (now - os.path.getctime(file_path)) / (60 * 60 * 24)
+            if age_days > DAYS_TO_KEEP:
+                os.remove(file_path)
+                print(f"🗑 Удалён старый файл: {filename}")
 
-# /help
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "❓ Просто отправь номер контейнера или несколько номеров через пробел/запятую, и я отвечу последними данными."
-    )
-
-# Обработчик текстовых сообщений с номерами контейнеров
-async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().upper()
-    containers = [c for c in re.split(r'[\s,;:\n\r\.]+', text) if c]
-    if not containers:
-        await update.message.reply_text("⚠️ Не найдено ни одного контейнера в сообщении.")
-        return
-
+# Проверка почты и загрузка новых файлов
+def check_mail():
+    print("📩 Проверка почты...")
+    cleanup_old_files()
+    print(f"DEBUG: EMAIL={EMAIL!r}, PASSWORD_SET={bool(PASSWORD)}")
     try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        placeholders = ','.join('?' for _ in containers)
-        query = f"""
-            SELECT container_number, departure_station, arrival_station,
-                   operation_station, operation_type, operation_datetime,
-                   waybill_number, distance_left
-            FROM tracking
-            WHERE container_number IN ({placeholders})
-            ORDER BY operation_datetime DESC
-        """
-        rows = cursor.execute(query, containers).fetchall()
-        conn.close()
-
-        if not rows:
-            await update.message.reply_text("⚠️ Контейнеры не найдены в базе.")
-            return
-
-        latest = {}
-        for row in rows:
-            cn = row[0]
-            if cn not in latest:
-                latest[cn] = row
-
-        routes = {}
-        for row in latest.values():
-            cn, dep, arr, op_station, op_type, op_dt, waybill, dist = row
-            route_key = (dep, arr)
-            routes.setdefault(route_key, []).append((cn, op_station, op_type, op_dt, waybill, dist))
-
-        reply = "📦 Отчёт по контейнерам:\n"
-        for (dep, arr), ops in routes.items():
-            reply += f"\n🚆 Маршрут: {dep} → {arr}\n"
-            for cn, op_station, op_type, op_dt, waybill, dist in ops:
-                station = (op_station or 'Неизвестно').split('(')[0].strip().upper()
-                dt_str = op_dt if isinstance(op_dt, str) else str(op_dt)
-                reply += (
-                    f"📦 {cn}\n"
-                    f"📍 Станция: {station}\n"
-                    f"⚙️ Операция: {op_type}\n"
-                    f"🕓 Время: {dt_str}\n"
-                    f"📦 Накладная: {waybill}\n"
-                    f"📅 Осталось км: {dist}\n"
-                )
-        await update.message.reply_text(reply)
-
+        with MailBox('imap.yandex.ru').login(EMAIL, PASSWORD) as mailbox:
+            print("DEBUG: Вход в почту успешен")
+            all_msgs = list(mailbox.fetch(AND(seen=False)))
+            print(f"DEBUG: Всего непрочитанных писем: {len(all_msgs)}")
+            prefix = 'Отчёт слежения TrackerTG №'
+            msgs = [msg for msg in all_msgs if msg.subject and msg.subject.startswith(prefix)]
+            print(f"DEBUG: Писем с нужным префиксом темы: {len(msgs)}")
+            for msg in msgs:
+                subject = msg.subject
+                print(f"DEBUG: Обрабатываем письмо: {subject!r}")
+                attached = [att.filename for att in msg.attachments]
+                print(f"DEBUG: Вложений: {attached}")
+                for att in msg.attachments:
+                    fname = att.filename or ''
+                    if fname.startswith('103') and fname.endswith('.xlsx'):
+                        fp = os.path.join(DOWNLOAD_FOLDER, fname)
+                        with open(fp, 'wb') as f:
+                            f.write(att.payload)
+                        print(f"📥 Скачан файл: {fp}")
+                        process_excel(fp)
+                mailbox.flag(msg.uid, MailBox.flags.SEEN, True)
     except Exception as e:
-        logger.exception("Ошибка при запросе контейнеров")
-        await update.message.reply_text("⚠️ Произошла ошибка при обработке. Попробуйте позже.")
+        print(f"❌ Ошибка при проверке почты: {e}")
 
-# Регистрация хендлеров
-app.add_handler(CommandHandler('start', start))
-app.add_handler(CommandHandler('help', help_command))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, track))
+# Обработка Excel и запись в базу
+def process_excel(filepath):
+    try:
+        df = pd.read_excel(filepath, header=2)
+        df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
+        df = df.dropna(subset=['Номер контейнера'])
+        df = df.rename(columns={
+            'Номер контейнера': 'container_number',
+            'Станция отправления': 'departure_station',
+            'Станция назначения': 'arrival_station',
+            'Станция операции': 'operation_station',
+            'Операция': 'operation_type',
+            'Дата и время операции': 'operation_datetime',
+            'Номер накладной': 'waybill_number',
+            'Расстояние оставшееся': 'distance_left'
+        })
+        df['operation_datetime'] = df['operation_datetime'].astype(str)
+        conn = sqlite3.connect(DB_FILE)
+        df.to_sql('tracking', conn, if_exists='append', index=False)
+        conn.close()
+        print(f"✅ Обработано {len(df)} записей из {os.path.basename(filepath)}")
+    except Exception as e:
+        print(f"❌ Ошибка обработки {filepath}: {e}")
 
-if __name__ == '__main__':
-    # Запуск фоновых задач
-    start_mail_checking()
-    start_backup_scheduler()
-
-    # Запуск бота через webhook
-    app.run_webhook(
-        listen='0.0.0.0',
-        port=PORT,
-        url_path='webhook',
-        webhook_url=f"{WEBHOOK_URL}/webhook"
-    )
+# Запуск фоновой проверки почты
+def start_mail_checking():
+    init_db()
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(check_mail, 'interval', minutes=40)
+    scheduler.start()
+    check_mail()
+    print("🔄 Фоновая проверка почты запущена.")
