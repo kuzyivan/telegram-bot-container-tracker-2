@@ -68,7 +68,7 @@ def check_mail():
 # Обработка Excel файла
 def process_excel(filepath):
     try:
-        df = pd.read_excel(filepath, skiprows=3)
+        df = pd.read_excel(filepath, skiprows=2)
         df.columns = [
             'container_number',
             'departure_station',
