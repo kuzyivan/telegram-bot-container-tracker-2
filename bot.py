@@ -2,16 +2,24 @@ import os
 import sqlite3
 import re
 import asyncio
+import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from mail_reader import start_mail_checking
+from backup_db import start_backup_scheduler
 
 # Настройки из переменных окружения
-TOKEN = os.getenv('TELEGRAM_TOKEN')  # <-- исправлено здесь
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+PORT = int(os.getenv('PORT', 10000))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 DB_FILE = 'tracking.db'
 
 if not TOKEN:
     raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
+
+# Логирование
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Команда start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -21,13 +29,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip().upper()
 
-    # Проверка на валидный номер контейнера (буквы + цифры, 11 символов)
     if not re.match(r'^[A-Z]{4}\d{7}$', query):
         await update.message.reply_text("❗ Пожалуйста, отправьте корректный номер контейнера (например, MSKU1234567).")
         return
 
     waiting_message = await update.message.reply_text("🔍 Ищу контейнер в базе данных...")
-    await asyncio.sleep(1)  # имитация загрузки
+    await asyncio.sleep(1)
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -56,12 +63,18 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Запуск бота
 if __name__ == '__main__':
     start_mail_checking()
+    start_backup_scheduler()
 
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), find_container))
 
-    print("✨ Бот запущен!")
-    app.run_polling()
+    logger.info("✨ Бот запущен!")
+
+    if WEBHOOK_URL:
+        logger.info(f"Используется вебхук: {WEBHOOK_URL}")
+        app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=WEBHOOK_URL)
+    else:
+        logger.info("Используется polling режим.")
+        app.run_polling()
