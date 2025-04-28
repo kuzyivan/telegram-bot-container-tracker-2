@@ -1,110 +1,114 @@
 import os
 import sqlite3
+import re
+import asyncio
 import logging
-import pandas as pd
-from imap_tools import MailBox
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from mail_reader import start_mail_checking, ensure_database_exists
+from backup_db import start_backup_scheduler
+
+# Настройки из переменных окружения
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+PORT = int(os.getenv('PORT', 10000))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+DB_FILE = 'tracking.db'
+
+if not TOKEN:
+    raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-IMAP_SERVER = 'imap.yandex.ru'
-EMAIL = os.getenv('EMAIL')
-PASSWORD = os.getenv('EMAIL_PASSWORD')
-DOWNLOAD_FOLDER = 'downloads'
-DB_FILE = 'tracking.db'
+# Проверка существования базы данных и таблицы
 
-# Инициализация папки для загрузок
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+def check_database():
+    if not os.path.exists(DB_FILE):
+        logger.warning("⚠️ Файл базы данных tracking.db не найден. Будет создан новый файл.")
+        return False
 
-# Создание базы данных при необходимости
-def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tracking (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            container_number TEXT,
-            from_station TEXT,
-            to_station TEXT,
-            operation_station TEXT,
-            operation TEXT,
-            operation_date TEXT,
-            waybill TEXT,
-            km_remains INTEGER
-        )
-    ''')
-    conn.commit()
-    conn.close()
-    logger.info("✅ База данных инициализирована.")
-
-# Загрузка Excel файла в базу данных
-def load_excel_to_db(file_path):
     try:
-        df = pd.read_excel(file_path, skiprows=3)
-        df = df.rename(columns=lambda x: x.strip())
-        if 'Номер контейнера' not in df.columns:
-            raise ValueError(['Номер контейнера'])
-
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM tracking')
-
-        for _, row in df.iterrows():
-            cursor.execute('''
-                INSERT INTO tracking (
-                    container_number, from_station, to_station, 
-                    operation_station, operation, operation_date, 
-                    waybill, km_remains
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                row.get('Номер контейнера', ''),
-                row.get('Отправление', ''),
-                row.get('Назначение', ''),
-                row.get('Станция операции', ''),
-                row.get('Операция', ''),
-                row.get('Дата операции', ''),
-                row.get('Накладная', ''),
-                row.get('Остаток пути, км', 0)
-            ))
-
-        conn.commit()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tracking';")
+        table_exists = cursor.fetchone()
+        if not table_exists:
+            logger.warning("⚠️ Таблица 'tracking' отсутствует в базе данных. Будет создана новая таблица.")
+            return False
+    finally:
         conn.close()
-        logger.info(f"✅ Данные успешно загружены из {file_path}")
-    except Exception as e:
-        logger.error(f"❌ Ошибка обработки {file_path}: {e}")
 
-# Проверка и загрузка новых писем
-def check_mail():
-    logger.info("📩 Проверка почты...")
-    if not EMAIL or not PASSWORD:
-        logger.error("❌ Не заданы EMAIL или EMAIL_PASSWORD в переменных окружения!")
+    logger.info("✅ База данных и таблица 'tracking' найдены.")
+    return True
+
+# Команда start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Отправь номер контейнера, чтобы получить информацию о нём 🚛")
+
+# Поиск контейнера
+async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip().upper()
+
+    if not re.match(r'^[A-Z]{4}\d{7}$', query):
+        await update.message.reply_text("❗ Пожалуйста, отправьте корректный номер контейнера (например, MSKU1234567).")
         return
 
+    waiting_message = await update.message.reply_text("🔍 Ищу контейнер в базе данных...")
+    await asyncio.sleep(1)
+
     try:
-        with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD) as mailbox:
-            logger.debug(f"DEBUG: EMAIL='{EMAIL}', PASSWORD_SET={bool(PASSWORD)}")
-            logger.debug("DEBUG: Вход в почту успешен")
-
-            for msg in mailbox.fetch():
-                for att in msg.attachments:
-                    logger.debug(f"DEBUG: Вложение: '{att.filename}'")
-                    if att.filename.lower().endswith('.xlsx'):
-                        file_path = os.path.join(DOWNLOAD_FOLDER, att.filename)
-                        with open(file_path, 'wb') as f:
-                            f.write(att.payload)
-                        logger.info(f"📥 Скачан файл: {file_path}")
-                        load_excel_to_db(file_path)
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
+        rows = cursor.fetchall()
     except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e}")
+        logger.error(f"Ошибка при работе с базой данных: {e}")
+        await update.message.reply_text("❌ Ошибка при обращении к базе данных.")
+        return
+    finally:
+        conn.close()
 
-# Автоматический запуск проверки почты
-def start_mail_checking():
-    from apscheduler.schedulers.background import BackgroundScheduler
+    await waiting_message.delete()
 
-    init_db()
+    if not rows:
+        logger.info(f"Контейнер {query} не найден в базе данных.")
+        await update.message.reply_text("❌ Контейнер не найден в базе данных.")
+    else:
+        logger.info(f"Контейнер {query} найден, найдено записей: {len(rows)}.")
+        messages = []
+        for row in rows:
+            message = (f"\U0001F69A Контейнер: {row[1]}\n"
+                       f"Откуда: {row[2]}\n"
+                       f"Куда: {row[3]}\n"
+                       f"Станция операции: {row[4]}\n"
+                       f"Операция: {row[5]}\n"
+                       f"Дата/время: {row[6]}\n"
+                       f"Накладная: {row[7]}\n"
+                       f"Осталось км: {row[8]}")
+            messages.append(message)
+        await update.message.reply_text('\n\n'.join(messages))
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(check_mail, 'interval', minutes=5)
-    scheduler.start()
-    logger.info("🔄 Фоновая проверка почты запущена.")
+# Запуск бота
+if __name__ == '__main__':
+    if not check_database():
+        ensure_database_exists()
+
+    logger.info("📩 Проверка почты...")
+    start_mail_checking()
+    logger.info("🔄 Планировщик бэкапа базы данных запущен.")
+    start_backup_scheduler()
+
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), find_container))
+
+    logger.info("✨ Бот запущен!")
+
+    if WEBHOOK_URL:
+        logger.info(f"Используется вебхук: {WEBHOOK_URL}")
+        app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=WEBHOOK_URL)
+    else:
+        logger.info("Используется polling режим.")
+        app.run_polling()
