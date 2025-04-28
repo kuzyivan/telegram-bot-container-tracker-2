@@ -1,3 +1,4 @@
+```python
 import os
 import time
 import sqlite3
@@ -6,11 +7,11 @@ from imap_tools import MailBox, AND
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Настройки из переменных окружения
-EMAIL = os.getenv('EMAIL')         # bottrack@yandex.ru
-PASSWORD = os.getenv('PASSWORD')   # пароль от почты
+EMAIL = os.getenv('EMAIL')
+PASSWORD = os.getenv('PASSWORD')
 DOWNLOAD_FOLDER = 'downloads'
 DB_FILE = 'tracking.db'
-DAYS_TO_KEEP = 5                   # дней хранить скачанные файлы
+DAYS_TO_KEEP = 5
 
 # Создаём папку для загрузки, если её нет
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
@@ -55,19 +56,18 @@ def check_mail():
     try:
         with MailBox('imap.yandex.ru').login(EMAIL, PASSWORD) as mailbox:
             print("DEBUG: Вход в почту успешен")
-            all_msgs = list(mailbox.fetch(AND(seen=False)))
-            print(f"DEBUG: Всего непрочитанных писем: {len(all_msgs)}")
-            prefix = 'Отчёт слежения TrackerTG №'
-            msgs = [msg for msg in all_msgs if msg.subject and msg.subject.startswith(prefix)]
-            print(f"DEBUG: Писем с нужным префиксом темы: {len(msgs)}")
-            for msg in msgs:
-                subject = msg.subject
+            for msg in mailbox.fetch(AND(seen=False)):
+                subject = msg.subject or ''
+                print(f"DEBUG: Тема письма: {subject!r}")
+                # Нормализуем 'ё' и 'е' в теме
+                subj_norm = subject.replace('ё','е').replace('Ё','Е')
+                if not subj_norm.startswith('Отчет слежения TrackerTG №'):
+                    continue
                 print(f"DEBUG: Обрабатываем письмо: {subject!r}")
-                attached = [att.filename for att in msg.attachments]
-                print(f"DEBUG: Вложений: {attached}")
                 for att in msg.attachments:
                     fname = att.filename or ''
-                    if fname.startswith('103') and fname.endswith('.xlsx'):
+                    print(f"DEBUG: Вложение: {fname!r}")
+                    if fname.endswith('.xlsx'):
                         fp = os.path.join(DOWNLOAD_FOLDER, fname)
                         with open(fp, 'wb') as f:
                             f.write(att.payload)
@@ -109,3 +109,4 @@ def start_mail_checking():
     scheduler.start()
     check_mail()
     print("🔄 Фоновая проверка почты запущена.")
+```
