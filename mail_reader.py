@@ -51,12 +51,20 @@ def cleanup_old_files():
 def check_mail():
     print("📩 Проверка почты...")
     cleanup_old_files()
+    # Debug: выводим настройки почты
+    print(f"DEBUG: EMAIL={EMAIL!r}, PASSWORD_SET={bool(PASSWORD)}")
     try:
         with MailBox('imap.yandex.ru').login(EMAIL, PASSWORD) as mailbox:
-            # Фильтр по непрочитанным письмам с темой, начинающейся на нужную строку
-            for msg in mailbox.fetch(AND(seen=False, subject__startswith='Отчёт слежения TrackerTG №')):
+            print("DEBUG: Успешный вход в почтовый ящик")
+            # Получаем список непрочитанных писем
+            msgs = list(mailbox.fetch(AND(seen=False, subject=lambda x: isinstance(x, str) and x.startswith('Отчёт слежения TrackerTG №'))))
+            print(f"DEBUG: Найдено писем: {len(msgs)}")
+            for msg in msgs:
+                print(f"DEBUG: Обрабатываем письмо с темой: {msg.subject!r}")
+                filenames = [att.filename for att in msg.attachments]
+                print(f"DEBUG: Вложений: {filenames}")
                 for att in msg.attachments:
-                    if att.filename.startswith('103') and att.filename.endswith('.xlsx'):
+                    if att.filename and att.filename.startswith('103') and att.filename.endswith('.xlsx'):
                         fp = os.path.join(DOWNLOAD_FOLDER, att.filename)
                         with open(fp, 'wb') as f:
                             f.write(att.payload)
@@ -70,18 +78,19 @@ def check_mail():
 def process_excel(filepath):
     try:
         df = pd.read_excel(filepath, header=2)
-        df.columns = [str(c).strip().replace('\ufeff','') for c in df.columns]
+        df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
         df = df.dropna(subset=['Номер контейнера'])
         df = df.rename(columns={
-            'Номер контейнера':'container_number',
-            'Станция отправления':'departure_station',
-            'Станция назначения':'arrival_station',
-            'Станция операции':'operation_station',
-            'Операция':'operation_type',
-            'Дата и время операции':'operation_datetime',
-            'Номер накладной':'waybill_number',
-            'Расстояние оставшееся':'distance_left'
+            'Номер контейнера': 'container_number',
+            'Станция отправления': 'departure_station',
+            'Станция назначения': 'arrival_station',
+            'Станция операции': 'operation_station',
+            'Операция': 'operation_type',
+            'Дата и время операции': 'operation_datetime',
+            'Номер накладной': 'waybill_number',
+            'Расстояние оставшееся': 'distance_left'
         })
+        df['operation_datetime'] = df['operation_datetime'].astype(str)
         conn = sqlite3.connect(DB_FILE)
         df.to_sql('tracking', conn, if_exists='append', index=False)
         conn.close()
@@ -95,5 +104,6 @@ def start_mail_checking():
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_mail, 'interval', minutes=40)
     scheduler.start()
-    check_mail()  # запускаем сразу при старте
+    # Запускаем проверку сразу после старта
+    check_mail()
     print("🔄 Фоновая проверка почты запущена.")
