@@ -21,6 +21,21 @@ if not TOKEN:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Проверка существования базы данных и таблицы
+def check_database():
+    if not os.path.exists(DB_FILE):
+        raise FileNotFoundError("❌ Файл базы данных tracking.db не найден!")
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tracking';")
+        table_exists = cursor.fetchone()
+        if not table_exists:
+            raise ValueError("❌ Таблица 'tracking' отсутствует в базе данных!")
+    finally:
+        conn.close()
+
 # Команда start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Отправь номер контейнера, чтобы получить информацию о нём 🚛")
@@ -36,11 +51,17 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
     waiting_message = await update.message.reply_text("🔍 Ищу контейнер в базе данных...")
     await asyncio.sleep(1)
 
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
+        rows = cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Ошибка при работе с базой данных: {e}")
+        await update.message.reply_text("❌ Ошибка при обращении к базе данных.")
+        return
+    finally:
+        conn.close()
 
     await waiting_message.delete()
 
@@ -62,6 +83,7 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Запуск бота
 if __name__ == '__main__':
+    check_database()
     start_mail_checking()
     start_backup_scheduler()
 
