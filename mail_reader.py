@@ -49,7 +49,7 @@ def cleanup_old_files():
 
 # Проверка почты и загрузка новых файлов
 def check_mail():
-    print("📩 Проверка почты...")
+    print("\n📩 Проверка почты...")
     cleanup_old_files()
     print(f"DEBUG: EMAIL={EMAIL!r}, PASSWORD_SET={bool(PASSWORD)}")
     try:
@@ -58,7 +58,7 @@ def check_mail():
             for msg in mailbox.fetch(AND(seen=False)):
                 for att in msg.attachments:
                     fname = att.filename or ''
-                    print(f"DEBUG: Вложение: {fname!r}")
+                    print(f"DEBUG: Найдено вложение: {fname!r}")
                     if fname.lower().endswith('.xlsx'):
                         fp = os.path.join(DOWNLOAD_FOLDER, fname)
                         with open(fp, 'wb') as f:
@@ -71,9 +71,17 @@ def check_mail():
 
 # Обработка Excel и запись в базу
 def process_excel(filepath):
+    print(f"\n🔍 Обработка Excel файла: {filepath}")
     try:
-        df = pd.read_excel(filepath, header=4)
+        df = pd.read_excel(filepath, header=3)  # Читаем с 4-й строки!
+        print(f"DEBUG: Загружено строк: {len(df)}")
+        print(f"DEBUG: Названия колонок: {list(df.columns)}")
         df.columns = [(str(c) or '').strip().replace('\ufeff', '') for c in df.columns]
+
+        if 'Номер контейнера' not in df.columns:
+            print("❗ В файле нет нужной колонки 'Номер контейнера'.")
+            return
+
         df = df.dropna(subset=['Номер контейнера'])
         df = df.rename(columns={
             'Номер контейнера': 'container_number',
@@ -86,12 +94,13 @@ def process_excel(filepath):
             'Расстояние оставшееся': 'distance_left'
         })
         df['operation_datetime'] = df['operation_datetime'].astype(str)
+        
         conn = sqlite3.connect(DB_FILE)
         df.to_sql('tracking', conn, if_exists='append', index=False)
         conn.close()
-        print(f"✅ Обработано {len(df)} записей из {os.path.basename(filepath)}")
+        print(f"✅ Успешно добавлено записей в БД: {len(df)}")
     except Exception as e:
-        print(f"❌ Ошибка обработки {filepath}: {e}")
+        print(f"❌ Ошибка обработки файла {filepath}: {e}")
 
 # Запуск фоновой проверки почты
 def start_mail_checking():
