@@ -32,7 +32,8 @@ def ensure_database_exists():
                         operation TEXT,
                         operation_date TEXT,
                         waybill TEXT,
-                        km_left INTEGER)''')
+                        km_left INTEGER,
+                        forecast_days INTEGER)''')
     conn.commit()
     conn.close()
 
@@ -72,21 +73,24 @@ def process_file(filepath):
 
         records = []
         for _, row in df.iterrows():
+            km_left = int(row.get('Расстояние оставшееся', 0))
+            forecast_days = (km_left + 599) // 600 if km_left > 0 else 0
             records.append((
-               str(row['Номер контейнера']).strip().upper(),
+                str(row['Номер контейнера']).strip().upper(),
                 str(row.get('Станция отправления', '')).strip(),
                 str(row.get('Станция назначения', '')).strip(),
                 str(row.get('Станция операции', '')).strip(),
                 str(row.get('Операция', '')).strip(),
                 str(row.get('Дата и время операции', '')).strip(),
                 str(row.get('Номер накладной', '')).strip(),
-                int(row.get('Расстояние оставшееся', 0))
+                km_left,
+                forecast_days
             ))
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM tracking")  # Очистить таблицу перед загрузкой
-        cursor.executemany("INSERT INTO tracking (container_number, from_station, to_station, current_station, operation, operation_date, waybill, km_left) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", records)
+        cursor.executemany("INSERT INTO tracking (container_number, from_station, to_station, current_station, operation, operation_date, waybill, km_left, forecast_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
         conn.commit()
         conn.close()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
