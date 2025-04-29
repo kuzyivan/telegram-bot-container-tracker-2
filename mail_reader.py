@@ -49,7 +49,7 @@ def check_mail():
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
             logger.debug("DEBUG: Вход в почту успешен")
 
-            for msg in mailbox.fetch(AND(seen=False)):
+            for msg in mailbox.fetch():
                 for att in msg.attachments:
                     logger.debug(f"DEBUG: Вложение: '{att.filename}'")
                     if att.filename.endswith('.xlsx'):
