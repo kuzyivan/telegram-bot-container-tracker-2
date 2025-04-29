@@ -73,14 +73,14 @@ def process_file(filepath):
         records = []
         for _, row in df.iterrows():
             records.append((
-                str(row['Номер контейнера']).strip().upper(),
+               str(row['Номер контейнера']).strip().upper(),
                 str(row.get('Станция отправления', '')).strip(),
                 str(row.get('Станция назначения', '')).strip(),
                 str(row.get('Станция операции', '')).strip(),
-                str(row.get('Наименование операции', '')).strip(),
-                str(row.get('Дата/время операции', '')).strip(),
+                str(row.get('Операция', '')).strip(),
+                str(row.get('Дата и время операции', '')).strip(),
                 str(row.get('Номер накладной', '')).strip(),
-                int(row.get('Остаточное расстояние, км', 0))
+                int(row.get('Расстояние оставшееся', 0))
             ))
 
         conn = sqlite3.connect(DB_FILE)
