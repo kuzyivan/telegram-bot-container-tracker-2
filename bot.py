@@ -23,7 +23,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка поиска контейнера/контейнеров
 async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    queries = update.message.text.strip().upper().split()
+    raw_text = update.message.text.strip().upper()
+    queries = re.split(r"[\s,.\n]+", raw_text)
 
     if len(queries) > 10:
         await update.message.reply_text("❗ Можно отправить не более 10 контейнеров за один раз.")
