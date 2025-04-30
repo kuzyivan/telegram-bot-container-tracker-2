@@ -1,83 +1,87 @@
 import os
+import re
 import sqlite3
 import logging
-import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from mail_reader import start_mail_checking
 from backup_db import start_backup_scheduler
 
-# Настройки
-TOKEN = os.getenv("TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", 10000))
-DB_FILE = "tracking.db"
+# Путь к базе данных
+DB_FILE = 'tracking.db'
+PORT = int(os.getenv('PORT', 10000))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
+BOT_TOKEN = os.getenv('TELEGRAM_TOKEN')
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Команды
+# Команды бота
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Введи один или несколько номеров контейнеров через пробел, запятую, точку или с новой строки.")
+    await update.message.reply_text("Привет! Отправьте номер контейнера или несколько через пробел 🚛")
 
-# Обработка контейнеров
-async def handle_container_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    raw_containers = re.split(r"[\s,\.\n]+", text)
-    containers = [c.strip().upper() for c in raw_containers if c.strip()]
+# Обработка поиска контейнера/контейнеров
+async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    queries = update.message.text.strip().upper().split()
 
-    if not containers:
-        await update.message.reply_text("⚠️ Не распознаны номера контейнеров. Попробуйте снова.")
+    if len(queries) > 10:
+        await update.message.reply_text("❗ Можно отправить не более 10 контейнеров за один раз.")
         return
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    found_messages = []
-    not_found = []
+    messages = []
 
-    for number in containers:
-        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (number,))
-        rows = cursor.fetchall()
-        if not rows:
-            not_found.append(number)
+    for query in queries:
+        if not re.match(r'^[A-Z]{4}\d{7}$', query):
+            messages.append(f"❌ Неверный формат номера контейнера: {query}")
             continue
 
-        for row in rows:
-            message = (f"🚚 Контейнер: {row[1]}\n"
-                       f"Откуда: {row[2]}\n"
-                       f"Куда: {row[3]}\n"
-                       f"Станция операции: {row[4]}\n"
-                       f"Операция: {row[5]}\n"
-                       f"Дата/время: {row[6]}\n"
-                       f"Накладная: {row[7]}\n"
-                       f"Осталось км: {row[8]}\n"
-                       f"📅 Прогноз прибытия: {row[9]} дней")
-            found_messages.append(message)
+        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
+        rows = cursor.fetchall()
+
+        if not rows:
+            messages.append(f"❌ Контейнер {query} не найден в базе данных.")
+        else:
+            for row in rows:
+                message = (f"🚚 Контейнер: {row[1]}\n"
+                           f"Откуда: {row[2]}\n"
+                           f"Куда: {row[3]}\n"
+                           f"Станция операции: {row[4]}\n"
+                           f"Операция: {row[5]}\n"
+                           f"Дата/время: {row[6]}\n"
+                           f"Накладная: {row[7]}\n"
+                           f"Осталось км: {row[8]}\n"
+                           f"📅 Прогноз прибытия: {row[9]} дней")
+                messages.append(message)
 
     conn.close()
 
-    reply_parts = found_messages
-    if not_found:
-        reply_parts.append("\n❌ Не найдены в базе:\n" + "\n".join(f"- {c}" for c in not_found))
+    await update.message.reply_text('\n\n'.join(messages))
 
-    await update.message.reply_text("\n\n".join(reply_parts))
+# Проверка базы данных на старте
+def check_database():
+    if not os.path.exists(DB_FILE):
+        logger.warning("⚠️ Файл базы данных tracking.db не найден. Будет создан новый файл.")
 
-# Запуск
-if __name__ == "__main__":
-    if not TOKEN:
-        raise ValueError("❌ Переменная окружения TOKEN не задана!")
+# Основной запуск
+if __name__ == '__main__':
+    check_database()
 
     start_mail_checking()
     start_backup_scheduler()
 
-    app = ApplicationBuilder().token(TOKEN).webhook_url(WEBHOOK_URL).port(PORT).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_container_query))
+    app.add_handler(CommandHandler("help", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, find_container))
 
-    logger.info("✨ Бот запущен!")
-    logger.info(f"🌐 Используется вебхук: {WEBHOOK_URL}")
-
-    app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=WEBHOOK_URL)
+    if WEBHOOK_URL:
+        logger.info(f"✨ Бот запущен!\n🌐 Используется вебхук: {WEBHOOK_URL}")
+        app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=f"{WEBHOOK_URL}/")
+    else:
+        logger.info("✨ Бот запущен!")
+        app.run_polling()
