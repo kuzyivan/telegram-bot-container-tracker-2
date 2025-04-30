@@ -1,88 +1,98 @@
 import os
-import re
 import sqlite3
 import logging
+import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from mail_reader import start_mail_checking
 from backup_db import start_backup_scheduler
 
-# Путь к базе данных
-DB_FILE = 'tracking.db'
-PORT = int(os.getenv('PORT', 10000))
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-BOT_TOKEN = os.getenv('TELEGRAM_TOKEN')
-
 # Логирование
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Команды бота
+# Константы
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+DB_FILE = "tracking.db"
+PORT = int(os.getenv("PORT", 10000))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+
+# Проверка переменных окружения
+if not TOKEN:
+    raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
+
+# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Отправьте номер контейнера или несколько через пробел 🚛")
+    await update.message.reply_text("Привет! Введите номер контейнера или несколько, чтобы получить информацию 📦")
 
-# Обработка поиска контейнера/контейнеров
+# Поиск контейнера(ов)
 async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    raw_text = update.message.text.strip().upper()
-    queries = re.split(r"[\s,.\n]+", raw_text)
-
-    if len(queries) > 10:
-        await update.message.reply_text("❗ Можно отправить не более 10 контейнеров за один раз.")
+    text = update.message.text.strip()
+    raw_ids = re.split(r"[,\.\s\n]+", text)
+    container_ids = [c.strip().upper() for c in raw_ids if c.strip()]
+    if not container_ids:
+        await update.message.reply_text("❗ Не распознаны номера контейнеров.")
         return
 
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    found = []
+    not_found = []
 
-    messages = []
-
-    for query in queries:
-        if not re.match(r'^[A-Z]{4}\d{7}$', query):
-            messages.append(f"❌ Неверный формат номера контейнера: {query}")
-            continue
-
-        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (query,))
+    for cid in container_ids:
+        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (cid,))
         rows = cursor.fetchall()
-
-        if not rows:
-            messages.append(f"❌ Контейнер {query} не найден в базе данных.")
+        if rows:
+            found.extend(rows)
         else:
-            for row in rows:
-                message = (f"🚚 Контейнер: {row[1]}\n"
-                           f"Откуда: {row[2]}\n"
-                           f"Куда: {row[3]}\n"
-                           f"Станция операции: {row[4]}\n"
-                           f"Операция: {row[5]}\n"
-                           f"Дата/время: {row[6]}\n"
-                           f"Накладная: {row[7]}\n"
-                           f"Осталось км: {row[8]}\n"
-                           f"📅 Прогноз прибытия: {row[9]} дней")
-                messages.append(message)
-
+            not_found.append(cid)
     conn.close()
 
-    await update.message.reply_text('\n\n'.join(messages))
+    if not found:
+        await update.message.reply_text("❌ Контейнеры не найдены в базе данных.")
+        return
 
-# Проверка базы данных на старте
-def check_database():
-    if not os.path.exists(DB_FILE):
-        logger.warning("⚠️ Файл базы данных tracking.db не найден. Будет создан новый файл.")
+    # Группировка по станции и дате
+    grouped = {}
+    for row in found:
+        key = (row[4], row[6])  # current_station, operation_date
+        grouped.setdefault(key, []).append(row)
 
-# Основной запуск
-if __name__ == '__main__':
-    check_database()
+    reply_lines = []
+    for (station, date), group in grouped.items():
+        header = f"🏗️ {station}\n📅 {date}"
+        containers = []
+        for row in group:
+            forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
+            containers.append(
+                f"🚛 Контейнер: {row[1]}\n"
+                f"Откуда: {row[2]}\n"
+                f"Куда: {row[3]}\n"
+                f"Операция: {row[5]}\n"
+                f"Накладная: {row[7]}\n"
+                f"Осталось км: {row[8]}\n"
+                f"📅 Прогноз прибытия: {forecast}"
+            )
+        reply_lines.append(f"{header}\n\n" + "\n\n".join(containers))
 
+    if not_found:
+        reply_lines.append(
+            "⚠️ Не найдены в базе:\n" + ", ".join(not_found)
+        )
+
+    await update.message.reply_text("\n\n".join(reply_lines[:30]))  # ограничение на длину сообщения
+
+# Инициализация бота
+if __name__ == "__main__":
     start_mail_checking()
     start_backup_scheduler()
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, find_container))
-
-    if WEBHOOK_URL:
-        logger.info(f"✨ Бот запущен!\n🌐 Используется вебхук: {WEBHOOK_URL}")
-        app.run_webhook(listen="0.0.0.0", port=PORT, webhook_url=f"{WEBHOOK_URL}/")
-    else:
-        logger.info("✨ Бот запущен!")
-        app.run_polling()
+    logger.info("✨ Бот запущен!")
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=f"{WEBHOOK_URL}/"
+    )
