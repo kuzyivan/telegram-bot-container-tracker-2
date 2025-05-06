@@ -37,12 +37,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                    wagon_number, operation_road
             FROM tracking WHERE container_number = ?
         """, (container,))
-        row = cursor.fetchone()
-        if row:
-            key = (row[3], row[5])  # current_station и operation_date
-            found[key].append(row)
-        else:
-            not_found.append(container)
+        rows = cursor.fetchall()
+        if rows:
+            latest_row = max(rows, key=lambda r: r[5])  # выбрать по самой новой дате операции
+            key = (latest_row[3], latest_row[5])
+            found[key].append(latest_row)
 
     conn.close()
 
