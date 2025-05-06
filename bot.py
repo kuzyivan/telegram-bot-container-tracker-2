@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import logging
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
@@ -106,6 +106,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 Всего запросов: {total_requests}\n👤 Уникальных пользователей: {unique_users}"
     )
 
+async def set_bot_commands(application):
+    await application.bot.set_my_commands([
+        BotCommand("start", "Начать работу с ботом"),
+        BotCommand("stats", "Статистика запросов (для администратора)")
+    ])
+
 def main():
     ensure_database_exists()
     start_mail_checking()
@@ -114,6 +120,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.post_init = set_bot_commands
     logger.info("✨ Бот запущен!")
     application.run_webhook(
         listen="0.0.0.0",
