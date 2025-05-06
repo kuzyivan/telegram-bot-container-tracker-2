@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker_id = "CAACAgIAAxkBAAEK2YZlTL1N5CyHFB52RxFsjKTKIm1aJgAC2gADVp29CjMJWJBFq4ykNAQ"  # пример ID стикера
+    sticker_id = "CAACAgIAAxkBAAEK2YZlTL1N5CyHFB52RxFsjKTKIm1aJgAC2gADVp29CjMJWJBFq4ykNAQ"
     await update.message.reply_sticker(sticker_id)
     await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
 
@@ -37,18 +37,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                    wagon_number, operation_road
             FROM tracking WHERE container_number = ?
         """, (container,))
-        rows = cursor.fetchall()
-        if rows:
-            latest_row = max(rows, key=lambda r: r[5])  # выбрать по самой новой дате операции
-            key = (latest_row[3], latest_row[5])
-            found[key].append(latest_row)
+        row = cursor.fetchone()
+        if row:
+            key = (row[3], row[5])  # current_station и operation_date
+            found[key].append(row)
+
+            # Логирование запроса в stats
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    container_number TEXT,
+                    user_id INTEGER,
+                    username TEXT,
+                    timestamp TEXT
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO stats (container_number, user_id, username, timestamp)
+                VALUES (?, ?, ?, datetime('now', 'localtime'))
+            """, (container, update.message.from_user.id, update.message.from_user.username))
+            conn.commit()
+        else:
+            not_found.append(container)
 
     conn.close()
 
     reply_lines = []
     for (station, date), rows in found.items():
         header = f"📍Дислокация: {station}"
-        if rows[0][10]:  # operation_road
+        if rows[0][10]:
             header += f" {rows[0][10]}"
         header += f"\n🏗Операция: {rows[0][4]}\n📅 {rows[0][5]}"
 
@@ -74,12 +91,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
 
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    conn = sqlite3.connect("tracking.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM stats")
+    total_requests, unique_users = cursor.fetchone()
+    conn.close()
+
+    await update.message.reply_text(
+        f"📊 Всего запросов: {total_requests}\n👤 Уникальных пользователей: {unique_users}"
+    )
+
 def main():
     ensure_database_exists()
     start_mail_checking()
 
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("✨ Бот запущен!")
     application.run_webhook(
