@@ -87,7 +87,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_lines.append("❌ Не найдены: " + ", ".join(not_found))
 
     if reply_lines:
-        await update.message.reply_text("\n\n".join(reply_lines[:30]))
+        separator = "\n" + "═" * 30 + "\n"
+        await update.message.reply_text(separator.join(reply_lines[:30]))
     else:
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
 
