@@ -77,7 +77,7 @@ def process_file(filepath):
 
         records = []
         for _, row in df.iterrows():
-            km_left = int(row.get('Остаточное расстояние, км', 0))
+            km_left = int(row.get('Расстояние оставшееся, км', 0))
             forecast_days = round(km_left / 600, 1) if km_left else 0.0
             wagon_number = str(row.get('Номер вагона', '')).strip()
             operation_road = str(row.get('Дорога операции', '')).strip()
