@@ -4,8 +4,9 @@ import logging
 import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from mail_reader import start_mail_checking
-from backup_db import start_backup_scheduler
+from apscheduler.schedulers.background import BackgroundScheduler
+from mail_reader import schedule_mail_checking
+from backup_db import schedule_backup
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
@@ -83,16 +84,18 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n\n".join(reply_lines[:30]))  # ограничение на длину сообщения
 
 # Инициализация бота
-if __name__ == "__main__":
-    start_mail_checking()
-    start_backup_scheduler()
+f __name__ == "__main__":
+    scheduler = BackgroundScheduler()
+    schedule_mail_checking(scheduler)
+    schedule_backup(scheduler)
+    scheduler.start()
 
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, find_container))
     logger.info("✨ Бот запущен!")
+
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         webhook_url=f"{WEBHOOK_URL}/"
-    )
