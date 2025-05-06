@@ -82,7 +82,8 @@ def process_file(filepath):
             wagon_number = str(row.get('Номер вагона', '')).strip()
             operation_road = str(row.get('Дорога операции', '')).strip()
 
-            records.append((
+            records.append(\
+                (
                 str(row['Номер контейнера']).strip().upper(),
                 str(row.get('Станция отправления', '')).strip(),
                 str(row.get('Станция назначения', '')).strip(),
