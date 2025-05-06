@@ -81,18 +81,18 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📅 Прогноз прибытия: {forecast}"
         )
     for row in grouped_rows:
-    text = (
-        f"🚛 Контейнер: {row[1]}\n"
-        f"🚇Вагон: {row[10]} {get_wagon_type(row[10])}\n"
-        f"📍Дислокация: {row[4]} {row[11]}\n"
-        f"🏗Операция: {row[5]}\n"
-        f"📅 {row[6]}\n\n"
-        f"Откуда: {row[2]}\n"
-        f"Куда: {row[3]}\n\n"
-        f"Накладная: {row[7]}\n"
-        f"Осталось км: {row[8]}\n"
-        f"📅 Прогноз прибытия: {row[9]} дн."
-    )
+        text = (
+            f"🚛 Контейнер: {row[1]}\n"
+            f"🚇Вагон: {row[10]} {get_wagon_type(row[10])}\n"
+            f"📍Дислокация: {row[4]} {row[11]}\n"
+            f"🏗Операция: {row[5]}\n"
+            f"📅 {row[6]}\n\n"
+            f"Откуда: {row[2]}\n"
+            f"Куда: {row[3]}\n\n"
+            f"Накладная: {row[7]}\n"
+            f"Осталось км: {row[8]}\n"
+            f"📅 Прогноз прибытия: {row[9]} дн."
+        )
         reply_lines.append(f"{header}\n\n" + "\n\n".join(containers))
 
     if not_found:
