@@ -90,16 +90,5 @@ def main():
         webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
     )
 
-if __name__ == "__main__":
-    start_mail_checking()
-    start_backup_scheduler()
-
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, find_container))
-    logger.info("✨ Бот запущен!")
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"{WEBHOOK_URL}/"
-    )
+if name == '__main__':
+    main()
