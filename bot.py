@@ -5,9 +5,9 @@ import re
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
-from mail_reader import schedule_mail_checking
-from backup_db import schedule_backup
 from mail_reader import ensure_database_exists, schedule_mail_checking
+from backup_db import schedule_backup
+
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
