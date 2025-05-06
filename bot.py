@@ -20,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
-    container_numbers = re.split(r'[\s,\n.]+', user_input.strip())
+    container_numbers = re.split(r'[\s,\n.]+' , user_input.strip())
     conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
 
@@ -90,5 +90,5 @@ def main():
         webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
     )
 
-if name == '__main__':
+if __name__ == '__main__':
     main()
