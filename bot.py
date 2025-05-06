@@ -85,6 +85,8 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Инициализация бота
 if __name__ == "__main__":
+    ensure_database_exists()
+
     scheduler = BackgroundScheduler()
     schedule_mail_checking(scheduler)
     schedule_backup(scheduler)
