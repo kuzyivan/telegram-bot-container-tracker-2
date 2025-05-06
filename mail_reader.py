@@ -19,7 +19,6 @@ DB_FILE = 'tracking.db'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Проверка базы данных
-
 def ensure_database_exists():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -33,12 +32,13 @@ def ensure_database_exists():
                         operation_date TEXT,
                         waybill TEXT,
                         km_left INTEGER,
-                        forecast_days INTEGER)''')
+                        forecast_days REAL,
+                        wagon_number TEXT,
+                        operation_road TEXT)''')
     conn.commit()
     conn.close()
 
 # Проверка почты и скачивание Excel-файлов
-
 def check_mail():
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
@@ -50,7 +50,7 @@ def check_mail():
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
             logger.debug("DEBUG: Вход в почту успешен")
 
-            for msg in mailbox.fetch(reverse=True, limit=1):
+            for msg in mailbox.fetch(reverse=True, limit=2):
                 for att in msg.attachments:
                     logger.debug(f"DEBUG: Вложение: '{att.filename}'")
                     if att.filename.endswith('.xlsx'):
@@ -64,7 +64,6 @@ def check_mail():
         logger.error(f"❌ Ошибка при проверке почты: {e}")
 
 # Обработка Excel-файла
-
 def process_file(filepath):
     try:
         df = pd.read_excel(filepath, skiprows=3)  # Начинаем с 4 строки
@@ -73,8 +72,11 @@ def process_file(filepath):
 
         records = []
         for _, row in df.iterrows():
-            km_left = int(row.get('Расстояние оставшееся', 0))
-            forecast_days = (km_left + 599) // 600 if km_left > 0 else 0
+            km_left = int(row.get('Остаточное расстояние, км', 0))
+            forecast_days = round(km_left / 600, 1) if km_left else 0.0
+            wagon_number = str(row.get('Номер вагона', '')).strip()
+            operation_road = str(row.get('Дорога операции', '')).strip()
+
             records.append((
                 str(row['Номер контейнера']).strip().upper(),
                 str(row.get('Станция отправления', '')).strip(),
@@ -84,13 +86,15 @@ def process_file(filepath):
                 str(row.get('Дата и время операции', '')).strip(),
                 str(row.get('Номер накладной', '')).strip(),
                 km_left,
-                forecast_days
+                forecast_days,
+                wagon_number,
+                operation_road
             ))
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM tracking")  # Очистить таблицу перед загрузкой
-        cursor.executemany("INSERT INTO tracking (container_number, from_station, to_station, current_station, operation, operation_date, waybill, km_left, forecast_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
+        cursor.execute("DELETE FROM tracking")
+        cursor.executemany("INSERT INTO tracking (container_number, from_station, to_station, current_station, operation, operation_date, waybill, km_left, forecast_days, wagon_number, operation_road) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
         conn.commit()
         conn.close()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
@@ -98,7 +102,6 @@ def process_file(filepath):
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
 # Стартовый метод
-
 def start_mail_checking():
     logger.info("📩 Запущена проверка почты...")
     ensure_database_exists()
