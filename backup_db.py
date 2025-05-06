@@ -42,8 +42,8 @@ def backup_database():
     except Exception as e:
         print(f"❗ Ошибка при бэкапе базы данных: {e}")
 
-from apscheduler.triggers.cron import CronTrigger
-
-def schedule_backup(scheduler):
-    scheduler.add_job(backup_database, CronTrigger(hour=1))  # каждый день в 01:00
-    print("🕒 Задача резервного копирования зарегистрирована.")
+def start_backup_scheduler():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(backup_database, 'interval', hours=24)  # раз в 24 часа
+    scheduler.start()
+    print("🔄 Планировщик бэкапа базы данных запущен.")
