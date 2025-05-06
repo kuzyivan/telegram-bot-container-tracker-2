@@ -46,17 +46,27 @@ def check_mail():
 
     try:
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
-            logger.debug("📬 Вход в почту успешен")
-            for msg in mailbox.fetch(reverse=True, limit=1):
+            logger.info("📬 Вход в почту успешен")
+
+            messages = list(mailbox.fetch(reverse=True, limit=3))
+            logger.info(f"📨 Найдено писем: {len(messages)}")
+
+            for msg in messages:
+                logger.info(f"✉️ Тема: {msg.subject} | Дата: {msg.date}")
+
                 for att in msg.attachments:
+                    logger.info(f"📎 Вложение: {att.filename} | Размер: {len(att.payload)} байт")
+
                     if att.filename.endswith('.xlsx'):
                         filepath = os.path.join(DOWNLOAD_FOLDER, att.filename)
                         with open(filepath, 'wb') as f:
                             f.write(att.payload)
                         logger.info(f"📥 Скачан файл: {filepath}")
                         process_file(filepath)
+
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
+
 
 # Обработка Excel-файла
 def process_file(filepath):
