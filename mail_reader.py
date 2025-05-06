@@ -104,3 +104,8 @@ def start_mail_checking():
     ensure_database_exists()
     check_mail()
     logger.info("🔄 Проверка почты завершена.")
+from apscheduler.triggers.interval import IntervalTrigger
+
+def schedule_mail_checking(scheduler):
+    scheduler.add_job(start_mail_checking, IntervalTrigger(minutes=30))
+    logger.info("🕒 Задача проверки почты зарегистрирована (каждые 30 мин).")
