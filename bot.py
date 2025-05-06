@@ -1,104 +1,94 @@
 import os
 import sqlite3
 import logging
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from mail_reader import start_mail_checking, ensure_database_exists
+from collections import defaultdict
 import re
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from mail_reader import start_mail_checking
-from backup_db import start_backup_scheduler
 
-# Логирование
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Константы
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-DB_FILE = "tracking.db"
-PORT = int(os.getenv("PORT", 10000))
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
-# Проверка переменных окружения
-if not TOKEN:
-    raise ValueError("❌ Переменная окружения TELEGRAM_TOKEN не задана!")
-
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Введите номер контейнера или несколько, чтобы получить информацию 📦")
+    sticker_id = "CAACAgIAAxkBAAEK2YZlTL1N5CyHFB52RxFsjKTKIm1aJgAC2gADVp29CjMJWJBFq4ykNAQ"  # пример ID стикера
+    await update.message.reply_sticker(sticker_id)
+    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
 
-# Поиск контейнера(ов)
-async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    raw_ids = re.split(r"[,\.\s\n]+", text)
-    container_ids = [c.strip().upper() for c in raw_ids if c.strip()]
-    if not container_ids:
-        await update.message.reply_text("❗ Не распознаны номера контейнеров.")
-        return
-
-    conn = sqlite3.connect(DB_FILE)
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text
+    container_numbers = re.split(r'[\s,\n.]+', user_input.strip())
+    conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
-    found = []
+
+    found = defaultdict(list)
     not_found = []
 
-    for cid in container_ids:
-        cursor.execute("SELECT * FROM tracking WHERE container_number = ?", (cid,))
-        rows = cursor.fetchall()
-        if rows:
-            found.extend(rows)
+    for number in container_numbers:
+        container = number.strip().upper()
+        if not container:
+            continue
+        cursor.execute("""
+            SELECT container_number, from_station, to_station, current_station,
+                   operation, operation_date, waybill, km_left, forecast_days,
+                   wagon_number, operation_road
+            FROM tracking WHERE container_number = ?
+        """, (container,))
+        row = cursor.fetchone()
+        if row:
+            key = (row[3], row[5])  # current_station и operation_date
+            found[key].append(row)
         else:
-            not_found.append(cid)
+            not_found.append(container)
+
     conn.close()
 
-    if not found:
-        await update.message.reply_text("❌ Контейнеры не найдены в базе данных.")
-        return
-
-    # Группировка по станции и дате
-    grouped = {}
-    for row in found:
-        key = (row[4], row[6])  # current_station, operation_date
-        grouped.setdefault(key, []).append(row)
-
     reply_lines = []
-for (station, date), group in grouped.items():
-    header = f"🏗️ {station}\n📅 {date}"
-    containers = []
-    for row in group:
-        forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
-        wagon_number = str(row[9]) if len(row) > 9 and row[9] else "-"
-        railway = str(row[10]) if len(row) > 10 and row[10] else "-"
-        wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
-        containers.append(
-            f"🚛 Контейнер: {row[1]}\n"
-            f"🚇Вагон: {wagon_number} {wagon_type}\n"
-            f"📍Дислокация: {row[4]} {railway}\n"
-            f"🏗Операция: {row[5]}\n"
-            f"📅 {row[6]}\n\n"
-            f"Откуда: {row[2]}\n"
-            f"Куда: {row[3]}\n\n"
-            f"Накладная: {row[7]}\n"
-            f"Осталось км: {row[8]}\n"
-            f"📅 Прогноз прибытия: {forecast}"
-        )
-    reply_lines.append(f"{header}\n\n" + "\n\n".join(containers))
+    for (station, date), rows in found.items():
+        header = f"📍Дислокация: {station}"
+        if rows[0][10]:  # operation_road
+            header += f" {rows[0][10]}"
+        header += f"\n🏗Операция: {rows[0][4]}\n📅 {rows[0][5]}"
+
+        for row in rows:
+            wagon_type = "полувагон" if row[9].startswith("6") else "платформа"
+            text = (
+                f"🚛 Контейнер: {row[0]}\n"
+                f"🚇Вагон: {row[9]} {wagon_type}\n"
+                f"{header}\n\n"
+                f"Откуда: {row[1]}\n"
+                f"Куда: {row[2]}\n\n"
+                f"Накладная: {row[6]}\n"
+                f"Осталось км: {row[7]}\n"
+                f"📅 Прогноз прибытия: {row[8]} дн."
+            )
+            reply_lines.append(text)
 
     if not_found:
-        reply_lines.append(
-            "⚠️ Не найдены в базе:\n" + ", ".join(not_found)
-        )
+        reply_lines.append("❌ Не найдены: " + ", ".join(not_found))
 
-    await update.message.reply_text("\n\n".join(reply_lines[:30]))  # ограничение на длину сообщения
+    if reply_lines:
+        await update.message.reply_text("\n\n".join(reply_lines[:30]))
+    else:
+        await update.message.reply_text("Ничего не найдено по введённым номерам.")
 
-# Инициализация бота
-if __name__ == "__main__":
+def main():
+    ensure_database_exists()
     start_mail_checking()
-    start_backup_scheduler()
 
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, find_container))
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     logger.info("✨ Бот запущен!")
-    app.run_webhook(
+    application.run_webhook(
         listen="0.0.0.0",
-        port=PORT,
-        webhook_url=f"{WEBHOOK_URL}/"
+        port=int(os.environ.get("PORT", 10000)),
+        url_path=TOKEN,
+        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
     )
+
+if name == '__main__':
+    main()
