@@ -59,15 +59,14 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
         grouped.setdefault(key, []).append(row)
 
     reply_lines = []
-    for (station, date), group in grouped.items():
-        header = f"🏗️ {station}\n📅 {date}"
-        containers = []
-        for row in group:
-            forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
+for (station, date), group in grouped.items():
+    header = f"🏗️ {station}\n📅 {date}"
+    containers = []
+    for row in group:
+        forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
         wagon_number = str(row[9]) if len(row) > 9 and row[9] else "-"
         railway = str(row[10]) if len(row) > 10 and row[10] else "-"
         wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
-        forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
         containers.append(
             f"🚛 Контейнер: {row[1]}\n"
             f"🚇Вагон: {wagon_number} {wagon_type}\n"
@@ -80,20 +79,7 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Осталось км: {row[8]}\n"
             f"📅 Прогноз прибытия: {forecast}"
         )
-    for row in grouped_rows:
-        text = (
-            f"🚛 Контейнер: {row[1]}\n"
-            f"🚇Вагон: {row[10]} {get_wagon_type(row[10])}\n"
-            f"📍Дислокация: {row[4]} {row[11]}\n"
-            f"🏗Операция: {row[5]}\n"
-            f"📅 {row[6]}\n\n"
-            f"Откуда: {row[2]}\n"
-            f"Куда: {row[3]}\n\n"
-            f"Накладная: {row[7]}\n"
-            f"Осталось км: {row[8]}\n"
-            f"📅 Прогноз прибытия: {row[9]} дн."
-        )
-        reply_lines.append(f"{header}\n\n" + "\n\n".join(containers))
+    reply_lines.append(f"{header}\n\n" + "\n\n".join(containers))
 
     if not_found:
         reply_lines.append(
