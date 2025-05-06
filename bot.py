@@ -84,7 +84,7 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n\n".join(reply_lines[:30]))  # ограничение на длину сообщения
 
 # Инициализация бота
-f __name__ == "__main__":
+if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     schedule_mail_checking(scheduler)
     schedule_backup(scheduler)
