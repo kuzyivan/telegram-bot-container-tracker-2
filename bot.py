@@ -64,7 +64,22 @@ async def find_container(update: Update, context: ContextTypes.DEFAULT_TYPE):
         containers = []
         for row in group:
             forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
-            containers.append(
+        wagon_number = str(row[9]) if len(row) > 9 and row[9] else "-"
+        railway = str(row[10]) if len(row) > 10 and row[10] else "-"
+        wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
+        forecast = f"{round(row[8] / 600, 1)} дн." if row[8] else "-"
+        containers.append(
+            f"🚛 Контейнер: {row[1]}\n"
+            f"🚇Вагон: {wagon_number} {wagon_type}\n"
+            f"📍Дислокация: {row[4]} {railway}\n"
+            f"🏗Операция: {row[5]}\n"
+            f"📅 {row[6]}\n\n"
+            f"Откуда: {row[2]}\n"
+            f"Куда: {row[3]}\n\n"
+            f"Накладная: {row[7]}\n"
+            f"Осталось км: {row[8]}\n"
+            f"📅 Прогноз прибытия: {forecast}"
+        )
                 f"🚛 Контейнер: {row[1]}\n"
                 f"Откуда: {row[2]}\n"
                 f"Куда: {row[3]}\n"
