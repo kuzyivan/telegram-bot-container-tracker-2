@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import logging
+import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from mail_reader import start_mail_checking, ensure_database_exists
