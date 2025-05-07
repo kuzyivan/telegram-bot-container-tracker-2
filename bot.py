@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import logging
-from telegram import Update, ReplyKeyboardMarkup, BotCommand
+from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
@@ -103,18 +103,53 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*), COUNT(DISTINCT user_id) FROM stats")
-    total_requests, unique_users = cursor.fetchone()
+    cursor.execute("""
+        SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
+        FROM stats
+        GROUP BY user_id
+        ORDER BY COUNT(*) DESC
+    """)
+    rows = cursor.fetchall()
     conn.close()
 
-    await update.message.reply_text(
-        f"📊 Всего запросов: {total_requests}\n👤 Уникальных пользователей: {unique_users}"
-    )
+    if not rows:
+        await update.message.reply_text("Нет данных для отчета.")
+        return
+
+    report_lines = ["📊 Отчет по пользователям:"]
+    for user_id, username, count, containers in rows:
+        report_lines.append(
+            f"\n👤 `{user_id}` ({username})\n"
+            f"📦 Запросов: {count}\n"
+            f"🧾 Контейнеры: {containers}"
+        )
+
+    await update.message.reply_text("\n".join(report_lines[:30]), parse_mode="Markdown")
+
+async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    conn = sqlite3.connect("tracking.db")
+    df = pd.read_sql_query("SELECT * FROM stats", conn)
+    conn.close()
+
+    if df.empty:
+        await update.message.reply_text("Нет данных для экспорта.")
+        return
+
+    file_path = "user_stats.xlsx"
+    df.to_excel(file_path, index=False)
+
+    await update.message.reply_document(InputFile(file_path))
+    os.remove(file_path)
 
 async def set_bot_commands(application):
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
-        BotCommand("stats", "Статистика запросов (для администратора)")
+        BotCommand("stats", "Статистика запросов (для администратора)"),
+        BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
 def main():
@@ -124,6 +159,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
