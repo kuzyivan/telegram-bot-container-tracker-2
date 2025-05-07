@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker_id = "CAACAgIAAxkBAAEK2YZlTL1N5CyHFB52RxFsjKTKIm1aJgAC2gADVp29CjMJWJBFq4ykNAQ"
+    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
     await update.message.reply_sticker(sticker_id)
     await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
 
