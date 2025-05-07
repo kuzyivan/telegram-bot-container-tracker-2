@@ -18,6 +18,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_sticker(sticker_id)
     await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
 
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sticker = update.message.sticker
+    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     container_numbers = re.split(r'[\s,\n.]+' , user_input.strip())
@@ -120,6 +124,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
     logger.info("✨ Бот запущен!")
