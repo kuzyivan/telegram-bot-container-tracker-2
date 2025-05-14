@@ -109,7 +109,14 @@ def process_file(filepath):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", records)
         conn.commit()
         conn.close()
+
+        last_date = df['Дата и время операции'].dropna().max()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
+        logger.info(f"📦 Загружено строк: {len(records)}")
+        logger.info(f"🕓 Последняя дата операции в файле: {last_date}")
+        logger.info(f"🚉 Уникальных станций операции: {df['Станция операции'].nunique()}")
+        logger.info(f"🚛 Уникальных контейнеров: {df['Номер контейнера'].nunique()}")
+
     except Exception as e:
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
