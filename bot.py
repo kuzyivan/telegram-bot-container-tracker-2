@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 import re
+import tempfile
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -25,29 +26,25 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
-    container_numbers = re.split(r'[\s,\n.]+' , user_input.strip())
+    container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
+
     conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
 
-    found = defaultdict(list)
+    found_rows = []
     not_found = []
 
     for number in container_numbers:
-        container = number.strip().upper()
-        if not container:
-            continue
         cursor.execute("""
             SELECT container_number, from_station, to_station, current_station,
                    operation, operation_date, waybill, km_left, forecast_days,
                    wagon_number, operation_road
             FROM tracking WHERE container_number = ?
-        """, (container,))
+        """, (number,))
         row = cursor.fetchone()
         if row:
-            key = (row[3], row[5])  # current_station и operation_date
-            found[key].append(row)
+            found_rows.append(row)
 
-            # Логирование запроса в stats
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,40 +57,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("""
                 INSERT INTO stats (container_number, user_id, username, timestamp)
                 VALUES (?, ?, ?, datetime('now', 'localtime'))
-            """, (container, update.message.from_user.id, update.message.from_user.username))
+            """, (number, update.message.from_user.id, update.message.from_user.username))
             conn.commit()
         else:
-            not_found.append(container)
+            not_found.append(number)
 
     conn.close()
 
-    reply_lines = []
-    for (station, date), rows in found.items():
-        header = f"📍Дислокация: {station}"
-        if rows[0][10]:
-            header += f" {rows[0][10]}"
-        header += f"\n🏗Операция: {rows[0][4]}\n📅 {rows[0][5]}"
+    if len(container_numbers) > 1 and found_rows:
+        df = pd.DataFrame(found_rows, columns=[
+            'Номер контейнера', 'Станция отправления', 'Станция назначения',
+            'Станция операции', 'Операция', 'Дата и время операции',
+            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
+            'Номер вагона', 'Дорога операции'
+        ])
 
-        for row in rows:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            df.to_excel(tmp.name, index=False)
+            await update.message.reply_document(document=open(tmp.name, "rb"), filename="контейнеры.xlsx")
+
+        if not_found:
+            await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
+        return
+
+    if found_rows:
+        reply_lines = []
+        for row in found_rows:
             wagon_type = "полувагон" if row[9].startswith("6") else "платформа"
-            text = (
+            reply_lines.append(
                 f"🚛 Контейнер: {row[0]}\n"
-                f"🚇Вагон: {row[9]} {wagon_type}\n"
-                f"{header}\n\n"
-                f"Откуда: {row[1]}\n"
-                f"Куда: {row[2]}\n\n"
-                f"Накладная: {row[6]}\n"
-                f"Осталось км: {row[7]}\n"
+                f"🚇 Вагон: {row[9]} {wagon_type}\n"
+                f"📍Дислокация: {row[3]} {row[10]}\n"
+                f"🏗 Операция: {row[4]}\n📅 {row[5]}\n\n"
+                f"Откуда: {row[1]}\nКуда: {row[2]}\n\n"
+                f"Накладная: {row[6]}\nОсталось км: {row[7]}\n"
                 f"📅 Прогноз прибытия: {row[8]} дн."
             )
-            reply_lines.append(text)
-
-    if not_found:
-        reply_lines.append("❌ Не найдены: " + ", ".join(not_found))
-
-    if reply_lines:
-        separator = "\n" + "═" * 30 + "\n"
-        await update.message.reply_text(separator.join(reply_lines[:30]))
+        await update.message.reply_text("\n" + "═" * 30 + "\n".join(reply_lines))
     else:
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
 
