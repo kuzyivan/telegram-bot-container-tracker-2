@@ -8,6 +8,7 @@ from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 import re
 import tempfile
+from datetime import datetime
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -44,7 +45,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = cursor.fetchone()
         if row:
             found_rows.append(row)
-
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,6 +72,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Номер вагона', 'Дорога операции'
         ])
 
+        now_str = datetime.now().strftime("%H-%M")
+        file_name = f"Дислокация_{now_str}.xlsx"
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             df.to_excel(tmp.name, index=False)
             message = f"📦 Вот твоя дислокация! В файле — {len(found_rows)} контейнер(ов)."
@@ -79,7 +82,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"\n\n❌ Не найдены: {', '.join(not_found)}"
             message += "\n\n⬇️ Скачай Excel ниже:"
             await update.message.reply_text(message)
-            await update.message.reply_document(document=open(tmp.name, "rb"), filename="контейнеры.xlsx")
+            await update.message.reply_document(document=open(tmp.name, "rb"), filename=file_name)
         return
 
     if found_rows:
@@ -176,3 +179,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
