@@ -49,7 +49,7 @@ def check_mail():
             latest_file = None
             latest_date = None
 
-            for msg in mailbox.fetch():
+            for msg in mailbox.fetch(limit=3, reverse=True):
                 for att in msg.attachments:
                     if att.filename.endswith('.xlsx'):
                         msg_date = msg.date
