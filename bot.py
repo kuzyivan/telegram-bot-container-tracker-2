@@ -1,178 +1,128 @@
 import os
 import sqlite3
 import logging
+from imap_tools import MailBox, AND
+from datetime import datetime
 import pandas as pd
-from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from mail_reader import start_mail_checking, ensure_database_exists
-from collections import defaultdict
-import re
-import tempfile
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
-
-logging.basicConfig(level=logging.INFO)
+# Логирование
 logger = logging.getLogger(__name__)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
-    await update.message.reply_sticker(sticker_id)
-    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
+# Константы
+EMAIL = os.getenv('EMAIL')
+PASSWORD = os.getenv('PASSWORD')
+IMAP_SERVER = os.getenv('IMAP_SERVER', 'imap.yandex.ru')
+DOWNLOAD_FOLDER = 'downloads'
+DB_FILE = 'tracking.db'
 
-async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker = update.message.sticker
-    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+# Убедимся, что папка для скачивания существует
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
-    container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
-
-    conn = sqlite3.connect("tracking.db")
+# Проверка базы данных
+def ensure_database_exists():
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS tracking (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        container_number TEXT,
+                        from_station TEXT,
+                        to_station TEXT,
+                        current_station TEXT,
+                        operation TEXT,
+                        operation_date TEXT,
+                        waybill TEXT,
+                        km_left INTEGER,
+                        forecast_days REAL,
+                        wagon_number TEXT,
+                        operation_road TEXT)''')
+    conn.commit()
+    conn.close()
 
-    found_rows = []
-    not_found = []
+# Проверка почты и скачивание самого нового Excel-файла
+def check_mail():
+    if not EMAIL or not PASSWORD:
+        logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
+        return
 
-    for number in container_numbers:
-        cursor.execute("""
-            SELECT container_number, from_station, to_station, current_station,
-                   operation, operation_date, waybill, km_left, forecast_days,
-                   wagon_number, operation_road
-            FROM tracking WHERE container_number = ?
-        """, (number,))
-        row = cursor.fetchone()
-        if row:
-            found_rows.append(row)
+    try:
+        with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
+            latest_file = None
+            latest_date = None
 
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    container_number TEXT,
-                    user_id INTEGER,
-                    username TEXT,
-                    timestamp TEXT
+            for msg in mailbox.fetch():
+                for att in msg.attachments:
+                    if att.filename.endswith('.xlsx'):
+                        msg_date = msg.date
+                        if latest_date is None or msg_date > latest_date:
+                            latest_date = msg_date
+                            latest_file = (att, att.filename)
+
+            if latest_file:
+                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+                with open(filepath, 'wb') as f:
+                    f.write(latest_file[0].payload)
+                logger.info(f"📥 Скачан самый свежий файл: {filepath}")
+                process_file(filepath)
+            else:
+                logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке почты: {e}")
+
+# Обработка Excel-файла
+def process_file(filepath):
+    try:
+        df = pd.read_excel(filepath, skiprows=3)  # Начинаем с 4 строки
+        if 'Номер контейнера' not in df.columns:
+            raise ValueError("['Номер контейнера']")
+
+        records = []
+        for _, row in df.iterrows():
+            km_left = int(row.get('Расстояние оставшееся', 0))
+            forecast_days = round(km_left / 600, 1) if km_left else 0.0
+            wagon_number = str(row.get('Номер вагона', '')).strip()
+            operation_road = str(row.get('Дорога операции', '')).strip()
+
+            records.append(
+                (
+                    str(row['Номер контейнера']).strip().upper(),
+                    str(row.get('Станция отправления', '')).strip(),
+                    str(row.get('Станция назначения', '')).strip(),
+                    str(row.get('Станция операции', '')).strip(),
+                    str(row.get('Операция', '')).strip(),
+                    str(row.get('Дата и время операции', '')).strip(),
+                    str(row.get('Номер накладной', '')).strip(),
+                    km_left,
+                    forecast_days,
+                    wagon_number,
+                    operation_road
                 )
-            """)
-            cursor.execute("""
-                INSERT INTO stats (container_number, user_id, username, timestamp)
-                VALUES (?, ?, ?, datetime('now', 'localtime'))
-            """, (number, update.message.from_user.id, update.message.from_user.username))
-            conn.commit()
-        else:
-            not_found.append(number)
-
-    conn.close()
-
-    if len(container_numbers) > 1 and found_rows:
-        df = pd.DataFrame(found_rows, columns=[
-            'Номер контейнера', 'Станция отправления', 'Станция назначения',
-            'Станция операции', 'Операция', 'Дата и время операции',
-            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-            'Номер вагона', 'Дорога операции'
-        ])
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            df.to_excel(tmp.name, index=False)
-            message = f"📦 Вот твоя дислокация! В файле — {len(found_rows)} контейнер(ов)."
-            if not_found:
-            message += f"\n\n❌ Не найдены: {', '.join(not_found)}"
-            message += "\n\n⬇️ Скачай Excel ниже:"
-            await update.message.reply_text(message)
-            await update.message.reply_document(document=open(tmp.name, "rb"), filename="контейнеры.xlsx")
-        return
-
-    if found_rows:
-        reply_lines = []
-        for row in found_rows:
-            wagon_type = "полувагон" if row[9].startswith("6") else "платформа"
-            reply_lines.append(
-                f"🚛 Контейнер: {row[0]}\n"
-                f"🚇 Вагон: {row[9]} {wagon_type}\n"
-                f"📍Дислокация: {row[3]} {row[10]}\n"
-                f"🏗 Операция: {row[4]}\n📅 {row[5]}\n\n"
-                f"Откуда: {row[1]}\nКуда: {row[2]}\n\n"
-                f"Накладная: {row[6]}\nОсталось км: {row[7]}\n"
-                f"📅 Прогноз прибытия: {row[8]} дн."
             )
-        await update.message.reply_text("\n" + "═" * 30 + "\n".join(reply_lines))
-    else:
-        await update.message.reply_text("Ничего не найдено по введённым номерам.")
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
-        return
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM tracking")
+        cursor.executemany("""
+            INSERT INTO tracking (container_number, from_station, to_station, current_station,
+                                  operation, operation_date, waybill, km_left, forecast_days,
+                                  wagon_number, operation_road)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", records)
+        conn.commit()
+        conn.close()
 
-    conn = sqlite3.connect("tracking.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
-        FROM stats
-        GROUP BY user_id
-        ORDER BY COUNT(*) DESC
-    """)
-    rows = cursor.fetchall()
-    conn.close()
+        last_date = df['Дата и время операции'].dropna().max()
+        logger.info("\n📊 ОБНОВЛЕНИЕ БАЗЫ ДАННЫХ\n==========================\n✅ Файл: %s", os.path.basename(filepath))
+        logger.info("📦 Загружено строк: %d", len(records))
+        logger.info("🕓 Последняя дата операции в файле: %s", last_date)
+        logger.info("🚉 Уникальных станций операции: %d", df['Станция операции'].nunique())
+        logger.info("🚛 Уникальных контейнеров: %d", df['Номер контейнера'].nunique())
 
-    if not rows:
-        await update.message.reply_text("Нет данных для отчета.")
-        return
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
-    report_lines = ["📊 Отчет по пользователям:"]
-    for user_id, username, count, containers in rows:
-        report_lines.append(
-            f"\n👤 `{user_id}` ({username})\n"
-            f"📦 Запросов: {count}\n"
-            f"🧾 Контейнеры: {containers}"
-        )
-
-    await update.message.reply_text("\n".join(report_lines[:30]), parse_mode="Markdown")
-
-async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
-        return
-
-    conn = sqlite3.connect("tracking.db")
-    df = pd.read_sql_query("SELECT * FROM stats", conn)
-    conn.close()
-
-    if df.empty:
-        await update.message.reply_text("Нет данных для экспорта.")
-        return
-
-    file_path = "user_stats.xlsx"
-    df.to_excel(file_path, index=False)
-
-    await update.message.reply_document(InputFile(file_path))
-    os.remove(file_path)
-
-async def set_bot_commands(application):
-    await application.bot.set_my_commands([
-        BotCommand("start", "Начать работу с ботом"),
-        BotCommand("stats", "Статистика запросов (для администратора)"),
-        BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
-    ])
-
-def main():
+# Стартовый метод
+def start_mail_checking():
+    logger.info("📩 Запущена проверка почты...")
     ensure_database_exists()
-    start_mail_checking()
-
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CommandHandler("exportstats", exportstats))
-    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.post_init = set_bot_commands
-    logger.info("✨ Бот запущен!")
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        url_path=TOKEN,
-        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
-    )
-
-if __name__ == '__main__':
-    main()
+    check_mail()
+    logger.info("🔄 Проверка почты завершена.")
