@@ -77,6 +77,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             df.to_excel(tmp.name, index=False)
+            from openpyxl import load_workbook
+            wb = load_workbook(tmp.name)
+            ws = wb.active
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                ws.column_dimensions[column].width = max_length + 2
+            wb.save(tmp.name)
+
             message = f"📦 Вот твоя дислокация! В файле — {len(found_rows)} контейнер(ов)."
             if not_found:
                 message += f"\n\n❌ Не найдены: {', '.join(not_found)}"
