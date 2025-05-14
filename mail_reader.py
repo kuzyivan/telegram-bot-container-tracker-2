@@ -38,32 +38,33 @@ def ensure_database_exists():
     conn.commit()
     conn.close()
 
-# Проверка почты и скачивание Excel-файлов
+# Проверка почты и скачивание самого нового Excel-файла
 def check_mail():
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
         return
 
-    logger.debug(f"DEBUG: EMAIL='{EMAIL}', PASSWORD_SET={'Yes' if PASSWORD else 'No'}")
-
     try:
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
-            logger.debug("DEBUG: Вход в почту успешен")
+            latest_file = None
+            latest_date = None
 
-            count = 0
-            for msg in mailbox.fetch(reverse=True):
+            for msg in mailbox.fetch():
                 for att in msg.attachments:
                     if att.filename.endswith('.xlsx'):
-                        filepath = os.path.join(DOWNLOAD_FOLDER, att.filename)
-                        with open(filepath, 'wb') as f:
-                            f.write(att.payload)
-                        logger.info(f"📥 Скачан файл: {filepath}")
-                        process_file(filepath)
-                        count += 1
-                        if count >= 2:
-                            break
-                if count >= 2:
-                    break
+                        msg_date = msg.date
+                        if latest_date is None or msg_date > latest_date:
+                            latest_date = msg_date
+                            latest_file = (att, att.filename)
+
+            if latest_file:
+                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+                with open(filepath, 'wb') as f:
+                    f.write(latest_file[0].payload)
+                logger.info(f"📥 Скачан самый свежий файл: {filepath}")
+                process_file(filepath)
+            else:
+                logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
@@ -82,25 +83,30 @@ def process_file(filepath):
             wagon_number = str(row.get('Номер вагона', '')).strip()
             operation_road = str(row.get('Дорога операции', '')).strip()
 
-            records.append(\
+            records.append(
                 (
-                str(row['Номер контейнера']).strip().upper(),
-                str(row.get('Станция отправления', '')).strip(),
-                str(row.get('Станция назначения', '')).strip(),
-                str(row.get('Станция операции', '')).strip(),
-                str(row.get('Операция', '')).strip(),
-                str(row.get('Дата и время операции', '')).strip(),
-                str(row.get('Номер накладной', '')).strip(),
-                km_left,
-                forecast_days,
-                wagon_number,
-                operation_road
-            ))
+                    str(row['Номер контейнера']).strip().upper(),
+                    str(row.get('Станция отправления', '')).strip(),
+                    str(row.get('Станция назначения', '')).strip(),
+                    str(row.get('Станция операции', '')).strip(),
+                    str(row.get('Операция', '')).strip(),
+                    str(row.get('Дата и время операции', '')).strip(),
+                    str(row.get('Номер накладной', '')).strip(),
+                    km_left,
+                    forecast_days,
+                    wagon_number,
+                    operation_road
+                )
+            )
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM tracking")
-        cursor.executemany("INSERT INTO tracking (container_number, from_station, to_station, current_station, operation, operation_date, waybill, km_left, forecast_days, wagon_number, operation_road) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", records)
+        cursor.executemany("""
+            INSERT INTO tracking (container_number, from_station, to_station, current_station,
+                                  operation, operation_date, waybill, km_left, forecast_days,
+                                  wagon_number, operation_road)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", records)
         conn.commit()
         conn.close()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
