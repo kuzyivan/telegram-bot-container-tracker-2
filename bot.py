@@ -74,10 +74,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             df.to_excel(tmp.name, index=False)
+            message = f"📦 Вот твоя дислокация! В файле — {len(found_rows)} контейнер(ов)."
+            if not_found:
+            message += f"\n\n❌ Не найдены: {', '.join(not_found)}"
+            message += "\n\n⬇️ Скачай Excel ниже:"
+            await update.message.reply_text(message)
             await update.message.reply_document(document=open(tmp.name, "rb"), filename="контейнеры.xlsx")
-
-        if not_found:
-            await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
         return
 
     if found_rows:
