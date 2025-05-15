@@ -23,14 +23,6 @@ def ensure_database_exists():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS tracking (
-    cursor.execute("""CREATE TABLE IF NOT EXISTS stats (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        container_number TEXT,
-                        user_id INTEGER,
-                        username TEXT,
-                        timestamp TEXT
-                    )""")
-
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         container_number TEXT,
                         from_station TEXT,
@@ -43,6 +35,14 @@ def ensure_database_exists():
                         forecast_days REAL,
                         wagon_number TEXT,
                         operation_road TEXT)''')
+    cursor.execute("""CREATE TABLE IF NOT EXISTS stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        container_number TEXT,
+        user_id INTEGER,
+        username TEXT,
+        timestamp TEXT
+    )""")
+
     conn.commit()
     conn.close()
 
