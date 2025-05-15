@@ -162,7 +162,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_path = "user_stats.xlsx"
     df.to_excel(file_path, index=False)
 
-    await update.message.reply_document(InputFile(file_path))
+    await update.message.reply_document(document=open(file_path, "rb"), filename="Запросы.xlsx")
     os.remove(file_path)
 
 async def set_bot_commands(application):
