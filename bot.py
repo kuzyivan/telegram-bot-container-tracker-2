@@ -136,28 +136,28 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = get_pg_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
-        SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
+        SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
+               STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
         FROM stats
-        GROUP BY user_id
-        ORDER BY COUNT(*) DESC
+        GROUP BY user_id, username
+        ORDER BY запросов DESC
     """)
     rows = cursor.fetchall()
     conn.close()
 
     if not rows:
-        await update.message.reply_text("Нет данных для отчета.")
+        await update.message.reply_text("Нет статистики.")
         return
 
-    report_lines = ["📊 Отчет по пользователям:"]
-    for user_id, username, count, containers in rows:
-        report_lines.append(
-            f"\n👤 `{user_id}` ({username})\n"
-            f"📦 Запросов: {count}\n"
-            f"🧾 Контейнеры: {containers}"
-        )
+    text = "📊 Статистика использования:\n\n"
+    for row in rows:
+        text += f"👤 {row[1]} (ID: {row[0]})\n" \
+                f"Запросов: {row[2]}\n" \
+                f"Контейнеры: {row[3]}\n\n"
 
-    await update.message.reply_text("\n".join(report_lines[:30]), parse_mode="Markdown")
+    await update.message.reply_text(text)
 
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
