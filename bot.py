@@ -183,7 +183,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             worksheet = writer.sheets['Статистика']
 
             # Заливка шапки таблицы
-            header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+            header_fill = PatternFill(start_color='FFD673', end_color='FFD673', fill_type='solid')
             for cell in worksheet[1]:
                 cell.fill = header_fill
 
