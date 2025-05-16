@@ -92,7 +92,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = f"Дислокация {vladivostok_time.strftime('%H-%M')}.xlsx"
             await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
 
-
         if not_found:
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
         return
