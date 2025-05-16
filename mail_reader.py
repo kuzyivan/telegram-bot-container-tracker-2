@@ -1,5 +1,18 @@
+
+import psycopg2
 import os
-import sqlite3
+
+def get_pg_connection():
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST"),
+        port=os.getenv("POSTGRES_PORT", 5432),
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD")
+    )
+
+import os
+import psycopg2
 import logging
 from imap_tools import MailBox, AND
 from datetime import datetime
@@ -20,7 +33,7 @@ os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 # Проверка базы данных
 def ensure_database_exists():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_pg_connection()
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS tracking (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,14 +48,6 @@ def ensure_database_exists():
                         forecast_days REAL,
                         wagon_number TEXT,
                         operation_road TEXT)''')
-    cursor.execute("""CREATE TABLE IF NOT EXISTS stats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        container_number TEXT,
-        user_id INTEGER,
-        username TEXT,
-        timestamp TEXT
-    )""")
-
     conn.commit()
     conn.close()
 
@@ -57,7 +62,7 @@ def check_mail():
             latest_file = None
             latest_date = None
 
-            for msg in mailbox.fetch(limit=3, reverse=True):
+            for msg in mailbox.fetch():
                 for att in msg.attachments:
                     if att.filename.endswith('.xlsx'):
                         msg_date = msg.date
@@ -107,7 +112,7 @@ def process_file(filepath):
                 )
             )
 
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_pg_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM tracking")
         cursor.executemany("""
@@ -119,11 +124,11 @@ def process_file(filepath):
         conn.close()
 
         last_date = df['Дата и время операции'].dropna().max()
-        logger.info("\n📊 ОБНОВЛЕНИЕ БАЗЫ ДАННЫХ\n==========================\n✅ Файл: %s", os.path.basename(filepath))
-        logger.info("📦 Загружено строк: %d", len(records))
-        logger.info("🕓 Последняя дата операции в файле: %s", last_date)
-        logger.info("🚉 Уникальных станций операции: %d", df['Станция операции'].nunique())
-        logger.info("🚛 Уникальных контейнеров: %d", df['Номер контейнера'].nunique())
+        logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
+        logger.info(f"📦 Загружено строк: {len(records)}")
+        logger.info(f"🕓 Последняя дата операции в файле: {last_date}")
+        logger.info(f"🚉 Уникальных станций операции: {df['Станция операции'].nunique()}")
+        logger.info(f"🚛 Уникальных контейнеров: {df['Номер контейнера'].nunique()}")
 
     except Exception as e:
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
