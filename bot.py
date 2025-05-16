@@ -37,12 +37,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for number in container_numbers:
         cursor.execute("""
-    SELECT container_number, from_station, to_station, current_station,
-           operation, operation_date, waybill, km_left, forecast_days,
-           wagon_number, operation_road
-    FROM tracking
-    WHERE container_number = %s
-"""
             SELECT container_number, from_station, to_station, current_station,
                    operation, operation_date, waybill, km_left, forecast_days,
                    wagon_number, operation_road
@@ -52,12 +46,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if row:
             found_rows.append(row)
             cursor.execute("""
-    SELECT container_number, from_station, to_station, current_station,
-           operation, operation_date, waybill, km_left, forecast_days,
-           wagon_number, operation_road
-    FROM tracking
-    WHERE container_number = %s
-"""
                 CREATE TABLE IF NOT EXISTS stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     container_number TEXT,
@@ -67,12 +55,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             """)
             cursor.execute("""
-    SELECT container_number, from_station, to_station, current_station,
-           operation, operation_date, waybill, km_left, forecast_days,
-           wagon_number, operation_road
-    FROM tracking
-    WHERE container_number = %s
-"""
                 INSERT INTO stats (container_number, user_id, username, timestamp)
                 VALUES (?, ?, ?, datetime('now', 'localtime'))
             """, (number, update.message.from_user.id, update.message.from_user.username))
@@ -142,12 +124,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT container_number, from_station, to_station, current_station,
-           operation, operation_date, waybill, km_left, forecast_days,
-           wagon_number, operation_road
-    FROM tracking
-    WHERE container_number = %s
-""")
         SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
         FROM stats
         GROUP BY user_id
