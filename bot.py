@@ -1,4 +1,5 @@
-
+from telegram import Update
+from telegram.ext import ContextTypes
 import psycopg2
 import os
 
