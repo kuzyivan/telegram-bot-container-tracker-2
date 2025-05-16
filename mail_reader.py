@@ -36,7 +36,7 @@ def ensure_database_exists():
     conn = get_pg_connection()
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS tracking (
-                        id SERIAL PRIMARY KEY,,
+                        id SERIAL PRIMARY KEY,
                         container_number TEXT,
                         from_station TEXT,
                         to_station TEXT,
