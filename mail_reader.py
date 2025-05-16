@@ -36,7 +36,7 @@ def ensure_database_exists():
     conn = get_pg_connection()
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS tracking (
-                        id SERIAL PRIMARY KEY,
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
                         container_number TEXT,
                         from_station TEXT,
                         to_station TEXT,
@@ -119,7 +119,7 @@ def process_file(filepath):
             INSERT INTO tracking (container_number, from_station, to_station, current_station,
                                   operation, operation_date, waybill, km_left, forecast_days,
                                   wagon_number, operation_road)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", records)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", records)
         conn.commit()
         conn.close()
 
@@ -139,4 +139,5 @@ def start_mail_checking():
     ensure_database_exists()
     check_mail()
     logger.info("🔄 Проверка почты завершена.")
+
 
