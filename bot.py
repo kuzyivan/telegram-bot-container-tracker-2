@@ -1,5 +1,21 @@
-from telegram import Update
-from telegram.ext import ContextTypes
+import os
+import sqlite3
+import logging
+import pandas as pd
+from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from mail_reader import start_mail_checking, ensure_database_exists
+from collections import defaultdict
+import re
+import tempfile
+from datetime import datetime
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
     await update.message.reply_sticker(sticker_id)
@@ -13,7 +29,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
 
-    conn = get_pg_connection()
+    conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
 
     found_rows = []
@@ -29,7 +45,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row = cursor.fetchone()
         if row:
             found_rows.append(row)
-
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,12 +72,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Номер вагона', 'Дорога операции'
         ])
 
+        now_str = datetime.now().strftime("%H-%M")
+        file_name = f"Дислокация_{now_str}.xlsx"
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             df.to_excel(tmp.name, index=False)
-            await update.message.reply_document(document=open(tmp.name, "rb"), filename="контейнеры.xlsx")
+            from openpyxl import load_workbook
+            wb = load_workbook(tmp.name)
+            ws = wb.active
+            for col in ws.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        max_length = max(max_length, len(str(cell.value)))
+                    except:
+                        pass
+                ws.column_dimensions[column].width = max_length + 2
+            wb.save(tmp.name)
 
-        if not_found:
-            await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
+            message = f"📦 Вот твоя дислокация! В файле — {len(found_rows)} контейнер(ов)."
+            if not_found:
+                message += f"\n\n❌ Не найдены: {', '.join(not_found)}"
+            message += "\n\n⬇️ Скачай Excel ниже:"
+            await update.message.reply_text(message)
+            await update.message.reply_document(document=open(tmp.name, "rb"), filename=file_name)
         return
 
     if found_rows:
@@ -87,7 +121,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    conn = get_pg_connection()
+    conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
     cursor.execute("""
         SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
@@ -117,7 +151,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    conn = get_pg_connection()
+    conn = sqlite3.connect("tracking.db")
     df = pd.read_sql_query("SELECT * FROM stats", conn)
     conn.close()
 
@@ -128,7 +162,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file_path = "user_stats.xlsx"
     df.to_excel(file_path, index=False)
 
-    await update.message.reply_document(InputFile(file_path))
+    await update.message.reply_document(document=open(file_path, "rb"), filename="Запросы.xlsx")
     os.remove(file_path)
 
 async def set_bot_commands(application):
