@@ -3,3 +3,4 @@ imap-tools
 apscheduler
 pandas
 openpyxl
+psycopg2-binary
