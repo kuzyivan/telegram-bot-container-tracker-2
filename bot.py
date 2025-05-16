@@ -1,4 +1,4 @@
-from mail_reader import ensure_database_exists
+from mail_reader import start_mail_checking, ensure_database_exists
 from telegram import Update
 from telegram.ext import ContextTypes
 import psycopg2
