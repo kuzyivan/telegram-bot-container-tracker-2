@@ -119,7 +119,7 @@ def process_file(filepath):
             INSERT INTO tracking (container_number, from_station, to_station, current_station,
                                   operation, operation_date, waybill, km_left, forecast_days,
                                   wagon_number, operation_road)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", records)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""", records)
         conn.commit()
         conn.close()
 
