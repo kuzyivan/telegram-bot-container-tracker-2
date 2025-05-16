@@ -147,7 +147,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
            wagon_number, operation_road
     FROM tracking
     WHERE container_number = %s
-"""
+""")
         SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
         FROM stats
         GROUP BY user_id
