@@ -1,9 +1,22 @@
-from telegram.ext import Application
+import os
+import sqlite3
+import logging
+import pandas as pd
+from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from mail_reader import start_mail_checking, ensure_database_exists
-from telegram import Update
-from telegram.ext import ContextTypes
+from collections import defaultdict
+import re
+import tempfile
+from datetime import datetime
 import psycopg2
 import os
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def get_pg_connection():
     return psycopg2.connect(
