@@ -1,13 +1,5 @@
 import os
-import psycopg2
-def get_pg_connection():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST"),
-        port=os.getenv("POSTGRES_PORT", 5432),
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD")
-    )
+import sqlite3
 import logging
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
@@ -37,7 +29,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
 
-    conn = get_pg_connection()
+    conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
 
     found_rows = []
@@ -45,6 +37,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for number in container_numbers:
         cursor.execute("""
+    SELECT container_number, from_station, to_station, current_station,
+           operation, operation_date, waybill, km_left, forecast_days,
+           wagon_number, operation_road
+    FROM tracking
+    WHERE container_number = %s
+"""
             SELECT container_number, from_station, to_station, current_station,
                    operation, operation_date, waybill, km_left, forecast_days,
                    wagon_number, operation_road
@@ -54,8 +52,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if row:
             found_rows.append(row)
             cursor.execute("""
+    SELECT container_number, from_station, to_station, current_station,
+           operation, operation_date, waybill, km_left, forecast_days,
+           wagon_number, operation_road
+    FROM tracking
+    WHERE container_number = %s
+"""
                 CREATE TABLE IF NOT EXISTS stats (
-                    id INTEGER PRIMARY KEY ,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     container_number TEXT,
                     user_id INTEGER,
                     username TEXT,
@@ -63,8 +67,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             """)
             cursor.execute("""
+    SELECT container_number, from_station, to_station, current_station,
+           operation, operation_date, waybill, km_left, forecast_days,
+           wagon_number, operation_road
+    FROM tracking
+    WHERE container_number = %s
+"""
                 INSERT INTO stats (container_number, user_id, username, timestamp)
-                VALUES (%s, %s, %s, NOW())
+                VALUES (?, ?, ?, datetime('now', 'localtime'))
             """, (number, update.message.from_user.id, update.message.from_user.username))
             conn.commit()
         else:
@@ -129,10 +139,16 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    conn = get_pg_connection()
+    conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT user_id, COALESCE(username, '—'), COUNT(*), STRING_AGG(DISTINCT container_number)
+    SELECT container_number, from_station, to_station, current_station,
+           operation, operation_date, waybill, km_left, forecast_days,
+           wagon_number, operation_road
+    FROM tracking
+    WHERE container_number = %s
+"""
+        SELECT user_id, COALESCE(username, '—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
         FROM stats
         GROUP BY user_id
         ORDER BY COUNT(*) DESC
@@ -159,7 +175,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    conn = get_pg_connection()
+    conn = sqlite3.connect("tracking.db")
     df = pd.read_sql_query("SELECT * FROM stats", conn)
     conn.close()
 
