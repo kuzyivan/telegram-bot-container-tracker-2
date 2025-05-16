@@ -86,10 +86,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             df.to_excel(tmp.name, index=False)
-            from datetime import datetime
+            from datetime import datetime, timedelta
 
-            filename = f"Дислокация {datetime.now().strftime('%H-%M')}.xlsx"
+            vladivostok_time = datetime.utcnow() + timedelta(hours=10)
+            filename = f"Дислокация {vladivostok_time.strftime('%H-%M')}.xlsx"
             await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
+
 
         if not_found:
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
