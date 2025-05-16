@@ -51,7 +51,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SELECT container_number, from_station, to_station, current_station,
                    operation, operation_date, waybill, km_left, forecast_days,
                    wagon_number, operation_road
-            FROM tracking WHERE container_number = ?
+            FROM tracking WHERE container_number = %s
         """, (number,))
         row = cursor.fetchone()
         if row:
@@ -59,16 +59,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     container_number TEXT,
-                    user_id INTEGER,
+                    user_id BIGINT,
                     username TEXT,
-                    timestamp TEXT
+                    timestamp TIMESTAMP DEFAULT NOW()
                 )
             """)
             cursor.execute("""
-                INSERT INTO stats (container_number, user_id, username, timestamp)
-                VALUES (?, ?, ?, datetime('now', 'localtime'))
+                INSERT INTO stats (container_number, user_id, username)
+                VALUES (%s, %s, %s)
             """, (number, update.message.from_user.id, update.message.from_user.username))
             conn.commit()
         else:
