@@ -172,12 +172,30 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Нет данных для экспорта.")
         return
 
-    file_path = "user_stats.xlsx"
-    df.to_excel(file_path, index=False)
+    from openpyxl.styles import PatternFill
+    from datetime import datetime, timedelta
+    import tempfile
 
-    await update.message.reply_document(InputFile(file_path))
-    os.remove(file_path)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Статистика')
+            workbook = writer.book
+            worksheet = writer.sheets['Статистика']
 
+            # Заливка шапки таблицы
+            header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+            for cell in worksheet[1]:
+                cell.fill = header_fill
+
+            # Автоширина столбцов
+            for col in worksheet.columns:
+                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
+
+        # Имя файла с учетом Владивостокского времени
+        vladivostok_time = datetime.utcnow() + timedelta(hours=10)
+        filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
+        await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
 async def set_bot_commands(application):
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
