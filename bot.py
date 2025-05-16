@@ -1,16 +1,5 @@
-
-import psycopg2
-import os
-
-def get_pg_connection():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST"),
-        port=os.getenv("POSTGRES_PORT", 5432),
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD")
-    )
-
+from telegram import Update
+from telegram.ext import ContextTypes
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
     await update.message.reply_sticker(sticker_id)
@@ -170,4 +159,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
