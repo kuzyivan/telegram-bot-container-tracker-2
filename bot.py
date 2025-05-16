@@ -86,21 +86,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Дислокация')
-            workbook = writer.book
-            worksheet = writer.sheets['Дислокация']
-        
-            # Заливка для шапки
-            from openpyxl.styles import PatternFill
-            fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
-            for cell in worksheet[1]:
-                cell.fill = fill
-        
-            # Автоширина столбцов
-            for col in worksheet.columns:
-                max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
-                adjusted_width = max_length + 2
-                worksheet.column_dimensions[col[0].column_letter].width = adjusted_width
+                df.to_excel(writer, index=False, sheet_name='Дислокация')
+                workbook = writer.book
+                worksheet = writer.sheets['Дислокация']
+            
+                # Заливка для шапки
+                from openpyxl.styles import PatternFill
+                fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+                for cell in worksheet[1]:
+                    cell.fill = fill
+            
+                # Автоширина столбцов
+                for col in worksheet.columns:
+                    max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
+                    adjusted_width = max_length + 2
+                    worksheet.column_dimensions[col[0].column_letter].width = adjusted_width
 
             from datetime import datetime, timedelta
 
