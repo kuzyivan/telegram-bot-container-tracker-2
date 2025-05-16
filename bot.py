@@ -1,3 +1,4 @@
+from telegram.ext import Application
 from mail_reader import start_mail_checking, ensure_database_exists
 from telegram import Update
 from telegram.ext import ContextTypes
