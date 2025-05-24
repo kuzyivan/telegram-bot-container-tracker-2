@@ -4,14 +4,13 @@ import logging
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from mail_reader import start_mail_checking
+from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 import re
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 import psycopg2
-import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # ← добавь эту строку
+import os
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -204,44 +203,25 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
-async def autoping(bot):
-    while True:
-        try:
-            await bot.get_me()  # Пингует Telegram API
-            logger.info("📡 Автопинг выполнен успешно.")
-        except Exception as e:
-            logger.warning(f"⚠ Ошибка автопинга: {e}")
-        await asyncio.sleep(60 * 5)  # каждые 5 минут
-
-async def main():
-    logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=logging.INFO
-    )
+def main():
+    ensure_database_exists()
+    start_mail_checking()
 
     application = Application.builder().token(TOKEN).build()
-
-    # Команды бота
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
+    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # Планировщик задач
-    scheduler = AsyncIOScheduler(timezone="Asia/Vladivostok")
-    scheduler.add_job(start_mail_checking, 'interval', minutes=15)
-    scheduler.start()
-
-    # 🟢 Запуск автопинга
-    asyncio.create_task(autoping(application.bot))
-
-    # Запуск бота
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.updater.idle()
+    application.post_init = set_bot_commands
+    logger.info("✨ Бот запущен!")
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        url_path=TOKEN,
+        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
+    )
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
-    
+    main()
+
