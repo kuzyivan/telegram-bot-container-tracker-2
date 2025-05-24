@@ -1,5 +1,8 @@
 import os
 import sqlite3
+import threading
+import time
+import requests
 import logging
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
@@ -203,10 +206,25 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
+
+def keep_alive():
+    """Периодически пингует Render, чтобы не засыпал."""
+    url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/"
+    def ping():
+        while True:
+            try:
+                response = requests.get(url)
+                logger.info(f"[AUTOPING] {url} — {response.status_code}")
+            except Exception as e:
+                logger.warning(f"[AUTOPING] Error: {e}")
+            time.sleep(600)  # каждые 10 минут
+    threading.Thread(target=ping, daemon=True).start()
+
 def main():
     ensure_database_exists()
     start_mail_checking()
 
+        keep_alive()
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
@@ -224,4 +242,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
