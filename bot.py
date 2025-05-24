@@ -224,7 +224,7 @@ def main():
     ensure_database_exists()
     start_mail_checking()
 
-        keep_alive()
+    keep_alive()
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
