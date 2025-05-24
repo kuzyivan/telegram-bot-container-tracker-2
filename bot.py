@@ -213,26 +213,35 @@ async def autoping(bot):
             logger.warning(f"⚠ Ошибка автопинга: {e}")
         await asyncio.sleep(60 * 5)  # каждые 5 минут
 
-def main():
-    ensure_database_exists()
-    start_mail_checking()
+async def main():
+    logging.basicConfig(
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=logging.INFO
+    )
 
     application = Application.builder().token(TOKEN).build()
-    asyncio.create_task(autoping(application.bot))
+
+    # Команды бота
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
-    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.post_init = set_bot_commands
-    logger.info("✨ Бот запущен!")
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        url_path=TOKEN,
-        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
-    )
+
+    # Планировщик задач
+    scheduler = AsyncIOScheduler(timezone="Asia/Vladivostok")
+    scheduler.add_job(check_mail_and_update_database, 'interval', minutes=15)
+    scheduler.start()
+
+    # 🟢 Запуск автопинга
+    asyncio.create_task(autoping(application.bot))
+
+    # Запуск бота
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling()
+    await application.updater.idle()
 
 if __name__ == '__main__':
-    main()
-
+    import asyncio
+    asyncio.run(main())
+    
