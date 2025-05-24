@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from mail_reader import start_mail_checking, ensure_database_exists
+from mail_reader import check_mail_and_update_database
 from collections import defaultdict
 import re
 import tempfile
