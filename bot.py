@@ -11,6 +11,7 @@ import tempfile
 from datetime import datetime
 import psycopg2
 import os
+import asyncio
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -203,11 +204,21 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
+async def autoping(bot):
+    while True:
+        try:
+            await bot.get_me()  # Пингует Telegram API
+            logger.info("📡 Автопинг выполнен успешно.")
+        except Exception as e:
+            logger.warning(f"⚠ Ошибка автопинга: {e}")
+        await asyncio.sleep(60 * 5)  # каждые 5 минут
+
 def main():
     ensure_database_exists()
     start_mail_checking()
 
     application = Application.builder().token(TOKEN).build()
+    asyncio.create_task(autoping(application.bot))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
