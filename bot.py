@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from mail_reader import check_mail_and_update_database
+from mail_reader import start_mail_checking
 from collections import defaultdict
 import re
 import tempfile
@@ -229,7 +229,7 @@ async def main():
 
     # Планировщик задач
     scheduler = AsyncIOScheduler(timezone="Asia/Vladivostok")
-    scheduler.add_job(check_mail_and_update_database, 'interval', minutes=15)
+    scheduler.add_job(start_mail_checking, 'interval', minutes=15)
     scheduler.start()
 
     # 🟢 Запуск автопинга
