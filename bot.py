@@ -8,10 +8,10 @@ from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 import re
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 import psycopg2
-import os
 import asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # ← добавь эту строку
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
