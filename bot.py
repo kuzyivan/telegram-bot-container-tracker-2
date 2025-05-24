@@ -1,9 +1,10 @@
 import os
+import re
 import sqlite3
 import logging
 import pandas as pd
 from datetime import datetime
-from telegram import Update, BotCommand, InputFile
+from telegram import Update, BotCommand
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,7 +13,7 @@ from telegram.ext import (
     filters,
 )
 
-from mail_reader import start_mail_checking, ensure_database_exists
+from mail_reader import start_mail_checking, ensure_database_exists as ensure_db_mail_reader
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -24,18 +25,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def ensure_database():
+    """
+    Создаёт две таблицы:
+    - tracking (из mail_reader.ensure_database_exists)
+    - stats   (для логирования запросов пользователей)
+    """
+    # создаём таблицу tracking через mail_reader
+    ensure_db_mail_reader()
+    # дополняем stats
+    conn = sqlite3.connect("tracking.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            container_number TEXT,
+            user_id INTEGER,
+            username TEXT,
+            timestamp TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
+    sticker_id = (
+        "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
+    )
     await update.message.reply_sticker(sticker_id)
-    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
+    await update.message.reply_text("Привет! Отправь номер контейнера для отслеживания.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
+    text = update.message.text or ""
     container_numbers = [
         c.strip().upper()
-        for c in re.split(r'[\s,\n.]+', user_input.strip())
-        if c
+        for c in re.split(r'[\s,\n.]+', text)
+        if c.strip()
     ]
 
     conn = sqlite3.connect("tracking.db")
@@ -43,62 +70,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     found = []
     not_found = []
-
-    for number in container_numbers:
+    for cn in container_numbers:
         cursor.execute("""
             SELECT container_number, from_station, to_station, current_station,
                    operation, operation_date, waybill, km_left, forecast_days,
                    wagon_number, operation_road
-              FROM tracking WHERE container_number = ?
-        """, (number,))
+            FROM tracking WHERE container_number = ?
+        """, (cn,))
         row = cursor.fetchone()
         if row:
             found.append(row)
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    container_number TEXT,
-                    user_id INTEGER,
-                    username TEXT,
-                    timestamp TEXT
-                )
-            """)
-            cursor.execute("""
                 INSERT INTO stats (container_number, user_id, username, timestamp)
-                     VALUES (?, ?, ?, datetime('now', 'localtime'))
-            """, (number, update.effective_user.id, update.effective_user.username))
+                VALUES (?, ?, ?, datetime('now', 'localtime'))
+            """, (
+                cn,
+                update.effective_user.id,
+                update.effective_user.username or "—"
+            ))
             conn.commit()
         else:
-            not_found.append(number)
-
+            not_found.append(cn)
     conn.close()
 
     if not found:
-        return await update.message.reply_text("Ничего не найдено по введённым номерам.")
+        return await update.message.reply_text("Ничего не найдено.")
 
-    # Если несколько контейнеров — отправляем Excel
+    # если больше одного — Excel
     if len(found) > 1:
         df = pd.DataFrame(found, columns=[
-            'Номер контейнера', 'Станция отправления', 'Станция назначения',
-            'Станция операции', 'Операция', 'Дата и время операции',
-            'Номер накладной', 'Осталось км', 'Прогноз (дн.)',
-            'Номер вагона', 'Дорога операции'
+            'Номер контейнера','Станция отправления','Станция назначения',
+            'Станция операции','Операция','Дата и время операции',
+            'Номер накладной','Осталось км','Прогноз (дн.)',
+            'Номер вагона','Дорога операции'
         ])
-        tmp_name = f"/tmp/containers_{datetime.now():%H%M}.xlsx"
-        df.to_excel(tmp_name, index=False)
-
+        fname = f"/tmp/containers_{datetime.now():%H%M}.xlsx"
+        df.to_excel(fname, index=False)
         await update.message.reply_document(
-            document=open(tmp_name, "rb"),
-            filename=os.path.basename(tmp_name)
+            document=open(fname, "rb"),
+            filename=os.path.basename(fname)
         )
         if not_found:
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
         return
 
-    # Один контейнер — текстовый ответ
+    # один контейнер — текст
     row = found[0]
     wagon_type = "полувагон" if row[9].startswith("6") else "платформа"
-    text = (
+    reply = (
         f"🚛 Контейнер: {row[0]}\n"
         f"🚇 Вагон: {row[9]} ({wagon_type})\n"
         f"📍 Дислокация: {row[3]} {row[10]}\n"
@@ -109,7 +128,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🛣 Осталось км: {row[7]}\n"
         f"⏳ Прогноз: {row[8]} дн."
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(reply)
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,8 +137,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect("tracking.db")
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT user_id, COALESCE(username, '—'), COUNT(*), 
-               GROUP_CONCAT(DISTINCT container_number)
+        SELECT user_id, COALESCE(username,'—'), COUNT(*), GROUP_CONCAT(DISTINCT container_number)
           FROM stats
       GROUP BY user_id
       ORDER BY COUNT(*) DESC
@@ -129,14 +147,10 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not rows:
         return await update.message.reply_text("Нет статистики.")
-    reply = ["📊 Статистика использования:"]
+    lines = ["📊 Статистика:"]
     for uid, uname, cnt, cnts in rows:
-        reply.append(
-            f"👤 {uname} (ID {uid}):\n"
-            f"  Запросов: {cnt}\n"
-            f"  Контейнеров: {cnts}"
-        )
-    await update.message.reply_text("\n\n".join(reply))
+        lines.append(f"👤 {uname} (ID:{uid}) — {cnt} запросов, контейнеров: {cnts}")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -146,65 +160,57 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     df = pd.read_sql_query("SELECT * FROM stats", conn)
     conn.close()
     if df.empty:
-        return await update.message.reply_text("Нет данных для экспорта.")
+        return await update.message.reply_text("Нет данных.")
     path = f"/tmp/stats_{datetime.now():%H%M}.xlsx"
     df.to_excel(path, index=False)
     await update.message.reply_document(document=open(path, "rb"), filename=os.path.basename(path))
 
 
-async def set_bot_commands(application: Application):
-    await application.bot.set_my_commands([
-        BotCommand("start", "Начать работу"),
-        BotCommand("stats", "Показать статистику (админ)"),
-        BotCommand("exportstats", "Выгрузить статистику в Excel (админ)"),
+async def set_commands(app: Application):
+    await app.bot.set_my_commands([
+        BotCommand("start", "Начать"),
+        BotCommand("stats", "Просмотр статистики (админ)"),
+        BotCommand("exportstats", "Экспорт статистики (админ)"),
     ])
 
 
 # ————— фоновые задачи —————
-
 async def auto_ping(context: ContextTypes.DEFAULT_TYPE):
-    """Пинг Telegram API, чтобы Render видел трафик."""
     try:
         await context.bot.get_me()
-        logger.info("📡 Auto-ping успешен.")
+        logger.info("📡 Auto-ping OK")
     except Exception as e:
-        logger.warning(f"⚠ Auto-ping ошибка: {e}")
+        logger.warning("⚠ Auto-ping failed: %s", e)
 
 
 async def keep_alive(context: ContextTypes.DEFAULT_TYPE):
-    """Просто лог, чтобы Render считал приложение активным."""
-    logger.info("🟢 Keep-alive heartbeat.")
+    logger.info("🟢 Heartbeat")
 
 
 def main():
-    # Инициализация БД и первичная проверка почты
-    ensure_database_exists()
+    ensure_database()
     start_mail_checking()
 
-    # Сборка приложения
-    application = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
 
-    # Регистрация хэндлеров
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CommandHandler("exportstats", exportstats))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.post_init = set_bot_commands
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("exportstats", exportstats))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.post_init = set_commands
 
-    # Расписание фоновых задач
-    jq = application.job_queue
-    # каждые 5 минут – авто-пинг
-    jq.run_repeating(auto_ping, interval=5 * 60, first=0)
-    # каждую минуту – heartbeat-лог
+    # запуск фоновых задач через JobQueue
+    jq = app.job_queue
+    jq.run_repeating(auto_ping, interval=5*60, first=0)
     jq.run_repeating(keep_alive, interval=60, first=0)
 
-    # Запуск webhook
-    logger.info("✨ Бот запущен!")
-    application.run_webhook(
+    # webhook
+    logger.info("✨ Бот стартует")
+    app.run_webhook(
         listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
+        port=int(os.getenv("PORT", 10000)),
         url_path=TOKEN,
-        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
+        webhook_url=f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
     )
 
 
