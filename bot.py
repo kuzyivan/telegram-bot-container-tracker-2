@@ -141,8 +141,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"Ничего не найдено по введённым номерам.")
-
+else:
+    await update.message.reply_text("Ничего не найдено по введённым номерам.")
+    
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
