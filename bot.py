@@ -143,6 +143,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
         FROM stats
         WHERE timestamp >= NOW() - INTERVAL '1 day'
+          AND user_id != 114419850
         GROUP BY user_id, username
         ORDER BY запросов DESC
     """)
