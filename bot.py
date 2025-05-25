@@ -250,7 +250,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-    "    conn.commit()
+    conn.commit()
     conn.close()
 
 def keep_alive():
