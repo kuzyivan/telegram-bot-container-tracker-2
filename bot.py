@@ -33,7 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_sticker(sticker_id)
     await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"Привет! Отправь мне номер контейнера для отслеживания.")
+await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
