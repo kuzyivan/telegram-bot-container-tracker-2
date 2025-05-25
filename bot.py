@@ -229,6 +229,8 @@ async def set_bot_commands(application):
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("stats", "Статистика запросов (для администратора)"),
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
+        BotCommand("broadcast", "Рассылка (только админ)")
+
     ])
 
 def ensure_database_exists():
@@ -282,7 +284,7 @@ def keep_alive():
 def main():
     ensure_database_exists()
     start_mail_checking()
-
+    
     keep_alive()
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
@@ -291,6 +293,7 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
+    application.add_handler(CommandHandler("broadcast", broadcast))
     logger.info("✨ Бот запущен!")
     application.run_webhook(
         listen="0.0.0.0",
