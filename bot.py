@@ -117,7 +117,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not_found:
             await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"❌ Не найдены: " + ", ".join(not_found))
+await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
         return
 
     if found_rows:
