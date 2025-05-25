@@ -13,10 +13,7 @@ from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
-
-logging.basicConfig(level=logging.INFO)
+TOKEN = os.getenv(ADMIN_CHAT_ID = os.getenv(logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_pg_connection():
@@ -25,17 +22,14 @@ def get_pg_connection():
         port=os.getenv("POSTGRES_PORT", 5432),
         dbname=os.getenv("POSTGRES_DB"),
         user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD")
-    )
+        password=os.getenv(    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
     await update.message.reply_sticker(sticker_id)
     await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
-
-async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+await update.message.reply_text(async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
     await update.message.reply_text(
         f"🆔 ID этого стикера:\n`{sticker.file_id}`",
@@ -71,8 +65,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     username TEXT,
                     timestamp TIMESTAMP DEFAULT NOW()
                 )
-            """)
-            cursor.execute("""
+            "            cursor.execute("""
                 INSERT INTO stats (container_number, user_id, username)
                 VALUES (%s, %s, %s)
             """, (number, update.message.from_user.id, update.message.from_user.username))
@@ -142,13 +135,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
 else:
-    await update.message.reply_text("Ничего не найдено по введённым номерам.")
-    
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"⛔ Доступ запрещён.")
         return
 
     conn = get_pg_connection()
@@ -162,14 +152,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
           AND user_id != 114419850
         GROUP BY user_id, username
         ORDER BY запросов DESC
-    """)
-    rows = cursor.fetchall()
+    "    rows = cursor.fetchall()
     conn.close()
 
     if not rows:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"Нет статистики за последние сутки.")
         return
 
     text = "📊 Статистика за последние 24 часа:\n\n"
@@ -195,7 +183,6 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"⛔ Доступ запрещён.")
         return
 
     conn = get_pg_connection()
@@ -205,7 +192,6 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if df.empty:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"Нет данных для экспорта.")
         return
 
     from openpyxl.styles import PatternFill
@@ -236,10 +222,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("stats", "Статистика запросов (для администратора)"),
-        BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
-    
-
-def ensure_database_exists():
+        BotCommand("exportstats", def ensure_database_exists():
     conn = get_pg_connection()
     cursor = conn.cursor()
 
@@ -258,9 +241,7 @@ def ensure_database_exists():
             wagon_number TEXT,
             operation_road TEXT
         );
-    """)
-
-    # Создание таблицы stats
+    "    # Создание таблицы stats
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS stats (
             id SERIAL PRIMARY KEY,
@@ -269,9 +250,7 @@ def ensure_database_exists():
             username TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-    """)
-
-    conn.commit()
+    "    conn.commit()
     conn.close()
 
 def keep_alive():
@@ -281,115 +260,27 @@ def keep_alive():
         while True:
             try:
                 response = requests.get(url)
-                logger.info(f"[AUTOPING] {url} — {response.status_code}")
-            except Exception as e:
-                logger.warning(f"[AUTOPING] Error: {e}")
-            time.sleep(600)  # каждые 10 минут
+                logger.info(f            except Exception as e:
+                logger.warning(f            time.sleep(600)  # каждые 10 минут
     threading.Thread(target=ping, daemon=True).start()
 
 
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-"⛔ Доступ запрещён.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-"⚠️ Укажи текст:\n/broadcast Обновление в боте 📦")
-        return
-
-    message = " ".join(context.args)
-
-    conn = get_pg_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT user_id FROM stats WHERE user_id IS NOT NULL")
-    user_ids = [row[0] for row in cursor.fetchall()]
-    conn.close()
-
-    success, failed = 0, 0
-    for uid in user_ids:
-        try:
-            await context.bot.send_message(chat_id=uid, text=message)
-            success += 1
-        except Exception as e:
-            logger.warning(f"❌ Не отправлено {uid}: {e}")
-            failed += 1
-
-    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
-
-
-from telegram import BotCommandScopeDefault, BotCommandScopeChat
-
-async def set_bot_commands(application):
-    # Команды для всех пользователей
-    public_commands = [
-        BotCommand("start", "Начать работу с ботом"),
-    ]
-    await application.bot.set_my_commands(public_commands, scope=BotCommandScopeDefault())
-
-    # Команды только для админа
-    admin_commands = [
-        BotCommand("stats", "Статистика запросов"),
-        BotCommand("exportstats", "Выгрузка всех запросов в Excel"),
-        BotCommand("broadcast", "Предпросмотр рассылки"),
-        BotCommand("broadcast_confirm", "Подтверждение и отправка")
-    ]
-    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=int(ADMIN_CHAT_ID)))
-
-
-
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-"⛔ Доступ запрещён.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-
-            "⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦
-        )
-        return
-
-    message = " ".join(context.args)
-
-    # Сначала отправим сообщение только админу для подтверждения
-    preview_text = f"🔍 Предпросмотр рассылки:
-
-{message}
-
-Если всё ок — отправь /broadcast_confirm"
-    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=preview_text)
-
-    # Сохраняем сообщение во временное хранилище (in-memory)
-    context.bot_data["broadcast_pending"] = message
 
 
 async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"⛔ Доступ запрещён.")
         return
 
-    message = context.bot_data.get("broadcast_pending")
-    if not message:
+    message = context.bot_data.get(    if not message:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"❌ Нет сообщения для подтверждённой рассылки.")
         return
 
     conn = get_pg_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT user_id FROM stats WHERE user_id IS NOT NULL")
-    user_ids = [row[0] for row in cursor.fetchall()]
+    cursor.execute(    user_ids = [row[0] for row in cursor.fetchall()]
     conn.close()
 
     success, failed = 0, 0
@@ -398,13 +289,11 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=uid, text=message)
             success += 1
         except Exception as e:
-            logger.warning(f"❌ Не отправлено {uid}: {e}")
-            failed += 1
+            logger.warning(f            failed += 1
 
     await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
-    context.bot_data.pop("broadcast_pending", None)
+f    context.bot_data.pop("broadcast_pending", None)
 
 
 def main():
@@ -421,8 +310,7 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
-    logger.info("✨ Бот запущен!")
-    application.run_webhook(
+    logger.info(    application.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
         url_path=TOKEN,
@@ -431,4 +319,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
