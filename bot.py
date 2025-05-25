@@ -31,11 +31,15 @@ def get_pg_connection():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
     await update.message.reply_sticker(sticker_id)
-    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
+    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"Привет! Отправь мне номер контейнера для отслеживания.")
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
-    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
@@ -110,7 +114,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
 
         if not_found:
-            await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
+            await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"❌ Не найдены: " + ", ".join(not_found))
         return
 
     if found_rows:
@@ -126,13 +132,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Накладная: {row[6]}\nОсталось км: {row[7]}\n"
                 f"📅 Прогноз прибытия: {row[8]} дн."
             )
-        await update.message.reply_text("\n" + "═" * 30 + "\n".join(reply_lines))
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"\n" + "═" * 30 + "\n".join(reply_lines))
     else:
-        await update.message.reply_text("Ничего не найдено по введённым номерам.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"Ничего не найдено по введённым номерам.")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"⛔ Доступ запрещён.")
         return
 
     conn = get_pg_connection()
@@ -151,7 +163,9 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not rows:
-        await update.message.reply_text("Нет статистики за последние сутки.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"Нет статистики за последние сутки.")
         return
 
     text = "📊 Статистика за последние 24 часа:\n\n"
@@ -169,11 +183,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     messages.append(text)
 
     for msg in messages:
-        await update.message.reply_text(msg)
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+msg)
 
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"⛔ Доступ запрещён.")
         return
 
     conn = get_pg_connection()
@@ -181,7 +199,9 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if df.empty:
-        await update.message.reply_text("Нет данных для экспорта.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"Нет данных для экспорта.")
         return
 
     from openpyxl.styles import PatternFill
@@ -266,11 +286,15 @@ def keep_alive():
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"⛔ Доступ запрещён.")
         return
 
     if not context.args:
-        await update.message.reply_text("⚠️ Укажи текст:\n/broadcast Обновление в боте 📦")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"⚠️ Укажи текст:\n/broadcast Обновление в боте 📦")
         return
 
     message = " ".join(context.args)
@@ -290,7 +314,9 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"❌ Не отправлено {uid}: {e}")
             failed += 1
 
-    await update.message.reply_text(f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
+    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
 
 
 from telegram import BotCommandScopeDefault, BotCommandScopeChat
@@ -315,15 +341,16 @@ async def set_bot_commands(application):
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"⛔ Доступ запрещён.")
         return
 
     if not context.args:
-      await update.message.reply_text(
-    "⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-)
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
 
-/broadcast Это тестовое сообщение 📦"
+            "⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦
         )
         return
 
@@ -343,12 +370,16 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"⛔ Доступ запрещён.")
         return
 
     message = context.bot_data.get("broadcast_pending")
     if not message:
-        await update.message.reply_text("❌ Нет сообщения для подтверждённой рассылки.")
+        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+"❌ Нет сообщения для подтверждённой рассылки.")
         return
 
     conn = get_pg_connection()
@@ -366,7 +397,9 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"❌ Не отправлено {uid}: {e}")
             failed += 1
 
-    await update.message.reply_text(f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
+    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        )
+f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
     context.bot_data.pop("broadcast_pending", None)
 
 
