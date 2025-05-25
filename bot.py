@@ -10,6 +10,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from mail_reader import start_mail_checking, ensure_database_exists
 from datetime import datetime, timedelta
 from flask import Flask
+import re
 from threading import Thread
 from openpyxl.styles import PatternFill
 
