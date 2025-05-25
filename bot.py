@@ -136,7 +136,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
-"\n" + "═" * 30 + "\n".join(reply_lines))
+        await update.message.reply_text("\n" + "═" * 30 + "\n".join(reply_lines))
+
     else:
         await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
         )
