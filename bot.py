@@ -11,7 +11,7 @@ from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -142,6 +142,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
                STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
         FROM stats
+        WHERE timestamp >= NOW() - INTERVAL '1 day'
         GROUP BY user_id, username
         ORDER BY запросов DESC
     """)
@@ -149,16 +150,25 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not rows:
-        await update.message.reply_text("Нет статистики.")
+        await update.message.reply_text("Нет статистики за последние сутки.")
         return
 
-    text = "📊 Статистика использования:\n\n"
+    text = "📊 Статистика за последние 24 часа:\n\n"
+    messages = []
     for row in rows:
-        text += f"👤 {row[1]} (ID: {row[0]})\n" \
-                f"Запросов: {row[2]}\n" \
-                f"Контейнеры: {row[3]}\n\n"
+        entry = (
+            f"👤 {row[1]} (ID: {row[0]})\n"
+            f"Запросов: {row[2]}\n"
+            f"Контейнеры: {row[3]}\n\n"
+        )
+        if len(text) + len(entry) > 4000:
+            messages.append(text)
+            text = ""
+        text += entry
+    messages.append(text)
 
-    await update.message.reply_text(text)
+    for msg in messages:
+        await update.message.reply_text(msg)
 
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.message.chat_id) != ADMIN_CHAT_ID:
