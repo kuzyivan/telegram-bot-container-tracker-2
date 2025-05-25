@@ -84,7 +84,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
             'Номер вагона', 'Дорога операции'
         
-        ])
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='Дислокация')
@@ -306,9 +306,67 @@ async def set_bot_commands(application):
     admin_commands = [
         BotCommand("stats", "Статистика запросов"),
         BotCommand("exportstats", "Выгрузка всех запросов в Excel"),
-        BotCommand("broadcast", "Рассылка всем пользователям"),
+        BotCommand("broadcast", "Предпросмотр рассылки"),
+        BotCommand("broadcast_confirm", "Подтверждение и отправка")
     ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=int(ADMIN_CHAT_ID)))
+
+
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "⚠️ Укажи текст для отправки:
+
+/broadcast Это тестовое сообщение 📦"
+        )
+        return
+
+    message = " ".join(context.args)
+
+    # Сначала отправим сообщение только админу для подтверждения
+    preview_text = f"🔍 Предпросмотр рассылки:
+
+{message}
+
+Если всё ок — отправь /broadcast_confirm"
+    await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=preview_text)
+
+    # Сохраняем сообщение во временное хранилище (in-memory)
+    context.bot_data["broadcast_pending"] = message
+
+
+async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    message = context.bot_data.get("broadcast_pending")
+    if not message:
+        await update.message.reply_text("❌ Нет сообщения для подтверждённой рассылки.")
+        return
+
+    conn = get_pg_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT user_id FROM stats WHERE user_id IS NOT NULL")
+    user_ids = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    success, failed = 0, 0
+    for uid in user_ids:
+        try:
+            await context.bot.send_message(chat_id=uid, text=message)
+            success += 1
+        except Exception as e:
+            logger.warning(f"❌ Не отправлено {uid}: {e}")
+            failed += 1
+
+    await update.message.reply_text(f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
+    context.bot_data.pop("broadcast_pending", None)
 
 
 def main():
@@ -321,6 +379,7 @@ def main():
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler("broadcast_confirm", broadcast_confirm))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
