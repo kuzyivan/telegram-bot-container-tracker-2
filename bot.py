@@ -23,7 +23,8 @@ def ping_root():
     return 'OK', 200
 
 def run_ping_server():
-    ping_app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 10000))  # используем порт, ожидаемый Render
+    ping_app.run(host="0.0.0.0", port=port)
 
 # Запуск сервера в фоне
 Thread(target=run_ping_server, daemon=True).start()
