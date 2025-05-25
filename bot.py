@@ -152,7 +152,7 @@ else:
           AND user_id != 114419850
         GROUP BY user_id, username
         ORDER BY запросов DESC
-    "    rows = cursor.fetchall()
+    rows = cursor.fetchall()
     conn.close()
 
     if not rows:
