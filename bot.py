@@ -5,15 +5,14 @@ import time
 import requests
 import logging
 import pandas as pd
+import re
+import psycopg2
+import tempfile
 from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
-import re
-import tempfile
 from datetime import datetime
-import psycopg2
-import os
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
