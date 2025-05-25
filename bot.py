@@ -320,7 +320,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "⚠️ Укажи текст для отправки:
+    "⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+)
 
 /broadcast Это тестовое сообщение 📦"
         )
