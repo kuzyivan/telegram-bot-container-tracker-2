@@ -1,28 +1,26 @@
+
 import os
-import threading
-import time
-import requests
 import logging
+
+from telegram import Update, BotCommand
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
 import pandas as pd
-import re
 import psycopg2
-import tempfile
-from telegram import Update, ReplyKeyboardMarkup, BotCommand, InputFile
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-from mail_reader import start_mail_checking, ensure_database_exists
-from collections import defaultdict
-from datetime import datetime, timedelta
+from openpyxl import Workbook
+from io import BytesIO
+from datetime import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-TOKEN = os.getenv(ADMIN_CHAT_ID = os.getenv(logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-def get_pg_connection():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST"),
-        port=os.getenv("POSTGRES_PORT", 5432),
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv(    )
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
@@ -152,7 +150,7 @@ else:
           AND user_id != 114419850
         GROUP BY user_id, username
         ORDER BY запросов DESC
-    rows = cursor.fetchall()
+    "    rows = cursor.fetchall()
     conn.close()
 
     if not rows:
@@ -250,7 +248,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-    conn.commit()
+        conn.commit()
     conn.close()
 
 def keep_alive():
@@ -319,5 +317,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
