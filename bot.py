@@ -83,7 +83,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Станция операции', 'Операция', 'Дата и время операции',
             'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
             'Номер вагона', 'Дорога операции'
-        ])
+        
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
             with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
@@ -208,12 +208,12 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
-# replaced
-    # removed
+
+    
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("stats", "Статистика запросов (для администратора)"),
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
-    ])
+    
 
 def ensure_database_exists():
     conn = get_pg_connection()
@@ -334,3 +334,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
