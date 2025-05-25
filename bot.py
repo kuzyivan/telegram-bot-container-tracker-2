@@ -1,319 +1,226 @@
-
 import os
 import logging
-
-from telegram import Update, BotCommand
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+import threading
+import time
+import tempfile
 import pandas as pd
 import psycopg2
-from openpyxl import Workbook
-from io import BytesIO
-from datetime import datetime
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from telegram import Update, BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from mail_reader import start_mail_checking, ensure_database_exists
 
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
-TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+
+def get_pg_connection():
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST"),
+        port=int(os.getenv("POSTGRES_PORT", 5432)),
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD")
+    )
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
-    await update.message.reply_sticker(sticker_id)
-    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-await update.message.reply_text(async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker = update.message.sticker
+    """Приветственное сообщение"""
     await update.message.reply_text(
-        f"🆔 ID этого стикера:\n`{sticker.file_id}`",
+        "Привет! Отправь мне номер контейнера для отслеживания."
+    )
+
+
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка стикеров: вывод их file_id"""
+    sticker_id = update.message.sticker.file_id
+    await update.message.reply_text(
+        f"🆔 ID этого стикера:\n`{sticker_id}`",
         parse_mode='Markdown'
     )
 
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
-    container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
+    """Основная логика: поиск в БД и ответ пользователю"""
+    text = update.message.text.strip().upper()
+    numbers = [t for t in text.split() if t]
 
     conn = get_pg_connection()
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    found_rows = []
+    results = []
     not_found = []
-
-    for number in container_numbers:
-        cursor.execute("""
-            SELECT container_number, from_station, to_station, current_station,
-                   operation, operation_date, waybill, km_left, forecast_days,
-                   wagon_number, operation_road
-            FROM tracking WHERE container_number = %s
-        """, (number,))
-        row = cursor.fetchone()
+    for num in numbers:
+        cur.execute(
+            "SELECT * FROM tracking WHERE container_number = %s", (num,)
+        )
+        row = cur.fetchone()
         if row:
-            found_rows.append(row)
-
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS stats (
-                    id SERIAL PRIMARY KEY,
-                    container_number TEXT,
-                    user_id BIGINT,
-                    username TEXT,
-                    timestamp TIMESTAMP DEFAULT NOW()
-                )
-            "            cursor.execute("""
-                INSERT INTO stats (container_number, user_id, username)
-                VALUES (%s, %s, %s)
-            """, (number, update.message.from_user.id, update.message.from_user.username))
+            results.append(row)
+            # сохраняем в stats
+            cur.execute(
+                "INSERT INTO stats(container_number, user_id, username) VALUES(%s, %s, %s)",
+                (num, update.effective_user.id, update.effective_user.username)
+            )
             conn.commit()
         else:
-            not_found.append(number)
-
+            not_found.append(num)
     conn.close()
 
-    if len(container_numbers) > 1 and found_rows:
-        df = pd.DataFrame(found_rows, columns=[
-            'Номер контейнера', 'Станция отправления', 'Станция назначения',
-            'Станция операции', 'Операция', 'Дата и время операции',
-            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-            'Номер вагона', 'Дорога операции'
+    if not results:
+        await update.message.reply_text("Ничего не найдено по введённым номерам.")
+        return
+
+    # если несколько — XLSX
+    if len(results) > 1:
+        df = pd.DataFrame(results, columns=[
+            'Номер контейнера','Откуда','Куда','Где','Операция','Когда',
+            'Накладная','Км','Прогноз','Вагон','Дорога'
         ])
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Дислокация')
-                workbook = writer.book
-                worksheet = writer.sheets['Дислокация']
-            
-                # Заливка для шапки
-                from openpyxl.styles import PatternFill
-                fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
-                for cell in worksheet[1]:
-                    cell.fill = fill
-            
-                # Автоширина столбцов
-                for col in worksheet.columns:
-                    max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
-                    adjusted_width = max_length + 2
-                    worksheet.column_dimensions[col[0].column_letter].width = adjusted_width
-
-            from datetime import datetime, timedelta
-
-            vladivostok_time = datetime.utcnow() + timedelta(hours=10)
-            filename = f"Дислокация {vladivostok_time.strftime('%H-%M')}.xlsx"
-            await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
-
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+            df.to_excel(tmp.name, index=False)
+            await update.message.reply_document(open(tmp.name, 'rb'))
         if not_found:
-            await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-        if not_found:
-            await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
-            return
-
-    if found_rows:
-        reply_lines = []
-        for row in found_rows:
-            wagon_type = "полувагон" if row[9].startswith("6") else "платформа"
-            reply_lines.append(
-                f"🚛 Контейнер: {row[0]}\n"
-                f"🚇 Вагон: {row[9]} {wagon_type}\n"
-                f"📍Дислокация: {row[3]} {row[10]}\n"
-                f"🏗 Операция: {row[4]}\n📅 {row[5]}\n\n"
-                f"Откуда: {row[1]}\nКуда: {row[2]}\n\n"
-                f"Накладная: {row[6]}\nОсталось км: {row[7]}\n"
-                f"📅 Прогноз прибытия: {row[8]} дн."
+            await update.message.reply_text(
+                "❌ Не найдены: " + ", ".join(not_found)
             )
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-        await update.message.reply_text("\n" + "═" * 30 + "\n".join(reply_lines))
-
-    else:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-else:
-    await update.message.reply_text(async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
         return
 
+    # одиночный ответ
+    row = results[0]
+    msg = (
+        f"🚛 Контейнер: {row[0]}\n"
+        f"📍 {row[3]} — {row[4]} ({row[5]})\n"
+        f"Откуда: {row[1]}, Куда: {row[2]}\n"
+        f"Накладная: {row[6]}, Осталось км: {row[7]}, Прогноз: {row[8]} дн."
+    )
+    await update.message.reply_text(msg)
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Вывод статистики (только админ)"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return await update.message.reply_text("⛔ Доступ запрещён.")
     conn = get_pg_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
-               STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
-        FROM stats
-        WHERE timestamp >= NOW() - INTERVAL '1 day'
-          AND user_id != 114419850
-        GROUP BY user_id, username
-        ORDER BY запросов DESC
-    "    rows = cursor.fetchall()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT user_id, username, COUNT(*) AS cnt
+        FROM stats GROUP BY user_id, username ORDER BY cnt DESC
+        """
+    )
+    rows = cur.fetchall()
     conn.close()
-
     if not rows:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-        return
+        return await update.message.reply_text("Нет статистики.")
+    text = "📊 Статистика:\n"
+    for u, name, cnt in rows:
+        text += f"👤 {name or u}: {cnt}\n"
+    await update.message.reply_text(text)
 
-    text = "📊 Статистика за последние 24 часа:\n\n"
-    messages = []
-    for row in rows:
-        entry = (
-            f"👤 {row[1]} (ID: {row[0]})\n"
-            f"Запросов: {row[2]}\n"
-            f"Контейнеры: {row[3]}\n\n"
-        )
-        if len(text) + len(entry) > 4000:
-            messages.append(text)
-            text = ""
-        text += entry
-    messages.append(text)
-
-    for msg in messages:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-msg)
 
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-        return
-
+    """Экспорт статистики в XLSX (только админ)"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return await update.message.reply_text("⛔ Доступ запрещён.")
     conn = get_pg_connection()
-    df = pd.read_sql_query("SELECT * FROM stats", conn)
+    df = pd.read_sql("SELECT * FROM stats", conn)
     conn.close()
-
     if df.empty:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
+        return await update.message.reply_text("Нет данных для экспорта.")
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+        df.to_excel(tmp.name, index=False)
+        await update.message.reply_document(open(tmp.name, 'rb'))
+
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Предпросмотр рассылки (админ)"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return await update.message.reply_text("⛔ Доступ запрещён.")
+    if not context.args:
+        return await update.message.reply_text(
+            "⚠️ Укажи текст после /broadcast"
         )
-        return
-
-    from openpyxl.styles import PatternFill
-    from datetime import datetime, timedelta
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Статистика')
-            workbook = writer.book
-            worksheet = writer.sheets['Статистика']
-
-            # Заливка шапки таблицы
-            header_fill = PatternFill(start_color='FFD673', end_color='FFD673', fill_type='solid')
-            for cell in worksheet[1]:
-                cell.fill = header_fill
-
-            # Автоширина столбцов
-            for col in worksheet.columns:
-                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-                worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
-
-        # Имя файла с учетом Владивостокского времени
-        vladivostok_time = datetime.utcnow() + timedelta(hours=10)
-        filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
-        await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
-
-    
-        BotCommand("start", "Начать работу с ботом"),
-        BotCommand("stats", "Статистика запросов (для администратора)"),
-        BotCommand("exportstats", def ensure_database_exists():
-    conn = get_pg_connection()
-    cursor = conn.cursor()
-
-    # Создание таблицы tracking
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tracking (
-            container_number TEXT,
-            from_station TEXT,
-            to_station TEXT,
-            current_station TEXT,
-            operation TEXT,
-            operation_date TEXT,
-            waybill TEXT,
-            km_left TEXT,
-            forecast_days TEXT,
-            wagon_number TEXT,
-            operation_road TEXT
-        );
-    "    # Создание таблицы stats
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS stats (
-            id SERIAL PRIMARY KEY,
-            container_number TEXT,
-            user_id BIGINT,
-            username TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        conn.commit()
-    conn.close()
-
-def keep_alive():
-    """Периодически пингует Render, чтобы не засыпал."""
-    url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/"
-    def ping():
-        while True:
-            try:
-                response = requests.get(url)
-                logger.info(f            except Exception as e:
-                logger.warning(f            time.sleep(600)  # каждые 10 минут
-    threading.Thread(target=ping, daemon=True).start()
-
-
+    text = " ".join(context.args)
+    await context.bot.send_message(
+        chat_id=ADMIN_CHAT_ID,
+        text=f"🔍 Предпросмотр:\n\n{text}\n\n/​broadcast_confirm для отправки"
+    )
+    context.bot_data['pending'] = text
 
 
 async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-        return
-
-    message = context.bot_data.get(    if not message:
-        await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-        return
-
+    """Подтверждение и отправка рассылки (админ)"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return await update.message.reply_text("⛔ Доступ запрещён.")
+    text = context.bot_data.get('pending')
+    if not text:
+        return await update.message.reply_text("❌ Нет сообщения для рассылки.")
     conn = get_pg_connection()
-    cursor = conn.cursor()
-    cursor.execute(    user_ids = [row[0] for row in cursor.fetchall()]
+    cur = conn.cursor()
+    cur.execute("SELECT DISTINCT user_id FROM stats")
+    ids = [r[0] for r in cur.fetchall()]
     conn.close()
-
-    success, failed = 0, 0
-    for uid in user_ids:
+    ok, fail = 0, 0
+    for uid in ids:
         try:
-            await context.bot.send_message(chat_id=uid, text=message)
-            success += 1
-        except Exception as e:
-            logger.warning(f            failed += 1
+            await context.bot.send_message(uid, text)
+            ok += 1
+        except Exception:
+            fail += 1
+    await update.message.reply_text(
+        f"📤 Рассылка завершена: ✅{ok}  ❌{fail}"
+    )
+    context.bot_data.pop('pending', None)
 
-    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-f    context.bot_data.pop("broadcast_pending", None)
+
+async def set_bot_commands(application: Application):
+    public = [BotCommand('start','Начать')]
+    await application.bot.set_my_commands(public, scope=BotCommandScopeDefault())
+    admin = [
+        BotCommand('stats','Статистика'),
+        BotCommand('exportstats','Выгрузка XLSX'),
+        BotCommand('broadcast','Предпросмотр рассылки'),
+        BotCommand('broadcast_confirm','Подтвердить рассылку')
+    ]
+    await application.bot.set_my_commands(admin, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
+
+
+def keep_alive():
+    """Пинг Render, чтобы не засыпал"""
+    def ping():
+        url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}"
+        while True:
+            try:
+                requests.get(url)
+            except:
+                pass
+            time.sleep(600)
+    threading.Thread(target=ping,daemon=True).start()
 
 
 def main():
     ensure_database_exists()
     start_mail_checking()
-
     keep_alive()
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CommandHandler("exportstats", exportstats))
-    application.add_handler(CommandHandler("broadcast", broadcast))
-    application.add_handler(CommandHandler("broadcast_confirm", broadcast_confirm))
-    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.post_init = set_bot_commands
-    logger.info(    application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(CommandHandler('stats', stats))
+    app.add_handler(CommandHandler('exportstats', exportstats))
+    app.add_handler(CommandHandler('broadcast', broadcast))
+    app.add_handler(CommandHandler('broadcast_confirm', broadcast_confirm))
+    app.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.post_init = set_bot_commands
+    logging.info("Бот запущен")
+    app.run_webhook(
+        listen='0.0.0.0',
+        port=int(os.environ.get('PORT',10000)),
         url_path=TOKEN,
         webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
     )
+
 
 if __name__ == '__main__':
     main()
