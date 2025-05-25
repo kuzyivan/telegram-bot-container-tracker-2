@@ -204,6 +204,40 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
+def ensure_database_exists():
+    conn = get_pg_connection()
+    cursor = conn.cursor()
+
+    # Создание таблицы tracking
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tracking (
+            container_number TEXT,
+            from_station TEXT,
+            to_station TEXT,
+            current_station TEXT,
+            operation TEXT,
+            operation_date TEXT,
+            waybill TEXT,
+            km_left TEXT,
+            forecast_days TEXT,
+            wagon_number TEXT,
+            operation_road TEXT
+        );
+    """)
+
+    # Создание таблицы stats
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stats (
+            id SERIAL PRIMARY KEY,
+            container_number TEXT,
+            user_id BIGINT,
+            username TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    conn.commit()
+    conn.close()
 
 def keep_alive():
     """Периодически пингует Render, чтобы не засыпал."""
