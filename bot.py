@@ -37,9 +37,10 @@ await update.message.reply_text("Привет! Отправь мне номер 
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
-    await update.message.reply_text("⚠️ Укажи текст для отправки:\n\n/broadcast Это тестовое сообщение 📦"
-        )
-f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+    await update.message.reply_text(
+        f"🆔 ID этого стикера:\n`{sticker.file_id}`",
+        parse_mode='Markdown'
+    )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
