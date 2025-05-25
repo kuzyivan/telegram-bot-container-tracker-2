@@ -12,6 +12,21 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 from datetime import datetime, timedelta
+from flask import Flask
+from threading import Thread
+
+# Простое Flask-приложение для ответа на /
+ping_app = Flask('ping')
+
+@ping_app.route('/')
+def ping_root():
+    return 'OK', 200
+
+def run_ping_server():
+    ping_app.run(host="0.0.0.0", port=8080)
+
+# Запуск сервера в фоне
+Thread(target=run_ping_server, daemon=True).start()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
