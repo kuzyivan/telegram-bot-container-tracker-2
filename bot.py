@@ -12,22 +12,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 from datetime import datetime, timedelta
-from flask import Flask
-from threading import Thread
-
-# Простое Flask-приложение для ответа на /
-ping_app = Flask('ping')
-
-@ping_app.route('/')
-def ping_root():
-    return 'OK', 200
-
-def run_ping_server():
-    port = int(os.environ.get("PORT", 10000))  # используем порт, ожидаемый Render
-    ping_app.run(host="0.0.0.0", port=port)
-
-# Запуск сервера в фоне
-Thread(target=run_ping_server, daemon=True).start()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -224,13 +208,11 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
-async def set_bot_commands(application):
-    await application.bot.set_my_commands([
+# replaced
+    # removed
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("stats", "Статистика запросов (для администратора)"),
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
-        BotCommand("broadcast", "Рассылка (только админ)")
-
     ])
 
 def ensure_database_exists():
@@ -281,19 +263,67 @@ def keep_alive():
             time.sleep(600)  # каждые 10 минут
     threading.Thread(target=ping, daemon=True).start()
 
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("⚠️ Укажи текст:\n/broadcast Обновление в боте 📦")
+        return
+
+    message = " ".join(context.args)
+
+    conn = get_pg_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT user_id FROM stats WHERE user_id IS NOT NULL")
+    user_ids = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    success, failed = 0, 0
+    for uid in user_ids:
+        try:
+            await context.bot.send_message(chat_id=uid, text=message)
+            success += 1
+        except Exception as e:
+            logger.warning(f"❌ Не отправлено {uid}: {e}")
+            failed += 1
+
+    await update.message.reply_text(f"📤 Рассылка завершена:\n✅ {success} успешно\n❌ {failed} с ошибкой")
+
+
+from telegram import BotCommandScopeDefault, BotCommandScopeChat
+
+async def set_bot_commands(application):
+    # Команды для всех пользователей
+    public_commands = [
+        BotCommand("start", "Начать работу с ботом"),
+    ]
+    await application.bot.set_my_commands(public_commands, scope=BotCommandScopeDefault())
+
+    # Команды только для админа
+    admin_commands = [
+        BotCommand("stats", "Статистика запросов"),
+        BotCommand("exportstats", "Выгрузка всех запросов в Excel"),
+        BotCommand("broadcast", "Рассылка всем пользователям"),
+    ]
+    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=int(ADMIN_CHAT_ID)))
+
+
 def main():
     ensure_database_exists()
     start_mail_checking()
-    
+
     keep_alive()
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
+    application.add_handler(CommandHandler("broadcast", broadcast))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
-    application.add_handler(CommandHandler("broadcast", broadcast))
     logger.info("✨ Бот запущен!")
     application.run_webhook(
         listen="0.0.0.0",
