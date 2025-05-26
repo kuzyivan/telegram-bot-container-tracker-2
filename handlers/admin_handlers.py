@@ -1,7 +1,8 @@
+
 import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import get_pg_connection
+from db import get_pg_engine, get_pg_connection
 from config import ADMIN_CHAT_ID
 from datetime import datetime, timedelta
 from openpyxl.styles import PatternFill
@@ -13,9 +14,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     engine = get_pg_engine()
-df = pd.read_sql_query(query, engine, params=(ADMIN_CHAT_ID,))
-    cursor = conn.cursor()
-    cursor.execute("""
+    query = """
         SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
                STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
         FROM stats
@@ -23,21 +22,21 @@ df = pd.read_sql_query(query, engine, params=(ADMIN_CHAT_ID,))
           AND user_id != 114419850
         GROUP BY user_id, username
         ORDER BY запросов DESC
-    """)
-    rows = cursor.fetchall()
-    conn.close()
+    """
+    df = pd.read_sql_query(query, engine, params=(ADMIN_CHAT_ID,))
 
-    if not rows:
+    if df.empty:
         await update.message.reply_text("Нет статистики за последние сутки.")
         return
 
     text = "📊 Статистика за последние 24 часа:\n\n"
     messages = []
-    for row in rows:
+
+    for _, row in df.iterrows():
         entry = (
-            f"👤 {row[1]} (ID: {row[0]})\n"
-            f"Запросов: {row[2]}\n"
-            f"Контейнеры: {row[3]}\n\n"
+            f"👤 {row['username']} (ID: {row['user_id']})\n"
+            f"Запросов: {row['запросов']}\n"
+            f"Контейнеры: {row['контейнеры']}\n\n"
         )
         if len(text) + len(entry) > 4000:
             messages.append(text)
@@ -81,3 +80,4 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
+
