@@ -177,7 +177,11 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     conn = get_pg_connection()
-    df = pd.read_sql_query("SELECT * FROM stats", conn)
+    query = """
+        SELECT * FROM stats
+        WHERE user_id::text != %s
+    """
+    df = pd.read_sql_query(query, conn, params=(ADMIN_CHAT_ID,))
     conn.close()
 
     if df.empty:
@@ -194,17 +198,14 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             workbook = writer.book
             worksheet = writer.sheets['Статистика']
 
-            # Заливка шапки таблицы
             header_fill = PatternFill(start_color='FFD673', end_color='FFD673', fill_type='solid')
             for cell in worksheet[1]:
                 cell.fill = header_fill
 
-            # Автоширина столбцов
             for col in worksheet.columns:
                 max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
                 worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
 
-        # Имя файла с учетом Владивостокского времени
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
