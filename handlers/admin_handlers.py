@@ -12,7 +12,8 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    conn = get_pg_connection()
+    engine = get_pg_engine()
+df = pd.read_sql_query(query, engine, params=(ADMIN_CHAT_ID,))
     cursor = conn.cursor()
     cursor.execute("""
         SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
