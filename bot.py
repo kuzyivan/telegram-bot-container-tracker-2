@@ -12,6 +12,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 from mail_reader import start_mail_checking, ensure_database_exists
 from collections import defaultdict
 from datetime import datetime, timedelta
+broadcast_message = None  # Для хранения текста рассылки
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -27,6 +28,55 @@ def get_pg_connection():
         user=os.getenv("POSTGRES_USER"),
         password=os.getenv("POSTGRES_PASSWORD")
     )
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+    await update.message.reply_text("✉️ Введите текст для рассылки:")
+    context.user_data["awaiting_broadcast_text"] = True
+
+# Получение текста для рассылки
+async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("awaiting_broadcast_text"):
+        return
+
+    global broadcast_message
+    broadcast_message = update.message.text
+    context.user_data["awaiting_broadcast_text"] = False
+
+    await context.bot.send_message(
+        chat_id=ADMIN_CHAT_ID,
+        text=f"📢 Превью рассылки:\n\n{broadcast_message}\n\n✅ Для подтверждения отправьте /broadcast_confirm"
+    )
+
+# Команда /broadcast_confirm
+async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    global broadcast_message
+    if not broadcast_message:
+        await update.message.reply_text("ℹ️ Нет подготовленного текста для рассылки.")
+        return
+
+    conn = get_pg_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT user_id FROM stats WHERE user_id != %s", (ADMIN_CHAT_ID,))
+    users = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    success, failed = 0, 0
+    for user_id in users:
+        try:
+            await context.bot.send_message(chat_id=user_id, text=broadcast_message)
+            success += 1
+        except Exception:
+            failed += 1
+
+    await update.message.reply_text(f"📬 Рассылка завершена.\n✅ Успешно: {success}\n❌ Ошибок: {failed}")
+    broadcast_message = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
@@ -273,6 +323,9 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler("broadcast_confirm", broadcast_confirm))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_broadcast_text))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
