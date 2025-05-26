@@ -63,17 +63,46 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conn = get_pg_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT user_id FROM stats WHERE user_id != %s", (ADMIN_CHAT_ID,))
-    users = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT DISTINCT user_id, COALESCE(username, '') FROM stats WHERE user_id != %s", (ADMIN_CHAT_ID,))
+    users = cursor.fetchall()
     conn.close()
 
+    from openpyxl.styles import PatternFill
+    import tempfile
+
+    results = []
     success, failed = 0, 0
-    for user_id in users:
+
+    for user_id, username in users:
         try:
             await context.bot.send_message(chat_id=user_id, text=broadcast_message)
             success += 1
+            results.append((user_id, username, "OK"))
         except Exception:
             failed += 1
+            results.append((user_id, username, "ERROR"))
+
+    # Создание Excel-файла
+    df = pd.DataFrame(results, columns=["user_id", "username", "status"])
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        with pd.ExcelWriter(tmp.name, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Broadcast")
+            worksheet = writer.sheets["Broadcast"]
+
+            # Заливка заголовков
+            fill = PatternFill(start_color='FFD673', end_color='FFD673', fill_type='solid')
+            for cell in worksheet[1]:
+                cell.fill = fill
+
+            # Автоширина
+            for col in worksheet.columns:
+                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
+
+        from datetime import datetime, timedelta
+        vladivostok_time = datetime.utcnow() + timedelta(hours=10)
+        filename = f"Broadcast_{vladivostok_time.strftime('%Y%m%d_%H%M')}.xlsx"
+        await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
 
     await update.message.reply_text(f"📬 Рассылка завершена.\n✅ Успешно: {success}\n❌ Ошибок: {failed}")
     broadcast_message = None
