@@ -32,8 +32,11 @@ def main():
     keep_alive()
 
     application = Application.builder().token(TOKEN).build()
-    
-    start_scheduler(application.bot)
+
+    async def post_init(application):
+        start_scheduler(application.bot)
+
+    application.post_init = post_init
 
     # Добавляем middleware в начало цепочки
     application.add_handler(MessageHandler(filters.ALL, session_middleware), group=-1)
