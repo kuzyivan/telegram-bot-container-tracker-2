@@ -3,6 +3,20 @@ from telegram.ext import ContextTypes
 import re
 from db.models import Tracking, Stats, SessionLocal
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
+    await update.message.reply_sticker(sticker_id)
+    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
+
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sticker = update.message.sticker
+    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
+        return
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
