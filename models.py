@@ -4,7 +4,7 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
-class Stat(Base):
+class Stats(Base):
     __tablename__ = 'stats'
 
     id = Column(Integer, primary_key=True)
