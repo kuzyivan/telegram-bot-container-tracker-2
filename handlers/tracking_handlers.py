@@ -1,15 +1,15 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
+from telegram.ext import ContextTypes, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 
 TRACK_CONTAINERS, SET_TIME = range(2)
 user_tracking_data = {}
 
-async def ask_containers(update: Update, context: CallbackContext.DEFAULT_TYPE):
+async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await update.callback_query.message.reply_text("Введите список контейнеров для слежения (через запятую):")
     return TRACK_CONTAINERS
 
-async def receive_containers(update: Update, context: CallbackContext.DEFAULT_TYPE):
+async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     containers = [c.strip().upper() for c in update.message.text.split(',')]
     context.user_data['containers'] = containers
 
@@ -20,7 +20,7 @@ async def receive_containers(update: Update, context: CallbackContext.DEFAULT_TY
     await update.message.reply_text("Выберите время отправки уведомлений:", reply_markup=InlineKeyboardMarkup(keyboard))
     return SET_TIME
 
-async def set_tracking_time(update: Update, context: CallbackContext.DEFAULT_TYPE):
+async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     time_choice = update.callback_query.data.split("_")[1]
     context.user_data['time'] = "09:00" if time_choice == "09" else "16:00"
@@ -35,7 +35,7 @@ async def set_tracking_time(update: Update, context: CallbackContext.DEFAULT_TYP
     # Очистка если нужно
     return ConversationHandler.END
 
-async def cancel(update: Update, context: CallbackContext.DEFAULT_TYPE):
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отмена слежения")
     return ConversationHandler.END
 
