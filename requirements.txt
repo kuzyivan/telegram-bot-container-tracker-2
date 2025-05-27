@@ -5,5 +5,6 @@ pandas
 openpyxl
 psycopg2-binary
 requests>=2.31.0
-SQLAlchemy>=2.0
-alembic>=1.13
+python-dotenv
+sqlalchemy
+alembic
