@@ -2,10 +2,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
 from utils.keep_alive import keep_alive
-from handlers.user_handlers import start, handle_sticker, handle_message
+from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats
 import logging
 from db import SessionLocal
+from handlers.tracking_handlers import tracking_conversation_handler
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,8 +40,12 @@ def main():
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(CommandHandler("menu", show_menu))
 
     application.post_init = set_bot_commands
+
+    application.add_handler(tracking_conversation_handler())
+
 
     print("✅ Webhook init checkpoint OK")
 

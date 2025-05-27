@@ -7,6 +7,13 @@ from telegram.ext import ContextTypes
 import re
 from models import Tracking, Stats
 from db import SessionLocal
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("📦 Поставить на слежение", callback_data="track_request")],
+    ]
+    await update.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
