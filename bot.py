@@ -30,6 +30,8 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.post_init = set_bot_commands
 
+    print("✅ Webhook init checkpoint OK")
+
     logger.info("✨ Бот запущен!")
     application.run_webhook(
         listen="0.0.0.0",
