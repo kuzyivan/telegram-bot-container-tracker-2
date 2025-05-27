@@ -102,28 +102,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
         return
 
-    # Один контейнер — красивый ответ
-    if found_rows:
-        row = found_rows[0]
-        wagon_number = str(row[9]) if row[9] else "—"
-        wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
-        try:
-            km_left = float(row[7])
-            forecast_days_calc = round(km_left / 600 + 1, 1)
-        except Exception:
-            km_left = "—"
-            forecast_days_calc = "—"
+# Один контейнер — красивый ответ
+if found_rows:
+    row = found_rows[0]
+    wagon_number = str(row[9]) if row[9] else "—"
+    wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
 
-        msg = (
-            f"Контейнер: {row[0]}\n\n"
-            f"Маршрут:\n{row[1]} → {row[2]}\n\n"
-            f"Текущая станция: {row[3]}\n"
-            f"Последняя операция:\n"
-            f"{row[5]} — {row[4]}\n\n"
-            f"Вагон: {wagon_number} ({wagon_type})\n"
-            f"Осталось ехать: {km_left} км\n\n"
-            f"Оценка времени в пути:\n~{forecast_days_calc} суток (расчет: {km_left} км / 600 км/сутки + 1 день)"
-        )
+    try:
+        km_left = float(row[7])
+        forecast_days_calc = round(km_left / 600 + 1, 1)
+    except Exception:
+        km_left = "—"
+        forecast_days_calc = "—"
+
+    # Расшифровка дороги (если есть)
+    operation_station = f"{row[3]} 🛤️ ({row[10]})" if row[10] else row[3]
+
+    msg = (
+        f"📦 <b>Контейнер</b>: <code>{row[0]}</code>\n\n"
+        f"🛤 <b>Маршрут</b>:\n"
+        f"<b>{row[1]}</b> 🚂 → <b>{row[2]}</b>\n\n"
+        f"📍 <b>Текущая станция</b>: {operation_station}\n"
+        f"📅 <b>Последняя операция</b>:\n"
+        f"{row[5]} — <i>{row[4]}</i>\n\n"
+        f"🚆 <b>Вагон</b>: <code>{wagon_number}</code> ({wagon_type})\n"
+        f"📏 <b>Осталось ехать</b>: <b>{km_left}</b> км\n\n"
+        f"⏳ <b>Оценка времени в пути</b>:\n"
+        f"~<b>{forecast_days_calc}</b> суток "
+        f"(расчет: {km_left} км / 600 км/сутки + 1 день)"
+    )
+
         await update.message.reply_text(msg)
     else:
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
