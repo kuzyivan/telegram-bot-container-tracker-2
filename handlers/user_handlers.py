@@ -1,3 +1,8 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+import re
+from db.models import Tracking, Stats, SessionLocal
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
