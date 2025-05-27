@@ -41,17 +41,15 @@ def main():
     # Добавляем middleware в начало цепочки
     application.add_handler(MessageHandler(filters.ALL, session_middleware), group=-1)
 
+    application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CommandHandler("menu", show_menu))
-
-    application.post_init = set_bot_commands
-
     application.add_handler(tracking_conversation_handler())
-
+    
+    application.post_init = set_bot_commands
 
     print("✅ Webhook init checkpoint OK")
 
