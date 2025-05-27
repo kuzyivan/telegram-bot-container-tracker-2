@@ -1,5 +1,4 @@
 import pandas as pd
-from sqlalchemy.orm import Session
 from models import Tracking, Stats
 from config import SessionLocal
 
@@ -7,7 +6,6 @@ async def handle_message(update, context):
     container_number = update.message.text.strip().upper()
 
     with SessionLocal() as session:
-        # загружаем данные из БД полностью, чтобы избежать ошибки detached
         results = session.query(
             Tracking.container_number,
             Tracking.current_station,
@@ -35,14 +33,13 @@ async def handle_message(update, context):
         await update.message.reply_text(f"🤷 Контейнер {container_number} не найден.")
         return
 
-    # здесь уже не ORM-объекты, можно спокойно работать
     df = pd.DataFrame([{
         'Номер контейнера': row.container_number,
         'Текущая станция': row.current_station,
         'Дата операции': row.operation_date,
         'Операция': row.operation,
         'Номер вагона': row.wagon_number,
-        'Тип вагона': "полувагон" if row.wagon_number and row.wagon_number.startswith("6") else "платформа",
+        'Тип вагона': "полувагон" if row.wagon_number and str(row.wagon_number).startswith("6") else "платформа",
         'Станция отправления': row.from_station,
         'Станция назначения': row.to_station,
         'Расстояние, км': row.km_left,
@@ -50,4 +47,7 @@ async def handle_message(update, context):
     } for row in results])
 
     message = df.to_string(index=False)
-    await update.message.reply_text(f"🔍 Вот данные по контейнеру:\n\n```\n{message}\n```", parse_mode='Markdown')
+    await update.message.reply_text(
+        f"🔍 Вот данные по контейнеру:\n\n```\n{message}\n```",
+        parse_mode='Markdown'
+    )
