@@ -51,8 +51,6 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(tracking_conversation_handler())
     
-    application.run_polling()
-
     application.post_init = set_bot_commands
 
     print("✅ Webhook init checkpoint OK")
