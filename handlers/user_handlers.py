@@ -17,11 +17,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
         return
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
-        return
-
     user_input = update.message.text
     container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
 
