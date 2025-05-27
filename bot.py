@@ -1,4 +1,5 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters 
+from telegram import BotCommand
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
 from utils.keep_alive import keep_alive
