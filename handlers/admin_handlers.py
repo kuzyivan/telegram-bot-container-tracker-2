@@ -1,11 +1,11 @@
-
 import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import get_pg_engine, get_pg_connection
 from config import ADMIN_CHAT_ID
 from datetime import datetime, timedelta
 from openpyxl.styles import PatternFill
+from sqlalchemy.orm import Session
+from db import engine
 import tempfile
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -13,17 +13,17 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    engine = get_pg_engine()
-    query = """
-        SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
-               STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
-        FROM stats
-        WHERE timestamp >= NOW() - INTERVAL '1 day'
-          AND user_id != 114419850
-        GROUP BY user_id, username
-        ORDER BY запросов DESC
-    """
-    df = pd.read_sql_query(query, engine, params=(ADMIN_CHAT_ID,))
+    with Session(engine) as session:
+        query = """
+            SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
+                   STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
+            FROM stats
+            WHERE timestamp >= NOW() - INTERVAL '1 day'
+              AND user_id != 114419850
+            GROUP BY user_id, username
+            ORDER BY запросов DESC
+        """
+        df = pd.read_sql_query(query, session.bind)
 
     if df.empty:
         await update.message.reply_text("Нет статистики за последние сутки.")
@@ -52,13 +52,12 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    conn = get_pg_connection()
-    query = """
-        SELECT * FROM stats
-        WHERE user_id::text != %s
-    """
-    df = pd.read_sql_query(query, conn, params=(ADMIN_CHAT_ID,))
-    conn.close()
+    with Session(engine) as session:
+        df = pd.read_sql_query(
+            "SELECT * FROM stats WHERE user_id::text != %s",
+            session.bind,
+            params=(ADMIN_CHAT_ID,)
+        )
 
     if df.empty:
         await update.message.reply_text("Нет данных для экспорта.")
@@ -72,7 +71,6 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             header_fill = PatternFill(start_color='FFD673', end_color='FFD673', fill_type='solid')
             for cell in worksheet[1]:
                 cell.fill = header_fill
-
             for col in worksheet.columns:
                 max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
                 worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
@@ -80,4 +78,3 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
-
