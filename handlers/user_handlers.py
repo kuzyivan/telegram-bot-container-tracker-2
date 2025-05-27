@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 import re
-from db.models import Tracking, Stats, SessionLocal
+from db import Tracking, Stats, SessionLocal
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
