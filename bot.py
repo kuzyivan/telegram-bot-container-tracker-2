@@ -1,11 +1,11 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from config import TOKEN, PORT, RENDER_HOSTNAME
-from db import SessionLocal
 from mail_reader import start_mail_checking
 from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message
 from handlers.admin_handlers import stats, exportstats
 import logging
+from db import SessionLocal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,17 +18,27 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
+async def db_session_middleware(app: Application):
+    async def middleware(update, context: ContextTypes.DEFAULT_TYPE, next_handler):
+        async with SessionLocal() as session:
+            context.chat_data["session"] = session
+            return await next_handler(update, context)
+    app.add_handler(MessageHandler(filters.ALL, middleware), group=-1)
+
 def main():
     start_mail_checking()
     keep_alive()
 
     application = Application.builder().token(TOKEN).build()
+
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
     application.post_init = set_bot_commands
+    application.post_init = db_session_middleware
 
     print("✅ Webhook init checkpoint OK")
 
