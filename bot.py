@@ -31,7 +31,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
 
     # Добавляем middleware в начало цепочки
-    application.add_handler(MessageHandler(filters.ALL, session_middleware), group=-1)
+    application.add_middleware(session_middleware)
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats))
