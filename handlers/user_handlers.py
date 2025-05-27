@@ -1,6 +1,22 @@
 import pandas as pd
 from models import Tracking, Stats
 from db import SessionLocal
+from telegram import Update
+from telegram.ext import ContextTypes
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
+    await update.message.reply_sticker(sticker_id)
+    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
+
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sticker = update.message.sticker
+    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text
+    container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
+
 
 async def handle_message(update, context):
     container_number = update.message.text.strip().upper()
