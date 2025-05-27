@@ -7,6 +7,7 @@ from handlers.admin_handlers import stats, exportstats
 import logging
 from db import SessionLocal
 from handlers.tracking_handlers import tracking_conversation_handler
+from scheduler import start_scheduler
 
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,8 @@ def main():
     keep_alive()
 
     application = Application.builder().token(TOKEN).build()
+    
+    start_scheduler(application.bot)
 
     # Добавляем middleware в начало цепочки
     application.add_handler(MessageHandler(filters.ALL, session_middleware), group=-1)
