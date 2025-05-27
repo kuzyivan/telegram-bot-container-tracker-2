@@ -36,6 +36,7 @@ def main():
 
     async def post_init(application):
         start_scheduler(application.bot)
+        set_bot_commands(application) # <- вот здесь вызываем
 
     application.post_init = post_init
 
@@ -50,6 +51,8 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(tracking_conversation_handler())
     
+    application.run_polling()
+
     application.post_init = set_bot_commands
 
     print("✅ Webhook init checkpoint OK")
