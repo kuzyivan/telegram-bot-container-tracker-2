@@ -1,6 +1,6 @@
 import pandas as pd
 from models import Tracking, Stats
-from config import SessionLocal
+from db import SessionLocal
 
 async def handle_message(update, context):
     container_number = update.message.text.strip().upper()
