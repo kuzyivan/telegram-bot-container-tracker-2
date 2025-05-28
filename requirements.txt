@@ -1,5 +1,4 @@
 python-telegram-bot[webhooks]==22.1
-# остальные библиотеки — как есть
 imap-tools
 apscheduler
 pandas
