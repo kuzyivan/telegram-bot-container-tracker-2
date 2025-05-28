@@ -5,13 +5,13 @@ from handlers.tracking_handlers import tracking_conversation_handler, stop_track
 from handlers.user_handlers import start, handle_message
 from handlers.admin_handlers import exportstats
 from scheduler import start_scheduler
-from config import BOT_TOKEN
+from config import TELEGRAM_TOKEN
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Основные хендлеры
     application.add_handler(CommandHandler("start", start))
@@ -27,7 +27,7 @@ def main():
     application.run_webhook(
         listen="0.0.0.0",
         port=10000,
-        webhook_url=f"https://atermtrackbot2.onrender.com/{BOT_TOKEN}"
+        webhook_url=f"https://atermtrackbot2.onrender.com/{TELEGRAM_TOKEN}"
     )
 
 if __name__ == "__main__":
