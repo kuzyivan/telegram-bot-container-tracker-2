@@ -87,3 +87,24 @@ async def stop_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Все ваши подписки на слежение удалены.")
     else:
         await update.message.reply_text("У вас нет активных подписок на слежение.")
+
+async def send_tracking_notifications(context, notify_time: str):
+    from telegram import Bot
+    from models import TrackingSubscription
+    from db import SessionLocal
+
+    hour, minute = map(int, notify_time.split(":"))
+    with SessionLocal() as session:
+        subs = session.query(TrackingSubscription).filter(
+            TrackingSubscription.notify_time == datetime.time(hour=hour, minute=minute)
+        ).all()
+        for sub in subs:
+            msg = f"⏰ Напоминание о контейнерах: {', '.join(sub.containers)}"
+            try:
+                await context.bot.send_message(chat_id=sub.user_id, text=msg)
+            except Exception as e:
+                print(f"Ошибка отправки пользователю {sub.user_id}: {e}")
+
+async def testnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_tracking_notifications(context, '16:00')
+    await update.message.reply_text("Тестовая рассылка выполнена.")
