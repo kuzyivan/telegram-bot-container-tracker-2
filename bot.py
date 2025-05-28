@@ -8,7 +8,7 @@ from handlers.user_handlers import start, handle_sticker, handle_message, show_m
 from handlers.admin_handlers import stats, exportstats, tracking
 import logging
 from db import SessionLocal
-from handlers.tracking_handlers import tracking_conversation_handler
+from handlers.tracking_handlers import stop_tracking, tracking_conversation_handler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +50,7 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("tracking", tracking))
+    application.add_handler(CommandHandler("stoptracking", stop_tracking))
     
     application.post_init = set_bot_commands
 

@@ -77,3 +77,13 @@ def tracking_conversation_handler():
         },
         fallbacks=[MessageHandler(filters.COMMAND, cancel)],
     )
+
+async def stop_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    with SessionLocal() as session:
+        deleted = session.query(TrackingSubscription).filter_by(user_id=user_id).delete()
+        session.commit()
+    if deleted:
+        await update.message.reply_text("✅ Все ваши подписки на слежение удалены.")
+    else:
+        await update.message.reply_text("У вас нет активных подписок на слежение.")
