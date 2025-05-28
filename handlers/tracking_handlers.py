@@ -98,6 +98,7 @@ async def send_tracking_notifications(context, notify_time: str):
     with SessionLocal() as session:
         subs = session.query(TrackingSubscription).filter_by(notify_time=notify_time_obj).all()
         for sub in subs:
+            print(f"DEBUG: containers type = {type(sub.containers)}; value = {sub.containers}")
             msg = f"⏰ Напоминание о контейнерах: {', '.join(sub.containers)}"
             try:
                 await context.bot.send_message(chat_id=sub.user_id, text=msg)

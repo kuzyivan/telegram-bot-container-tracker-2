@@ -1,3 +1,4 @@
+from multiprocessing import context
 from telegram.ext import Application, CommandHandler, MessageHandler, filters 
 from telegram import BotCommand
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
@@ -57,6 +58,8 @@ def main():
 
     print("✅ Webhook init checkpoint OK")
     print("DEBUG: got containers for tracking")
+    print("DEBUG: ", type(context.bot))
+    print("DEBUG: ", context.bot)
     
     logger.info("✨ Бот запущен!")
     application.run_webhook(
