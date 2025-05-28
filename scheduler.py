@@ -11,19 +11,24 @@ scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
 
 def start_scheduler(bot):
-    scheduler.add_job(lambda: bot.create_task(send_notifications(bot, time(9, 0))), 'cron', hour=23, minute=0)
-    scheduler.add_job(lambda: bot.create_task(send_notifications(bot, time(16, 0))), 'cron', hour=6, minute=0)
+    scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
+    scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
     scheduler.start()
 
 async def send_notifications(bot, target_time: time):
-    with SessionLocal() as session:
-        subs = session.query(TrackingSubscription).filter_by(notify_time=target_time).all()
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
+        )
+        subscriptions = result.scalars().all()
 
-        for sub in subs:
+        for sub in subscriptions:
             rows = []
             for container in sub.containers:
-                track = session.query(Tracking).filter_by(container_number=container).order_by(
-                    Tracking.operation_date.desc()).first()
+                result = await session.execute(
+                    select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
+                )
+                track = result.scalars().first()
                 if track:
                     rows.append([
                         track.container_number,
@@ -54,4 +59,3 @@ async def send_notifications(bot, target_time: time):
                 df.to_excel(tmp.name, index=False)
                 filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
                 await bot.send_document(chat_id=sub.user_id, document=InputFile(tmp.name), filename=filename)
-
