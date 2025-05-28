@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Float
+from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Float, Time, ARRAY
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
-from sqlalchemy import Column, Integer, String, Time, ARRAY
+from db import Base
 
 Base = declarative_base()
 

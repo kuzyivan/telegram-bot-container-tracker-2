@@ -2,14 +2,14 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram import BotCommand
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
+from scheduler import start_scheduler
 from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats
 import logging
 from db import SessionLocal
 from handlers.tracking_handlers import tracking_conversation_handler
-from scheduler import start_scheduler
-
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ def main():
 
     async def post_init(application):
         start_scheduler(application.bot)
-        set_bot_commands(application) # <- вот здесь вызываем
+        set_bot_commands(application)
 
     application.post_init = post_init
 
