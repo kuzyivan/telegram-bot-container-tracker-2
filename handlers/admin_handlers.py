@@ -10,6 +10,7 @@ from db import SessionLocal
 from models import TrackingSubscription
 import tempfile
 
+# /tracking — выгрузка всех подписок на слежение в Excel
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
         await update.message.reply_text("⛔ Доступ запрещён.")
@@ -36,17 +37,23 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp.flush()
             await update.message.reply_document(document=open(tmp.name, "rb"), filename="tracking_subs.xlsx")
 
+# /stats — статистика запросов за последние сутки в текстовом виде
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
     with Session(engine) as session:
         query = """
             SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
                    STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
             FROM stats
             WHERE timestamp >= NOW() - INTERVAL '1 day'
-              AND user_id != 114419850
+              AND user_id != %s
             GROUP BY user_id, username
             ORDER BY запросов DESC
         """
-        df = pd.read_sql_query(query, session.bind)
+        df = pd.read_sql_query(query, session.bind, params=(ADMIN_CHAT_ID,))
 
     if df.empty:
         await update.message.reply_text("Нет статистики за последние сутки.")
@@ -70,8 +77,9 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for msg in messages:
         await update.message.reply_text(msg)
 
+# /exportstats — Excel выгрузка всех запросов за всё время (кроме админа)
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+    if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
@@ -101,3 +109,4 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
+        
