@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import datetime, time, timedelta
 from models import TrackingSubscription, Tracking
-from db import async_session
+from db import SessionLocal
 from telegram import InputFile
 import pandas as pd
 import tempfile
@@ -11,24 +11,19 @@ scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
 
 def start_scheduler(bot):
-    scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
-    scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
+    scheduler.add_job(lambda: bot.create_task(send_notifications(bot, time(9, 0))), 'cron', hour=23, minute=0)
+    scheduler.add_job(lambda: bot.create_task(send_notifications(bot, time(16, 0))), 'cron', hour=6, minute=0)
     scheduler.start()
 
 async def send_notifications(bot, target_time: time):
-    async with async_session() as session:
-        result = await session.execute(
-            select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
-        )
-        subscriptions = result.scalars().all()
+    with SessionLocal() as session:
+        subs = session.query(TrackingSubscription).filter_by(notify_time=target_time).all()
 
-        for sub in subscriptions:
+        for sub in subs:
             rows = []
             for container in sub.containers:
-                result = await session.execute(
-                    select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
-                )
-                track = result.scalars().first()
+                track = session.query(Tracking).filter_by(container_number=container).order_by(
+                    Tracking.operation_date.desc()).first()
                 if track:
                     rows.append([
                         track.container_number,
