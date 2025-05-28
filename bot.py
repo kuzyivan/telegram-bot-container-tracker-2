@@ -58,8 +58,6 @@ def main():
 
     print("✅ Webhook init checkpoint OK")
     print("DEBUG: got containers for tracking")
-    print("DEBUG: ", type(context.bot))
-    print("DEBUG: ", context.bot)
     
     logger.info("✨ Бот запущен!")
     application.run_webhook(
