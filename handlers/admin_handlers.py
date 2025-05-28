@@ -10,8 +10,8 @@ from db import SessionLocal
 from models import TrackingSubscription
 import tempfile
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.message.chat_id) != ADMIN_CHAT_ID:
+async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
@@ -35,7 +35,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             df.to_excel(tmp.name, index=False)
             tmp.flush()
             await update.message.reply_document(document=open(tmp.name, "rb"), filename="tracking_subs.xlsx")
-            
+
     with Session(engine) as session:
         query = """
             SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
