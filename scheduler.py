@@ -1,15 +1,13 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.future import select
-from telegram import InputFile
 from datetime import datetime, time, timedelta
 from models import TrackingSubscription, Tracking
-from db import async_engine
+from db import SessionLocal
+from telegram import InputFile
 import pandas as pd
 import tempfile
 
 scheduler = AsyncIOScheduler()
-SessionLocal = async_sessionmaker(bind=async_engine, expire_on_commit=False)
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
 
 def start_scheduler(bot):
@@ -28,9 +26,7 @@ async def send_notifications(bot, target_time: time):
             rows = []
             for container in sub.containers:
                 result = await session.execute(
-                    select(Tracking)
-                    .filter(Tracking.container_number == container)
-                    .order_by(Tracking.operation_date.desc())
+                    select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
                 )
                 track = result.scalars().first()
                 if track:
@@ -49,7 +45,7 @@ async def send_notifications(bot, target_time: time):
                     ])
 
             if not rows:
-                await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(sub.containers)}")
+                await bot.send_message(sub.user_id, f"\U0001F4ED Нет данных по контейнерам {', '.join(sub.containers)}")
                 continue
 
             df = pd.DataFrame(rows, columns=[
@@ -63,3 +59,4 @@ async def send_notifications(bot, target_time: time):
                 df.to_excel(tmp.name, index=False)
                 filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
                 await bot.send_document(chat_id=sub.user_id, document=InputFile(tmp.name), filename=filename)
+

@@ -1,35 +1,35 @@
 import asyncio
 import logging
-from telegram.ext import ApplicationBuilder
-from user_handlers import main_conversation_handler, stop_tracking
-from tracking_handlers import tracking_conversation_handler
-from admin_handlers import admin_handler, stats_handler, exportstats_handler
+from telegram.ext import Application, CommandHandler
+from tracking_handlers import tracking_conversation_handler, stop_tracking, testnotify
+from user_handlers import start, handle_message
+from admin_handlers import export_stats
 from scheduler import start_scheduler
 from config import BOT_TOKEN
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-async def main():
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+def main():
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    # Основные команды
-    application.add_handler(main_conversation_handler())
+    # Основные хендлеры
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stoptracking", stop_tracking))
+    application.add_handler(CommandHandler("exportstats", export_stats))
+    application.add_handler(CommandHandler("testnotify", testnotify))
     application.add_handler(tracking_conversation_handler())
-    application.add_handler(admin_handler)
-    application.add_handler(stats_handler)
-    application.add_handler(exportstats_handler)
-    application.add_handler(stop_tracking)
+    application.add_handler(CommandHandler("msg", handle_message))
 
-    # Планировщик — запускаем после старта loop
+    # Запуск планировщика уведомлений
     start_scheduler(application.bot)
 
-    # Запуск бота
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling()
-    await application.updater.idle()
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=10000,
+        webhook_url=f"https://atermtrackbot2.onrender.com/{BOT_TOKEN}"
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
+
