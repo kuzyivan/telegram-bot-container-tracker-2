@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from openpyxl.styles import PatternFill
 from sqlalchemy.orm import Session
 from db import engine
+from db import SessionLocal
+from models import TrackingSubscription
 import tempfile
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -13,6 +15,27 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
+    with SessionLocal() as session:
+        subs = session.query(TrackingSubscription).all()
+        if not subs:
+            await update.message.reply_text("Нет активных слежений.")
+            return
+
+        data = [
+            {
+                "user_id": s.user_id,
+                "username": s.username,
+                "containers": s.containers,
+                "time": s.time
+            }
+            for s in subs
+        ]
+        df = pd.DataFrame(data)
+        with tempfile.NamedTemporaryFile("wb", suffix=".xlsx", delete=False) as tmp:
+            df.to_excel(tmp.name, index=False)
+            tmp.flush()
+            await update.message.reply_document(document=open(tmp.name, "rb"), filename="tracking_subs.xlsx")
+            
     with Session(engine) as session:
         query = """
             SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
