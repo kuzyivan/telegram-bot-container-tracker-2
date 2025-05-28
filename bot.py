@@ -35,6 +35,7 @@ def main():
 
     application = Application.builder().token(TOKEN).build()
 
+    start_scheduler(application)  # 🔧 передаём application, не bot
     async def post_init(application):
         start_scheduler(application.bot)
         set_bot_commands(application)
