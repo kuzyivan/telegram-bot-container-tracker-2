@@ -33,6 +33,11 @@ async def session_middleware(update, context, next_handler):
         context.session = session
         return await next_handler(update, context)
 
+async def session_middleware(update, context, next_handler):
+    async with SessionLocal() as session:
+        context.session = session
+        return await next_handler(update, context)
+
 def main():
     start_mail_checking()
     keep_alive()
@@ -46,7 +51,7 @@ def main():
     application.post_init = post_init
 
     # Добавляем middleware в начало цепочки
-    application.add_handler(MessageHandler(filters.ALL, session_middleware), group=-1)
+    application.add_middleware(session_middleware)
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
