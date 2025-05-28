@@ -1,5 +1,6 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters 
 from telegram import BotCommand
+from telegram.error import TelegramError
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
 from scheduler import start_scheduler
@@ -21,6 +22,10 @@ async def set_bot_commands(application):
         BotCommand("stats", "Статистика запросов (для администратора)"),
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
+
+async def error_handler(update, context):
+    # Можно логировать в файл, отправлять себе в Telegram и т.д.
+    print(f"Exception: {context.error}")
 
 # Middleware — добавляет сессию к каждому update
 async def session_middleware(update, context, next_handler):
@@ -50,6 +55,7 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("tracking", tracking))
+    application.add_error_handler(error_handler)
     
     application.post_init = set_bot_commands
 
