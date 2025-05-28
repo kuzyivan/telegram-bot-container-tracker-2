@@ -34,7 +34,12 @@ def main():
     start_mail_checking()
     keep_alive()
 
-    application = Application.builder().token(TOKEN).build()
+    application = (
+    Application.builder()
+    .token(TOKEN)
+    .middleware(session_middleware)
+    .build()
+)
 
     application.add_middleware(session_middleware)  # Теперь работает
 
