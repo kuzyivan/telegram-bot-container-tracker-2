@@ -14,16 +14,9 @@ from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats, tracking
 from handlers.tracking_handlers import tracking_conversation_handler
-from db import SessionLocal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Middleware: добавляет сессию к каждому update
-async def session_middleware(update, context, next_handler):
-    async with SessionLocal() as session:
-        context.session = session
-        return await next_handler(update, context)
 
 async def set_bot_commands(application):
     await application.bot.set_my_commands([
@@ -46,11 +39,8 @@ def main():
     start_mail_checking()
     keep_alive()
 
-    # Инициализация приложения
+    # Application только один раз и БЕЗ middleware!
     application = ApplicationBuilder().token(TOKEN).build()
-
-    # Регистрация middleware
-    application = ApplicationBuilder().token(TOKEN).middleware(session_middleware).build()
 
     # Обработчики команд
     application.add_handler(tracking_conversation_handler())
@@ -72,7 +62,6 @@ def main():
 
     logger.info("✨ Бот запущен!")
 
-    # Запуск в режиме webhook (актуально для Render)
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
