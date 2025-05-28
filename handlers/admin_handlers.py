@@ -27,7 +27,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "user_id": s.user_id,
                 "username": s.username,
                 "containers": s.containers,
-                "time": s.time
+                "time": s.notify_time,
             }
             for s in subs
         ]
@@ -109,4 +109,3 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
-        
