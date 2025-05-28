@@ -8,6 +8,7 @@ import re
 from models import Tracking, Stats
 from db import SessionLocal
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from handlers.tracking_handlers import send_tracking_notifications
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -23,6 +24,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+
+async def testnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Можно передать любое время (например, "16:00")
+    await send_tracking_notifications(context.bot, "16:00")
+    await update.message.reply_text("Тестовая рассылка выполнена (как будто сейчас 16:00).")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
