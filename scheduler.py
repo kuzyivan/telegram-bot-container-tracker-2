@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import datetime, time, timedelta
 from models import TrackingSubscription, Tracking
-from db import SessionLocal
+from db import async_session
 from telegram import InputFile
 import pandas as pd
 import tempfile
@@ -16,7 +16,7 @@ def start_scheduler(bot):
     scheduler.start()
 
 async def send_notifications(bot, target_time: time):
-    async with SessionLocal() as session:
+    async with async_session() as session:
         result = await session.execute(
             select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
         )
@@ -45,7 +45,7 @@ async def send_notifications(bot, target_time: time):
                     ])
 
             if not rows:
-                await bot.send_message(sub.user_id, f"\U0001F4ED Нет данных по контейнерам {', '.join(sub.containers)}")
+                await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(sub.containers)}")
                 continue
 
             df = pd.DataFrame(rows, columns=[
