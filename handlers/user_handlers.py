@@ -2,12 +2,10 @@ import tempfile
 import pandas as pd
 from openpyxl.styles import PatternFill
 from datetime import datetime, timedelta
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import re
 from models import Tracking, Stats
-from db import SessionLocal
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -34,52 +32,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     found_rows = []
     not_found = []
 
-    with SessionLocal() as session:
-        for container_number in container_numbers:
-            results = session.query(
-                Tracking.container_number,
-                Tracking.from_station,
-                Tracking.to_station,
-                Tracking.current_station,
-                Tracking.operation,
-                Tracking.operation_date,
-                Tracking.waybill,
-                Tracking.km_left,
-                Tracking.forecast_days,
-                Tracking.wagon_number,
-                Tracking.operation_road
-            ).filter(
-                Tracking.container_number == container_number
-            ).order_by(
-                Tracking.operation_date.desc()
-            ).all()
+    session = context.session
 
-            stats_record = Stats(
-                container_number=container_number,
-                user_id=update.message.from_user.id,
-                username=update.message.from_user.username
-            )
-            session.add(stats_record)
-            session.commit()
+    for container_number in container_numbers:
+        results = session.query(
+            Tracking.container_number,
+            Tracking.from_station,
+            Tracking.to_station,
+            Tracking.current_station,
+            Tracking.operation,
+            Tracking.operation_date,
+            Tracking.waybill,
+            Tracking.km_left,
+            Tracking.forecast_days,
+            Tracking.wagon_number,
+            Tracking.operation_road
+        ).filter(
+            Tracking.container_number == container_number
+        ).order_by(
+            Tracking.operation_date.desc()
+        ).all()
 
-            if not results:
-                not_found.append(container_number)
-                continue
+        stats_record = Stats(
+            container_number=container_number,
+            user_id=update.message.from_user.id,
+            username=update.message.from_user.username
+        )
+        session.add(stats_record)
+        session.commit()
 
-            row = results[0]
-            found_rows.append([
-                row.container_number,
-                row.from_station,
-                row.to_station,
-                row.current_station,
-                row.operation,
-                row.operation_date,
-                row.waybill,
-                row.km_left,
-                row.forecast_days,
-                row.wagon_number,
-                row.operation_road
-            ])
+        if not results:
+            not_found.append(container_number)
+            continue
+
+        row = results[0]
+        found_rows.append([
+            row.container_number,
+            row.from_station,
+            row.to_station,
+            row.current_station,
+            row.operation,
+            row.operation_date,
+            row.waybill,
+            row.km_left,
+            row.forecast_days,
+            row.wagon_number,
+            row.operation_road
+        ])
 
     # Несколько контейнеров — Excel файл
     if len(container_numbers) > 1 and found_rows:
