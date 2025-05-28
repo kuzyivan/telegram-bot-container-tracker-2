@@ -98,12 +98,12 @@ async def send_tracking_notifications(context, notify_time: str):
         subs = session.query(TrackingSubscription).filter(
             TrackingSubscription.notify_time == datetime.time(hour=hour, minute=minute)
         ).all()
-        for sub in subs:
-            msg = f"⏰ Напоминание о контейнерах: {', '.join(sub.containers)}"
-            try:
-                await context.bot.send_message(chat_id=sub.user_id, text=msg)
-            except Exception as e:
-                print(f"Ошибка отправки пользователю {sub.user_id}: {e}")
+    for sub in subs:
+        msg = f"⏰ Напоминание о контейнерах: {', '.join(sub.containers)}"
+        try:
+            await context.bot.send_message(chat_id=sub.user_id, text=msg)
+        except Exception as e:
+            print(f"Ошибка отправки пользователю {sub.user_id}: {e}")
 
 async def testnotify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_tracking_notifications(context, '16:00')
