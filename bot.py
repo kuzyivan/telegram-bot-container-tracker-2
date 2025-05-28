@@ -50,7 +50,7 @@ def main():
     application = ApplicationBuilder().token(TOKEN).build()
 
     # Регистрация middleware
-    application.add_middleware(session_middleware)
+    application = ApplicationBuilder().token(TOKEN).middleware(session_middleware).build()
 
     # Обработчики команд
     application.add_handler(tracking_conversation_handler())
