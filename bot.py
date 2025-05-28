@@ -5,6 +5,7 @@ from telegram.ext import (
     MessageHandler,
     CallbackQueryHandler,
     filters,
+    BaseMiddleware,
 )
 from telegram import BotCommand
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
@@ -14,9 +15,17 @@ from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats, tracking
 from handlers.tracking_handlers import tracking_conversation_handler
+from db import SessionLocal  # Должен быть async_sessionmaker!
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Middleware для SQLAlchemy session (async)
+class SQLAlchemySessionMiddleware(BaseMiddleware):
+    async def __call__(self, update, context, next_handler):
+        async with SessionLocal() as session:
+            context.session = session
+            return await next_handler(update, context)
 
 async def set_bot_commands(application):
     await application.bot.set_my_commands([
@@ -39,8 +48,11 @@ def main():
     start_mail_checking()
     keep_alive()
 
-    # Application только один раз и БЕЗ middleware!
+    # Создаём Application (PTB v22+)
     application = ApplicationBuilder().token(TOKEN).build()
+
+    # Middleware для передачи session во все context
+    application.add_middleware(SQLAlchemySessionMiddleware())
 
     # Обработчики команд
     application.add_handler(tracking_conversation_handler())
@@ -51,7 +63,7 @@ def main():
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    # Если есть CallbackQueryHandler для inline-кнопок, подключи сюда
+    # Если есть CallbackQueryHandler для inline-кнопок, добавь сюда
     # application.add_handler(CallbackQueryHandler(...))
 
     # Обработчик ошибок
@@ -62,6 +74,7 @@ def main():
 
     logger.info("✨ Бот запущен!")
 
+    # Для webhooks (PTB[webhooks] должен быть установлен!)
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
