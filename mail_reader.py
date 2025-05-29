@@ -48,13 +48,11 @@ def check_mail():
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
 
-def process_file(filepath):
+async def process_file(filepath):
     try:
         df = pd.read_excel(filepath, skiprows=3)
-        if 'Номер контейнера' not in df.columns:
-            raise ValueError("['Номер контейнера']")
-
         records = []
+
         for _, row in df.iterrows():
             km_left = int(row.get('Расстояние оставшееся', 0))
             forecast_days = round(km_left / 600, 1) if km_left else 0.0
@@ -74,10 +72,10 @@ def process_file(filepath):
             )
             records.append(record)
 
-        with SessionLocal() as session:
-            session.execute(delete(Tracking))
-            session.bulk_save_objects(records)
-            session.commit()
+        async with SessionLocal() as session:  # ✅
+            await session.execute(delete(Tracking))
+            session.add_all(records)
+            await session.commit()  # ✅
 
         last_date = df['Дата и время операции'].dropna().max()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")

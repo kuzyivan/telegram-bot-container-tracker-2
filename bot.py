@@ -54,7 +54,7 @@ def main():
     application = ApplicationBuilder().token(TOKEN).build()
 
     # ✅ Подключение middleware для session
-    application.add_middleware(session_middleware)
+    application.update_middleware(session_middleware)
 
     # Обработчики
     application.add_handler(tracking_conversation_handler())
