@@ -46,17 +46,14 @@ async def post_init(application):
 
 # Точка входа
 def main():
-    # Фоновые задачи
     start_mail_checking()
     keep_alive()
 
-    # Создание приложения
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # ✅ Подключение middleware для session
-    application.update_middleware(session_middleware)
+    # ✅ Правильный способ добавления middleware:
+    application.middleware.append(session_middleware)
 
-    # Обработчики
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
@@ -65,14 +62,12 @@ def main():
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    # CallbackQueryHandler для inline — добавляй если используешь
 
     application.add_error_handler(error_handler)
     application.post_init = post_init
 
     logger.info("✨ Бот запущен!")
 
-    # Запуск через webhook (не забудь установить PTB с [webhooks])
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
