@@ -23,7 +23,6 @@ async def set_bot_commands(application):
     ])
 
 async def main():
-    # Можно убрать или оставить, если sync
     start_mail_checking()
     keep_alive()
 
@@ -32,7 +31,6 @@ async def main():
     async def post_init(application):
         start_scheduler(application.bot)
         await set_bot_commands(application)
-
     application.post_init = post_init
 
     application.add_handler(tracking_conversation_handler())
@@ -56,4 +54,11 @@ async def main():
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import asyncio
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        # Already running event loop (Render, Jupyter, ...). 
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
+        loop.run_forever()
