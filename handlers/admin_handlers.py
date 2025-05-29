@@ -11,7 +11,7 @@ import tempfile
 
 # /tracking — выгрузка всех подписок на слежение в Excel
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
+    if update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
@@ -32,7 +32,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /stats — статистика запросов за последние сутки в текстовом виде
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
+    if update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
@@ -71,12 +71,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # /exportstats — Excel выгрузка всех запросов за всё время (кроме админа)
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if str(update.effective_user.id) != str(ADMIN_CHAT_ID):
+    if update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     async with SessionLocal() as session:
-        query = text("SELECT * FROM stats WHERE user_id::text != :admin_id")
+        query = text("SELECT * FROM stats WHERE user_id != :admin_id")
         result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
         rows = result.fetchall()
 
