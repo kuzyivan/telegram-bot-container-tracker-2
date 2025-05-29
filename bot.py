@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def set_bot_commands(application):
+    print("[DEBUG] set_bot_commands called")
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("stats", "Статистика запросов (для администратора)"),
@@ -29,6 +30,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
 
     async def post_init(application):
+        print("[DEBUG] post_init called")
         start_scheduler(application.bot)
         await set_bot_commands(application)
     application.post_init = post_init
