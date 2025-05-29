@@ -2,14 +2,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import declarative_base
 import os
 
-# Подключение к базе — строка должна быть в формате для asyncpg
-# Пример: postgresql+asyncpg://user:password@host:port/dbname
+# Получаем строку подключения из .env
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Создание асинхронного движка SQLAlchemy
+# Асинхронный движок через asyncpg
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  # True — если нужен подробный SQL-лог
+    echo=False,
     future=True
 )
 
@@ -17,9 +16,7 @@ engine = create_async_engine(
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
-    autocommit=False,
+    expire_on_commit=False
 )
 
 # Базовый класс для моделей

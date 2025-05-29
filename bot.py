@@ -5,7 +5,6 @@ from telegram.ext import (
     MessageHandler,
     CallbackQueryHandler,
     filters,
-    BaseMiddleware,
 )
 from telegram import BotCommand
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
@@ -15,18 +14,18 @@ from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats, tracking
 from handlers.tracking_handlers import tracking_conversation_handler
-from db import SessionLocal  # Должен быть async_sessionmaker!
+from db import SessionLocal  # async_sessionmaker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Middleware для SQLAlchemy session (async)
-class SQLAlchemySessionMiddleware(BaseMiddleware):
-    async def __call__(self, update, context, next_handler):
-        async with SessionLocal() as session:
-            context.session = session
-            return await next_handler(update, context)
+# ✅ async middleware — просто функция, не класс
+async def session_middleware(update, context, next_handler):
+    async with SessionLocal() as session:
+        context.session = session
+        return await next_handler(update, context)
 
+# Установка команд бота
 async def set_bot_commands(application):
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
@@ -36,25 +35,28 @@ async def set_bot_commands(application):
         BotCommand("tracking", "Отследить контейнер/вагон")
     ])
 
+# Обработка ошибок
 async def error_handler(update, context):
     logger.error(f"Exception: {context.error}", exc_info=context.error)
 
+# post_init — после запуска
 async def post_init(application):
     await set_bot_commands(application)
     start_scheduler(application)
 
+# Точка входа
 def main():
     # Фоновые задачи
     start_mail_checking()
     keep_alive()
 
-    # Создаём Application (PTB v22+)
+    # Создание приложения
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # Middleware для передачи session во все context
-    application.add_middleware(SQLAlchemySessionMiddleware())
+    # ✅ Подключение middleware для session
+    application.add_middleware(session_middleware)
 
-    # Обработчики команд
+    # Обработчики
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
@@ -63,18 +65,14 @@ def main():
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    # Если есть CallbackQueryHandler для inline-кнопок, добавь сюда
-    # application.add_handler(CallbackQueryHandler(...))
+    # CallbackQueryHandler для inline — добавляй если используешь
 
-    # Обработчик ошибок
     application.add_error_handler(error_handler)
-
-    # post_init: запуск команд и scheduler после старта
     application.post_init = post_init
 
     logger.info("✨ Бот запущен!")
 
-    # Для webhooks (PTB[webhooks] должен быть установлен!)
+    # Запуск через webhook (не забудь установить PTB с [webhooks])
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
