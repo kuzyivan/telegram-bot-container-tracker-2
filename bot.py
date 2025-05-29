@@ -49,10 +49,13 @@ def main():
     start_mail_checking()
     keep_alive()
 
-    application = ApplicationBuilder().token(TOKEN).build()
-
-    # ✅ Правильный способ добавления middleware:
-    application.middleware.append(session_middleware)
+    # ✅ Middleware добавляется через ApplicationBuilder до build()
+    application = (
+        ApplicationBuilder()
+        .token(TOKEN)
+        .update_middleware(session_middleware)
+        .build()
+    )
 
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
