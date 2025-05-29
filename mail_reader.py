@@ -1,8 +1,6 @@
 import os
 import logging
-import asyncio
-from imap_tools import aioimaplib
-from datetime import datetime
+from imap_tools import MailBox
 import pandas as pd
 from sqlalchemy import delete
 from db import SessionLocal
@@ -17,52 +15,45 @@ DOWNLOAD_FOLDER = 'downloads'
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-async def check_mail():
+def fetch_latest_excel():
+    """
+    Скачивает самый свежий Excel-файл из ящика и возвращает путь к нему.
+    """
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
-        return
+        return None
 
     try:
-        # асинхронный клиент для imap-tools (aioimaplib)
-        client = aioimaplib.AioImapClient(IMAP_SERVER, 993, ssl=True)
-        await client.wait_hello_from_server()
-        await client.login(EMAIL, PASSWORD)
-        await client.select('INBOX')
-        _, data = await client.uid('search', None, 'ALL')
-        uids = data[0].decode().split()
-        latest_file = None
-        latest_date = None
+        with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
+            latest_file = None
+            latest_date = None
 
-        for uid in uids[::-1]:  # С конца к началу (новые письма)
-            _, msg_data = await client.uid('fetch', uid, '(RFC822)')
-            for response_part in msg_data:
-                if isinstance(response_part, tuple):
-                    import email
-                    msg = email.message_from_bytes(response_part[1])
-                    msg_date = email.utils.parsedate_to_datetime(msg['Date'])
-                    for part in msg.walk():
-                        if part.get_content_maintype() == 'application' and part.get_filename() and part.get_filename().endswith('.xlsx'):
-                            if latest_date is None or msg_date > latest_date:
-                                latest_date = msg_date
-                                latest_file = (part, part.get_filename())
+            for msg in mailbox.fetch():
+                for att in msg.attachments:
+                    if att.filename.endswith('.xlsx'):
+                        msg_date = msg.date
+                        if latest_date is None or msg_date < msg_date:
+                            latest_date = msg_date
+                            latest_file = (att, att.filename)
+
             if latest_file:
-                break
-
-        if latest_file:
-            filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
-            with open(filepath, 'wb') as f:
-                f.write(latest_file[0].get_payload(decode=True))
-            logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-            await process_file(filepath)
-        else:
-            logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
-
-        await client.logout()
+                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+                with open(filepath, 'wb') as f:
+                    f.write(latest_file[0].payload)
+                logger.info(f"📥 Скачан самый свежий файл: {filepath}")
+                return filepath
+            else:
+                logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
+                return None
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
+        return None
 
 async def process_file(filepath):
+    """
+    Обрабатывает файл Excel и загружает в базу через асинхронную сессию.
+    """
     try:
         df = pd.read_excel(filepath, skiprows=3)
         records = []
@@ -102,7 +93,12 @@ async def process_file(filepath):
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
 async def start_mail_checking():
+    """
+    Асинхронно запускает синхронную проверку почты и обработку файла.
+    """
     logger.info("📩 Запущена проверка почты...")
-    await check_mail()
+    import asyncio
+    filepath = await asyncio.to_thread(fetch_latest_excel)
+    if filepath:
+        await process_file(filepath)
     logger.info("🔄 Проверка почты завершена.")
-
