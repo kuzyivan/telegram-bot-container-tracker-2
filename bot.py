@@ -22,28 +22,19 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
-# Middleware — добавляет сессию к каждому update
-async def session_middleware(update, context, next_handler):
-    async with SessionLocal() as session:
-        context.session = session
-        return await next_handler(update, context)
-
 async def main():
-    # Запуск проверки почты (синхронная, но можно асинхронно запускать при необходимости)
+    # Можно убрать или оставить, если sync
     start_mail_checking()
     keep_alive()
 
     application = Application.builder().token(TOKEN).build()
 
-    # post_init теперь async!
     async def post_init(application):
         start_scheduler(application.bot)
         await set_bot_commands(application)
 
     application.post_init = post_init
 
-    # Middleware для PTB 22+
-    # Не используем MessageHandler для middleware, а добавляем как отдельный middleware:
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
@@ -52,9 +43,6 @@ async def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("tracking", tracking))
-
-    # Добавляем middleware
-    application.middleware(session_middleware)
 
     print("✅ Webhook init checkpoint OK")
     print("DEBUG: got containers for tracking")

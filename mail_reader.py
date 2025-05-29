@@ -40,7 +40,13 @@ def check_mail():
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
                 logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-                asyncio.run(process_file(filepath))
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.create_task(process_file(filepath))
             else:
                 logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
 
