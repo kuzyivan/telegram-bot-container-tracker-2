@@ -1,13 +1,12 @@
-
 import os
 import logging
 from imap_tools import MailBox
 from datetime import datetime
 import pandas as pd
-from sqlalchemy.orm import Session
 from sqlalchemy import delete
 from db import SessionLocal
 from models import Tracking
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +40,14 @@ def check_mail():
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
                 logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-                process_file(filepath)
+                asyncio.run(process_file(filepath))
             else:
                 logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
 
-def process_file(filepath):
+async def process_file(filepath):
     try:
         df = pd.read_excel(filepath, skiprows=3)
         if 'Номер контейнера' not in df.columns:
@@ -74,10 +73,10 @@ def process_file(filepath):
             )
             records.append(record)
 
-        with SessionLocal() as session:
-            session.execute(delete(Tracking))
-            session.bulk_save_objects(records)
-            session.commit()
+        async with SessionLocal() as session:
+            await session.execute(delete(Tracking))
+            session.add_all(records)
+            await session.commit()
 
         last_date = df['Дата и время операции'].dropna().max()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
@@ -93,4 +92,3 @@ def start_mail_checking():
     logger.info("📩 Запущена проверка почты...")
     check_mail()
     logger.info("🔄 Проверка почты завершена.")
-
