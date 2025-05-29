@@ -1,7 +1,10 @@
+
 import os
 import logging
 from imap_tools import MailBox
+from datetime import datetime
 import pandas as pd
+from sqlalchemy.orm import Session
 from sqlalchemy import delete
 from db import SessionLocal
 from models import Tracking
@@ -15,13 +18,10 @@ DOWNLOAD_FOLDER = 'downloads'
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-def fetch_latest_excel():
-    """
-    Скачивает самый свежий Excel-файл из ящика и возвращает путь к нему.
-    """
+def check_mail():
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
-        return None
+        return
 
     try:
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
@@ -32,7 +32,7 @@ def fetch_latest_excel():
                 for att in msg.attachments:
                     if att.filename.endswith('.xlsx'):
                         msg_date = msg.date
-                        if latest_date is None or msg_date < msg_date:
+                        if latest_date is None or msg_date > latest_date:
                             latest_date = msg_date
                             latest_file = (att, att.filename)
 
@@ -41,23 +41,20 @@ def fetch_latest_excel():
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
                 logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-                return filepath
+                process_file(filepath)
             else:
                 logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
-                return None
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
-        return None
 
-async def process_file(filepath):
-    """
-    Обрабатывает файл Excel и загружает в базу через асинхронную сессию.
-    """
+def process_file(filepath):
     try:
         df = pd.read_excel(filepath, skiprows=3)
-        records = []
+        if 'Номер контейнера' not in df.columns:
+            raise ValueError("['Номер контейнера']")
 
+        records = []
         for _, row in df.iterrows():
             km_left = int(row.get('Расстояние оставшееся', 0))
             forecast_days = round(km_left / 600, 1) if km_left else 0.0
@@ -77,10 +74,10 @@ async def process_file(filepath):
             )
             records.append(record)
 
-        async with SessionLocal() as session:
-            await session.execute(delete(Tracking))
-            session.add_all(records)
-            await session.commit()
+        with SessionLocal() as session:
+            session.execute(delete(Tracking))
+            session.bulk_save_objects(records)
+            session.commit()
 
         last_date = df['Дата и время операции'].dropna().max()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
@@ -92,13 +89,8 @@ async def process_file(filepath):
     except Exception as e:
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
-async def start_mail_checking():
-    """
-    Асинхронно запускает синхронную проверку почты и обработку файла.
-    """
+def start_mail_checking():
     logger.info("📩 Запущена проверка почты...")
-    import asyncio
-    filepath = await asyncio.to_thread(fetch_latest_excel)
-    if filepath:
-        await process_file(filepath)
+    check_mail()
     logger.info("🔄 Проверка почты завершена.")
+

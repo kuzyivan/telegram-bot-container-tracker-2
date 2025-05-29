@@ -10,13 +10,12 @@ import tempfile
 scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
 
-def start_scheduler(application):
-    # передаём весь application, чтобы была поддержка PTB 21+
-    scheduler.add_job(lambda: send_notifications(application, time(9, 0)), 'cron', hour=23, minute=0)
-    scheduler.add_job(lambda: send_notifications(application, time(16, 0)), 'cron', hour=6, minute=0)
+def start_scheduler(bot):
+    scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
+    scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
     scheduler.start()
 
-async def send_notifications(application, target_time: time):
+async def send_notifications(bot, target_time: time):
     async with SessionLocal() as session:
         result = await session.execute(
             select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
@@ -46,7 +45,7 @@ async def send_notifications(application, target_time: time):
                     ])
 
             if not rows:
-                await application.bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(sub.containers)}")
+                await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(sub.containers)}")
                 continue
 
             df = pd.DataFrame(rows, columns=[
@@ -59,4 +58,4 @@ async def send_notifications(application, target_time: time):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 df.to_excel(tmp.name, index=False)
                 filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
-                await application.bot.send_document(chat_id=sub.user_id, document=InputFile(tmp.name), filename=filename)
+                await bot.send_document(chat_id=sub.user_id, document=InputFile(tmp.name), filename=filename)

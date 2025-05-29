@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from openpyxl.styles import PatternFill
 from sqlalchemy.orm import Session
 from db import engine
+from db import SessionLocal
 from models import TrackingSubscription
 import tempfile
 
@@ -15,26 +16,26 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    session = context.session  # Используем middleware-сессию
-    subs = session.query(TrackingSubscription).all()
-    if not subs:
-        await update.message.reply_text("Нет активных слежений.")
-        return
+    with SessionLocal() as session:
+        subs = session.query(TrackingSubscription).all()
+        if not subs:
+            await update.message.reply_text("Нет активных слежений.")
+            return
 
-    data = [
-        {
-            "user_id": s.user_id,
-            "username": s.username,
-            "containers": s.containers,
-            "time": s.notify_time,
-        }
-        for s in subs
-    ]
-    df = pd.DataFrame(data)
-    with tempfile.NamedTemporaryFile("wb", suffix=".xlsx", delete=False) as tmp:
-        df.to_excel(tmp.name, index=False)
-        tmp.flush()
-        await update.message.reply_document(document=open(tmp.name, "rb"), filename="tracking_subs.xlsx")
+        data = [
+            {
+                "user_id": s.user_id,
+                "username": s.username,
+                "containers": s.containers,
+                "time": s.notify_time,
+            }
+            for s in subs
+        ]
+        df = pd.DataFrame(data)
+        with tempfile.NamedTemporaryFile("wb", suffix=".xlsx", delete=False) as tmp:
+            df.to_excel(tmp.name, index=False)
+            tmp.flush()
+            await update.message.reply_document(document=open(tmp.name, "rb"), filename="tracking_subs.xlsx")
 
 # /stats — статистика запросов за последние сутки в текстовом виде
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -42,7 +43,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    # Для stats используется engine напрямую, так как нужен raw SQL
     with Session(engine) as session:
         query = """
             SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
@@ -83,7 +83,6 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    # Для экспорта также нужен engine (pandas)
     with Session(engine) as session:
         df = pd.read_sql_query(
             "SELECT * FROM stats WHERE user_id::text != %s",
