@@ -1,21 +1,21 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters 
+import logging
+import asyncio
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram import BotCommand
+
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
 from scheduler import start_scheduler
 from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats, tracking
-import logging
 from db import SessionLocal
 from handlers.tracking_handlers import tracking_conversation_handler
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def set_bot_commands(application):
-    from telegram import BotCommand
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
         BotCommand("stats", "Статистика запросов (для администратора)"),
@@ -28,20 +28,22 @@ async def session_middleware(update, context, next_handler):
         context.session = session
         return await next_handler(update, context)
 
-def main():
+async def main():
+    # Запуск проверки почты (синхронная, но можно асинхронно запускать при необходимости)
     start_mail_checking()
     keep_alive()
 
     application = Application.builder().token(TOKEN).build()
 
+    # post_init теперь async!
     async def post_init(application):
         start_scheduler(application.bot)
-        set_bot_commands(application)
+        await set_bot_commands(application)
 
     application.post_init = post_init
 
-    # Добавляем middleware в начало цепочки
-    application.add_handler(MessageHandler(filters.ALL, session_middleware), group=-1)
+    # Middleware для PTB 22+
+    # Не используем MessageHandler для middleware, а добавляем как отдельный middleware:
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
@@ -50,19 +52,20 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("tracking", tracking))
-    
-    application.post_init = set_bot_commands
+
+    # Добавляем middleware
+    application.middleware(session_middleware)
 
     print("✅ Webhook init checkpoint OK")
     print("DEBUG: got containers for tracking")
-    
     logger.info("✨ Бот запущен!")
-    application.run_webhook(
+
+    await application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path=TOKEN,
-        webhook_url=f"https://{RENDER_HOSTNAME}/{TOKEN}"
+        webhook_url=f"https://{RENDER_HOSTNAME}/{TOKEN}",
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
