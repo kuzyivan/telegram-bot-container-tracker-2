@@ -1,10 +1,9 @@
-
 import os
 import logging
-from imap_tools import MailBox
+import asyncio
+from imap_tools import aioimaplib
 from datetime import datetime
 import pandas as pd
-from sqlalchemy.orm import Session
 from sqlalchemy import delete
 from db import SessionLocal
 from models import Tracking
@@ -18,32 +17,47 @@ DOWNLOAD_FOLDER = 'downloads'
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-def check_mail():
+async def check_mail():
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
         return
 
     try:
-        with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
-            latest_file = None
-            latest_date = None
+        # асинхронный клиент для imap-tools (aioimaplib)
+        client = aioimaplib.AioImapClient(IMAP_SERVER, 993, ssl=True)
+        await client.wait_hello_from_server()
+        await client.login(EMAIL, PASSWORD)
+        await client.select('INBOX')
+        _, data = await client.uid('search', None, 'ALL')
+        uids = data[0].decode().split()
+        latest_file = None
+        latest_date = None
 
-            for msg in mailbox.fetch():
-                for att in msg.attachments:
-                    if att.filename.endswith('.xlsx'):
-                        msg_date = msg.date
-                        if latest_date is None or msg_date > latest_date:
-                            latest_date = msg_date
-                            latest_file = (att, att.filename)
-
+        for uid in uids[::-1]:  # С конца к началу (новые письма)
+            _, msg_data = await client.uid('fetch', uid, '(RFC822)')
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    import email
+                    msg = email.message_from_bytes(response_part[1])
+                    msg_date = email.utils.parsedate_to_datetime(msg['Date'])
+                    for part in msg.walk():
+                        if part.get_content_maintype() == 'application' and part.get_filename() and part.get_filename().endswith('.xlsx'):
+                            if latest_date is None or msg_date > latest_date:
+                                latest_date = msg_date
+                                latest_file = (part, part.get_filename())
             if latest_file:
-                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
-                with open(filepath, 'wb') as f:
-                    f.write(latest_file[0].payload)
-                logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-                process_file(filepath)
-            else:
-                logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
+                break
+
+        if latest_file:
+            filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+            with open(filepath, 'wb') as f:
+                f.write(latest_file[0].get_payload(decode=True))
+            logger.info(f"📥 Скачан самый свежий файл: {filepath}")
+            await process_file(filepath)
+        else:
+            logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
+
+        await client.logout()
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
@@ -72,10 +86,10 @@ async def process_file(filepath):
             )
             records.append(record)
 
-        async with SessionLocal() as session:  # ✅
+        async with SessionLocal() as session:
             await session.execute(delete(Tracking))
             session.add_all(records)
-            await session.commit()  # ✅
+            await session.commit()
 
         last_date = df['Дата и время операции'].dropna().max()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
@@ -87,8 +101,8 @@ async def process_file(filepath):
     except Exception as e:
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
-def start_mail_checking():
+async def start_mail_checking():
     logger.info("📩 Запущена проверка почты...")
-    check_mail()
+    await check_mail()
     logger.info("🔄 Проверка почты завершена.")
 

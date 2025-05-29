@@ -14,18 +14,18 @@ from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
 from handlers.admin_handlers import stats, exportstats, tracking
 from handlers.tracking_handlers import tracking_conversation_handler
-from db import SessionLocal  # async_sessionmaker
+from db import SessionLocal
+
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ✅ async middleware — просто функция, не класс
 async def session_middleware(update, context, next_handler):
     async with SessionLocal() as session:
         context.session = session
         return await next_handler(update, context)
 
-# Установка команд бота
 async def set_bot_commands(application):
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
@@ -35,27 +35,20 @@ async def set_bot_commands(application):
         BotCommand("tracking", "Отследить контейнер/вагон")
     ])
 
-# Обработка ошибок
 async def error_handler(update, context):
     logger.error(f"Exception: {context.error}", exc_info=context.error)
 
-# post_init — после запуска
 async def post_init(application):
     await set_bot_commands(application)
     start_scheduler(application)
 
-# Точка входа
-def main():
-    start_mail_checking()
-    keep_alive()
+async def main():
+    # ✅ Запуск проверки почты
+    await start_mail_checking()  # async!
+    keep_alive()  # если не async, ок
 
-    # ✅ Middleware добавляется через ApplicationBuilder до build()
-    application = (
-        ApplicationBuilder()
-        .token(TOKEN)
-        .update_middleware(session_middleware)
-        .build()
-    )
+    application = ApplicationBuilder().token(TOKEN).build()
+    application.middleware.register(session_middleware)
 
     application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("menu", show_menu))
@@ -71,7 +64,7 @@ def main():
 
     logger.info("✨ Бот запущен!")
 
-    application.run_webhook(
+    await application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path=TOKEN,
@@ -79,4 +72,4 @@ def main():
     )
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
