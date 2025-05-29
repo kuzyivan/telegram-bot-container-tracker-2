@@ -4,8 +4,7 @@ from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
 from datetime import datetime, timedelta
 from openpyxl.styles import PatternFill
-from sqlalchemy.orm import Session
-from db import engine
+from sqlalchemy import text
 from db import SessionLocal
 from models import TrackingSubscription
 import tempfile
@@ -16,21 +15,15 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    with SessionLocal() as session:
-        subs = session.query(TrackingSubscription).all()
+    async with SessionLocal() as session:
+        result = await session.execute(text("SELECT * FROM tracking_subscriptions"))
+        subs = result.fetchall()
         if not subs:
             await update.message.reply_text("Нет активных слежений.")
             return
 
-        data = [
-            {
-                "user_id": s.user_id,
-                "username": s.username,
-                "containers": s.containers,
-                "time": s.notify_time,
-            }
-            for s in subs
-        ]
+        columns = result.keys()
+        data = [dict(zip(columns, row)) for row in subs]
         df = pd.DataFrame(data)
         with tempfile.NamedTemporaryFile("wb", suffix=".xlsx", delete=False) as tmp:
             df.to_excel(tmp.name, index=False)
@@ -43,37 +36,36 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    with Session(engine) as session:
-        query = """
+    async with SessionLocal() as session:
+        query = text("""
             SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
                    STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
             FROM stats
             WHERE timestamp >= NOW() - INTERVAL '1 day'
-              AND user_id != %s
+              AND user_id != :admin_id
             GROUP BY user_id, username
             ORDER BY запросов DESC
-        """
-        df = pd.read_sql_query(query, session.bind, params=(ADMIN_CHAT_ID,))
+        """)
+        result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
+        rows = result.fetchall()
 
-    if df.empty:
+    if not rows:
         await update.message.reply_text("Нет статистики за последние сутки.")
         return
 
-    text = "📊 Статистика за последние 24 часа:\n\n"
+    text_msg = "📊 Статистика за последние 24 часа:\n\n"
     messages = []
-
-    for _, row in df.iterrows():
+    for row in rows:
         entry = (
-            f"👤 {row['username']} (ID: {row['user_id']})\n"
-            f"Запросов: {row['запросов']}\n"
-            f"Контейнеры: {row['контейнеры']}\n\n"
+            f"👤 {row.username} (ID: {row.user_id})\n"
+            f"Запросов: {row.запросов}\n"
+            f"Контейнеры: {row.контейнеры}\n\n"
         )
-        if len(text) + len(entry) > 4000:
-            messages.append(text)
-            text = ""
-        text += entry
-    messages.append(text)
-
+        if len(text_msg) + len(entry) > 4000:
+            messages.append(text_msg)
+            text_msg = ""
+        text_msg += entry
+    messages.append(text_msg)
     for msg in messages:
         await update.message.reply_text(msg)
 
@@ -83,17 +75,17 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
-    with Session(engine) as session:
-        df = pd.read_sql_query(
-            "SELECT * FROM stats WHERE user_id::text != %s",
-            session.bind,
-            params=(ADMIN_CHAT_ID,)
-        )
+    async with SessionLocal() as session:
+        query = text("SELECT * FROM stats WHERE user_id::text != :admin_id")
+        result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
+        rows = result.fetchall()
 
-    if df.empty:
+    if not rows:
         await update.message.reply_text("Нет данных для экспорта.")
         return
 
+    columns = result.keys()
+    df = pd.DataFrame(rows, columns=columns)
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Статистика')

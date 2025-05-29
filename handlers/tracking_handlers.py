@@ -46,8 +46,7 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username
 
-    # Сохраняем подписку
-    with SessionLocal() as session:
+    async with SessionLocal() as session:
         sub = TrackingSubscription(
             user_id=user_id,
             username=username,
@@ -55,7 +54,7 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             notify_time=time_obj
         )
         session.add(sub)
-        session.commit()
+        await session.commit()
 
     await update.callback_query.message.reply_text(
         f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {time_obj.strftime('%H:%M')} (по местному времени)"
