@@ -22,7 +22,7 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
     ])
 
-async def main():
+def main():
     start_mail_checking()
     keep_alive()
 
@@ -46,7 +46,7 @@ async def main():
     print("DEBUG: got containers for tracking")
     logger.info("✨ Бот запущен!")
 
-    await application.run_webhook(
+    application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path=TOKEN,
@@ -54,11 +54,4 @@ async def main():
     )
 
 if __name__ == "__main__":
-    import asyncio
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        # Already running event loop (Render, Jupyter, ...). 
-        loop = asyncio.get_event_loop()
-        loop.create_task(main())
-        loop.run_forever()
+    main()

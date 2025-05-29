@@ -1,4 +1,4 @@
-python-telegram-bot[webhooks]
+python-telegram-bot[webhooks]==22.1
 imap-tools
 apscheduler
 pandas
