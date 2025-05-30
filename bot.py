@@ -19,9 +19,11 @@ async def set_bot_commands(application):
     print("[DEBUG] set_bot_commands called")
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
-        BotCommand("stats", "Статистика запросов (админ)"),
-        BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
+        BotCommand("stats", "Статистика запросов (для администратора)"),
+        BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)"),
         BotCommand("testnotify", "Тестовая отправка дислокации (админ)")
+    ])
+
     ])
 
 def main():
