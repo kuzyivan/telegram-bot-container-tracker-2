@@ -6,21 +6,16 @@ from models import TrackingSubscription, Tracking
 from db import SessionLocal
 from telegram import InputFile
 import pandas as pd
-import tempfile
 import os
-from mail_reader import check_mail
-import logging
+import tempfile
 
 scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
 
 def start_scheduler(bot):
-    scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
-    scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'interval', minutes=30)
-    logging.info("🕓 Планировщик: задачи добавлены.")
+    scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
+    scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
     scheduler.start()
-
 
 async def send_notifications(bot, target_time: time):
     async with SessionLocal() as session:
@@ -63,14 +58,13 @@ async def send_notifications(bot, target_time: time):
             ])
 
             filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
-            temp_dir = tempfile.gettempdir()
-            file_path = os.path.join(temp_dir, filename)
+            temp_path = os.path.join(tempfile.gettempdir(), filename)
 
-            df.to_excel(file_path, index=False)
+            df.to_excel(temp_path, index=False)
 
             await bot.send_document(
                 chat_id=sub.user_id,
-                document=InputFile(file_path),
+                document=InputFile(temp_path),
                 filename=filename
             )
 
