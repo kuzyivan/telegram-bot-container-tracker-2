@@ -67,11 +67,13 @@ async def send_notifications(bot, target_time: time):
             # 👇 явно задаём путь и имя
             tmp_path = tmp.name
             filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
-            os.rename(tmp_path, tmp_path + ".xlsx")  # добавим .xlsx, чтобы InputFile знал формат
-            final_path = tmp_path + ".xlsx"
+            temp_dir = tempfile.gettempdir()
+            file_path = os.path.join(temp_dir, filename)
+
+            df.to_excel(file_path, index=False)
 
             await bot.send_document(
                 chat_id=sub.user_id,
-                document=InputFile(final_path),
+                document=InputFile(file_path),
                 filename=filename
             )
