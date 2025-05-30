@@ -2,12 +2,13 @@ import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from openpyxl.styles import PatternFill
 from sqlalchemy import text
 from db import SessionLocal
 from models import TrackingSubscription
 import tempfile
+from scheduler import send_notifications
 
 # /tracking — выгрузка всех подписок на слежение в Excel
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,3 +102,11 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vladivostok_time = datetime.utcnow() + timedelta(hours=10)
         filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
         await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
+
+# /testnotify — тестовая отправка рассылки админу
+async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+    await send_notifications(context.bot, time(9, 0))
+    await update.message.reply_text("✅ Тестовая рассылка дислокации выполнена.")

@@ -8,7 +8,7 @@ from mail_reader import start_mail_checking
 from scheduler import start_scheduler
 from utils.keep_alive import keep_alive
 from handlers.user_handlers import start, handle_sticker, handle_message, show_menu
-from handlers.admin_handlers import stats, exportstats, tracking
+from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from db import SessionLocal
 from handlers.tracking_handlers import tracking_conversation_handler
 
@@ -19,8 +19,9 @@ async def set_bot_commands(application):
     print("[DEBUG] set_bot_commands called")
     await application.bot.set_my_commands([
         BotCommand("start", "Начать работу с ботом"),
-        BotCommand("stats", "Статистика запросов (для администратора)"),
+        BotCommand("stats", "Статистика запросов (админ)"),
         BotCommand("exportstats", "Выгрузка всех запросов в Excel (админ)")
+        BotCommand("testnotify", "Тестовая отправка дислокации (админ)")
     ])
 
 def main():
@@ -43,6 +44,7 @@ def main():
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("tracking", tracking))
+    application.add_handler(CommandHandler("testnotify", test_notify))
 
     print("✅ Webhook init checkpoint OK")
     print("DEBUG: got containers for tracking")
