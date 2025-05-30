@@ -1,3 +1,4 @@
+import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import datetime, time, timedelta
@@ -62,9 +63,15 @@ async def send_notifications(bot, target_time: time):
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 df.to_excel(tmp.name, index=False)
-                filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
-                await bot.send_document(
-                    chat_id=sub.user_id,
-                    document=InputFile(tmp.name),
-                    filename=filename
-                )
+
+            # 👇 явно задаём путь и имя
+            tmp_path = tmp.name
+            filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
+            os.rename(tmp_path, tmp_path + ".xlsx")  # добавим .xlsx, чтобы InputFile знал формат
+            final_path = tmp_path + ".xlsx"
+
+            await bot.send_document(
+                chat_id=sub.user_id,
+                document=InputFile(final_path),
+                filename=filename
+            )
