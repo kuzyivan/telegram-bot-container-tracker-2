@@ -24,8 +24,6 @@ async def set_bot_commands(application):
         BotCommand("testnotify", "Тестовая отправка дислокации (админ)")
     ])
 
-    ])
-
 def main():
     start_mail_checking()
     keep_alive()
