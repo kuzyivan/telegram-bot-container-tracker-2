@@ -6,6 +6,8 @@ from db import SessionLocal
 from telegram import InputFile
 import pandas as pd
 import tempfile
+from mail_reader import check_mail
+import logging
 
 scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
@@ -14,6 +16,9 @@ def start_scheduler(bot):
     scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
     scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
     scheduler.start()
+    scheduler.add_job(check_mail, 'interval', minutes=30)
+    logging.info("🕓 Планировщик: добавлена задача проверки почты каждые 30 минут.")
+
 
 async def send_notifications(bot, target_time: time):
     async with SessionLocal() as session:
