@@ -5,9 +5,8 @@ from datetime import datetime, time, timedelta
 from models import TrackingSubscription, Tracking
 from db import SessionLocal
 from telegram import InputFile
+from utils.excel import generate_dislocation_excel
 import pandas as pd
-import os
-import tempfile
 
 scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
@@ -57,14 +56,10 @@ async def send_notifications(bot, target_time: time):
                 'Номер вагона', 'Дорога'
             ])
 
-            filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
-            temp_path = os.path.join(tempfile.gettempdir(), filename)
-
-            df.to_excel(temp_path, index=False)
-
+            file_path = generate_dislocation_excel(df)
             await bot.send_document(
                 chat_id=sub.user_id,
-                document=InputFile(temp_path),
-                filename=filename
+                document=InputFile(file_path),
+                filename="Дислокация.xlsx"
             )
 
