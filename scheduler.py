@@ -1,4 +1,4 @@
-import os
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import datetime, time, timedelta
@@ -7,6 +7,7 @@ from db import SessionLocal
 from telegram import InputFile
 import pandas as pd
 import tempfile
+import os
 from mail_reader import check_mail
 import logging
 
@@ -16,9 +17,9 @@ VLADIVOSTOK_OFFSET = timedelta(hours=10)
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.start()
     scheduler.add_job(check_mail, 'interval', minutes=30)
-    logging.info("🕓 Планировщик: добавлена задача проверки почты каждые 30 минут.")
+    logging.info("🕓 Планировщик: задачи добавлены.")
+    scheduler.start()
 
 
 async def send_notifications(bot, target_time: time):
@@ -61,11 +62,6 @@ async def send_notifications(bot, target_time: time):
                 'Номер вагона', 'Дорога'
             ])
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-                df.to_excel(tmp.name, index=False)
-
-            # 👇 явно задаём путь и имя
-            tmp_path = tmp.name
             filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
             temp_dir = tempfile.gettempdir()
             file_path = os.path.join(temp_dir, filename)
@@ -77,3 +73,4 @@ async def send_notifications(bot, target_time: time):
                 document=InputFile(file_path),
                 filename=filename
             )
+
