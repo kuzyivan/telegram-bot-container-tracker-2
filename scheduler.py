@@ -63,4 +63,8 @@ async def send_notifications(bot, target_time: time):
             with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
                 df.to_excel(tmp.name, index=False)
                 filename = f"Дислокация {datetime.utcnow().strftime('%H-%M')}.xlsx"
-                await bot.send_document(chat_id=sub.user_id, document=InputFile(tmp.name), filename=filename)
+                await bot.send_document(
+                    chat_id=sub.user_id,
+                    document=InputFile(tmp.name),
+                    filename=filename
+                )
