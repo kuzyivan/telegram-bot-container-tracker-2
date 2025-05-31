@@ -1,4 +1,5 @@
 import os
+import ast
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import time, timedelta
@@ -31,8 +32,13 @@ async def send_notifications(bot, target_time: time):
         subscriptions = result.scalars().all()
 
         for sub in subscriptions:
+            try:
+                containers = ast.literal_eval(sub.containers) if isinstance(sub.containers, str) else sub.containers
+            except Exception:
+                containers = []
+
             rows = []
-            for container in sub.containers:
+            for container in containers:
                 result = await session.execute(
                     select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
                 )
@@ -53,7 +59,7 @@ async def send_notifications(bot, target_time: time):
                     ])
 
             if not rows:
-                await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(sub.containers)}")
+                await bot.send_message(sub.user_id, f"\U0001F4ED Нет данных по контейнерам {', '.join(containers)}")
                 continue
 
             df = pd.DataFrame(rows, columns=[
@@ -67,6 +73,6 @@ async def send_notifications(bot, target_time: time):
             filename = os.path.basename(file_path)
             await bot.send_document(
                 chat_id=sub.user_id,
-                document=InputFile(file_path, filename=filename),  # ⬅️ передаём filename прямо в InputFile
-                caption="📦 Актуальная дислокация контейнеров"
+                document=InputFile(file_path, filename=filename),
+                caption="\U0001F4E6 Актуальная дислокация контейнеров"
             )
