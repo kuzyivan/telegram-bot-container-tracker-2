@@ -17,7 +17,7 @@ DOWNLOAD_FOLDER = 'downloads'
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-def check_mail():
+async def check_mail():
     logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 30 минут)...")
 
     if not EMAIL or not PASSWORD:
@@ -42,12 +42,7 @@ def check_mail():
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
                 logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                loop.create_task(process_file(filepath))
+                await process_file(filepath)
             else:
                 logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
 
@@ -96,6 +91,10 @@ async def process_file(filepath):
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
 def start_mail_checking():
-    logger.info("📩 Запущена проверка почты...")
-    check_mail()
-    logger.info("🔄 Проверка почты завершена.")
+    logger.info("📩 Запущена проверка почты (однократно при старте)...")
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    loop.create_task(check_mail())
