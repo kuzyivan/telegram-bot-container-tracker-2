@@ -66,5 +66,5 @@ async def send_notifications(bot, target_time: time):
             await bot.send_document(
                 chat_id=sub.user_id,
                 document=InputFile(file_path),
-                filename="Дислокация.xlsx"
+                filename=os.path.basename(file_path)  # <= важно
             )
