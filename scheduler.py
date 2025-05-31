@@ -1,5 +1,6 @@
 import os
 import ast
+import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import time, timedelta
@@ -12,6 +13,7 @@ from mail_reader import check_mail
 
 scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
+logger = logging.getLogger(__name__)
 
 def start_scheduler(bot):
     scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
@@ -37,6 +39,8 @@ async def send_notifications(bot, target_time: time):
             except Exception:
                 containers = []
 
+            logger.info(f"[NOTIFY] user_id={sub.user_id}, username={sub.username}, containers={containers}")
+
             rows = []
             for container in containers:
                 result = await session.execute(
@@ -44,7 +48,7 @@ async def send_notifications(bot, target_time: time):
                 )
                 track = result.scalars().first()
                 if track:
-                    rows.append([
+                    row_data = [
                         track.container_number,
                         track.from_station,
                         track.to_station,
@@ -56,7 +60,9 @@ async def send_notifications(bot, target_time: time):
                         track.forecast_days,
                         track.wagon_number,
                         track.operation_road
-                    ])
+                    ]
+                    logger.debug(f"[TRACK] {row_data}")
+                    rows.append(row_data)
 
             if not rows:
                 await bot.send_message(sub.user_id, f"\U0001F4ED Нет данных по контейнерам {', '.join(containers)}")
