@@ -1,7 +1,6 @@
-
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
-from datetime import datetime, time, timedelta
+from datetime import time, timedelta
 from models import TrackingSubscription, Tracking
 from db import SessionLocal
 from telegram import InputFile
@@ -15,8 +14,13 @@ VLADIVOSTOK_OFFSET = timedelta(hours=10)
 def start_scheduler(bot):
     scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
     scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
+
+    scheduler.add_job(check_mail, 'interval', minutes=30, id="mail_checking_30min")  # ✅
+
     scheduler.start()
-    scheduler.add_job(check_mail, 'interval', minutes=30)
+
+    for job in scheduler.get_jobs():
+        print(f"[DEBUG] Scheduled job: {job}")
 
 async def send_notifications(bot, target_time: time):
     async with SessionLocal() as session:
@@ -64,4 +68,3 @@ async def send_notifications(bot, target_time: time):
                 document=InputFile(file_path),
                 filename="Дислокация.xlsx"
             )
-
