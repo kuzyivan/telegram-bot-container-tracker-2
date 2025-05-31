@@ -64,8 +64,9 @@ async def send_notifications(bot, target_time: time):
             ])
 
             file_path = generate_dislocation_excel(df)
+            filename = os.path.basename(file_path)
             await bot.send_document(
                 chat_id=sub.user_id,
-                document=InputFile(file_path),
-                filename=os.path.basename(file_path)  # <= важно
+                document=InputFile(file_path, filename=filename),  # ⬅️ передаём filename прямо в InputFile
+                caption="📦 Актуальная дислокация контейнеров"
             )
