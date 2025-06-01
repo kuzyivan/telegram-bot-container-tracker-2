@@ -6,13 +6,18 @@ from models import TrackingSubscription, Tracking
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from mail_reader import check_mail
 import logging
+import datetime
 
 scheduler = AsyncIOScheduler()
+
+def debug_scheduler_job():
+    logging.info(f"🕑 [DEBUG] Планировщик жив, job вызвана в {datetime.datetime.now()}")
 
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
     scheduler.add_job(check_mail, 'interval', minutes=30)
+    scheduler.add_job(debug_scheduler_job, 'interval', minutes=5)  # DEBUG JOB
     logging.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
 
@@ -60,17 +65,3 @@ async def send_notifications(bot, target_time: time):
                     document=f,
                     filename=filename
                 )
-            logging.info(f"📤 Отправлено уведомление для {sub.user_id} ({sub.username or sub.user_id}) по времени {target_time}.")
-            await session.commit()
-# This code defines a scheduler for sending notifications about container tracking.
-# It uses APScheduler to run tasks at specific times and checks for new emails periodically.
-# The `send_notifications` function retrieves tracking data from the database and sends it to users via Telegram.
-# The notifications are sent based on user subscriptions and the specified notification time.
-# The scheduler is started with the `start_scheduler` function, which sets up the jobs.
-# The code also includes logging to track the execution of scheduled tasks.
-# The `SessionLocal` is used to manage database sessions, and the `TrackingSubscription` and `Tracking` models are used to query the database.
-# The `create_excel_file` and `get_vladivostok_filename` functions are used to generate Excel files for the tracking data.
-# The `check_mail` function is called periodically to check for new emails related to container tracking.
-#             logging.info(f"📤 Отправлено уведомление для {sub.user_id} ({sub.username or sub.user_id}).")
-
-

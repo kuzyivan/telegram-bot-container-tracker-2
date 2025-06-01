@@ -1,7 +1,8 @@
 import os
 import logging
+import datetime
 from imap_tools import MailBox
-from datetime import datetime
+from datetime import datetime as dt
 import pandas as pd
 from sqlalchemy import delete
 from db import SessionLocal
@@ -18,8 +19,7 @@ DOWNLOAD_FOLDER = 'downloads'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 def check_mail():
-    logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 30 минут)...")
-
+    logger.info(f"📬 [Scheduler] Запущена проверка почты... {datetime.datetime.now()}")
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
         return
@@ -28,7 +28,6 @@ def check_mail():
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
             latest_file = None
             latest_date = None
-
             for msg in mailbox.fetch():
                 for att in msg.attachments:
                     if att.filename.endswith('.xlsx'):
@@ -41,7 +40,7 @@ def check_mail():
                 filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
-                logger.info(f"📥 Скачан самый свежий файл: {filepath}")
+                logger.info(f"📥 Скачан самый свежий файл: {filepath} ({datetime.datetime.now()})")
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
@@ -49,10 +48,12 @@ def check_mail():
                     asyncio.set_event_loop(loop)
                 loop.create_task(process_file(filepath))
             else:
-                logger.warning("⚠ Нет подходящих Excel-вложений в почте.")
+                logger.warning(f"⚠ Нет подходящих Excel-вложений в почте. {datetime.datetime.now()}")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e}")
+        logger.error(f"❌ Ошибка при проверке почты: {e} ({datetime.datetime.now()})")
+
+    logger.info(f"🔄 [Scheduler] Проверка почты завершена. {datetime.datetime.now()}")
 
 async def process_file(filepath):
     try:
@@ -86,16 +87,16 @@ async def process_file(filepath):
             await session.commit()
 
         last_date = df['Дата и время операции'].dropna().max()
-        logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
+        logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)} ({datetime.datetime.now()})")
         logger.info(f"📦 Загружено строк: {len(records)}")
         logger.info(f"🕓 Последняя дата операции в файле: {last_date}")
         logger.info(f"🚉 Уникальных станций операции: {df['Станция операции'].nunique()}")
         logger.info(f"🚛 Уникальных контейнеров: {df['Номер контейнера'].nunique()}")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки {filepath}: {e}")
+        logger.error(f"❌ Ошибка обработки {filepath}: {e} ({datetime.datetime.now()})")
 
 def start_mail_checking():
-    logger.info("📩 Запущена проверка почты...")
+    logger.info(f"📩 Запущена проверка почты... {datetime.datetime.now()}")
     check_mail()
-    logger.info("🔄 Проверка почты завершена.")
+    logger.info(f"🔄 Проверка почты завершена. {datetime.datetime.now()}")
