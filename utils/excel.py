@@ -1,14 +1,12 @@
 import pandas as pd
 import os
-import tempfile
-from datetime import datetime
-from openpyxl.styles import PatternFill
 from datetime import datetime, timezone
+from openpyxl.styles import PatternFill
 
 def generate_dislocation_excel(df: pd.DataFrame) -> str:
+    os.makedirs("temp_files", exist_ok=True)
     filename = f"dislocation_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
-    temp_dir = tempfile.gettempdir()
-    path = os.path.join(temp_dir, filename)
+    path = os.path.join("temp_files", filename)
 
     with pd.ExcelWriter(path, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Дислокация')
@@ -21,4 +19,3 @@ def generate_dislocation_excel(df: pd.DataFrame) -> str:
             worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
 
     return path
-
