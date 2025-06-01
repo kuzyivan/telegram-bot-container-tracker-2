@@ -15,6 +15,7 @@ scheduler = AsyncIOScheduler()
 VLADIVOSTOK_OFFSET = timedelta(hours=10)
 logger = logging.getLogger(__name__)
 
+
 def start_scheduler(bot):
     scheduler.add_job(lambda: send_notifications(bot, time(9, 0)), 'cron', hour=23, minute=0)
     scheduler.add_job(lambda: send_notifications(bot, time(16, 0)), 'cron', hour=6, minute=0)
@@ -25,6 +26,7 @@ def start_scheduler(bot):
 
     for job in scheduler.get_jobs():
         print(f"[DEBUG] Scheduled job: {job}")
+
 
 async def send_notifications(bot, target_time: time):
     async with SessionLocal() as session:
@@ -74,6 +76,9 @@ async def send_notifications(bot, target_time: time):
                 'Номер накладной', 'Осталось км', 'Прогноз дней',
                 'Номер вагона', 'Дорога'
             ])
+
+            logger.debug(f"[DF] {df.shape[0]} строк, {df.shape[1]} колонок")
+            logger.debug(f"[DF_PREVIEW]\n{df.head()}\n")
 
             file_path = generate_dislocation_excel(df)
             filename = os.path.basename(file_path)
