@@ -2,6 +2,7 @@ import pandas as pd
 from openpyxl.styles import PatternFill
 from datetime import datetime, timedelta
 import tempfile
+import re
 
 def create_excel_file(rows, columns):
     """
@@ -22,17 +23,18 @@ def create_excel_file(rows, columns):
                 worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
         return tmp.name
 
+def clean_sheet_name(name):
+    return re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
+
 def create_excel_multisheet(data_per_user, columns):
-    """
-    Мультилистовой Excel-файл.
-    data_per_user: dict, ключ — имя пользователя/ID, значение — список списков (строк)
-    columns: список названий столбцов (одинаков для всех листов)
-    """
+    import pandas as pd
+    from openpyxl.styles import PatternFill
+    import tempfile
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
         with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
             for user_label, rows in data_per_user.items():
-                # Excel не поддерживает длинные имена листов, ограничиваем 31 символом
-                sheet_name = str(user_label)[:31]
+                sheet_name = clean_sheet_name(user_label)
                 df = pd.DataFrame(rows, columns=columns)
                 df.to_excel(writer, index=False, sheet_name=sheet_name)
                 worksheet = writer.sheets[sheet_name]
