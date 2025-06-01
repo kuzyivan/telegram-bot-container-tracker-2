@@ -3,12 +3,13 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
 from datetime import datetime, timedelta, time
-from openpyxl.styles import PatternFill
 from sqlalchemy import text
 from db import SessionLocal
 from models import TrackingSubscription
-import tempfile
 from scheduler import send_notifications
+
+# Новый импорт для единого экспорта Excel
+from utils.send_tracking import create_excel_file, get_vladivostok_filename
 
 # /tracking — выгрузка всех подписок на слежение в Excel
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -26,10 +27,9 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         columns = result.keys()
         data = [dict(zip(columns, row)) for row in subs]
         df = pd.DataFrame(data)
-        with tempfile.NamedTemporaryFile("wb", suffix=".xlsx", delete=False) as tmp:
-            df.to_excel(tmp.name, index=False)
-            tmp.flush()
-            await update.message.reply_document(document=open(tmp.name, "rb"), filename="tracking_subs.xlsx")
+        file_path = create_excel_file(df.values.tolist())  # тут можно использовать create_excel_file для совместимости оформления
+        filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
+        await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
 # /stats — статистика запросов за последние сутки в текстовом виде
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -87,21 +87,9 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     columns = result.keys()
     df = pd.DataFrame(rows, columns=columns)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Статистика')
-            worksheet = writer.sheets['Статистика']
-
-            header_fill = PatternFill(start_color='FFD673', end_color='FFD673', fill_type='solid')
-            for cell in worksheet[1]:
-                cell.fill = header_fill
-            for col in worksheet.columns:
-                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-                worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
-
-        vladivostok_time = datetime.utcnow() + timedelta(hours=10)
-        filename = f"Статистика {vladivostok_time.strftime('%H-%M')}.xlsx"
-        await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
+    file_path = create_excel_file(df.values.tolist(), columns=list(df.columns))  # унифицированная функция
+    filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
+    await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
 # /testnotify — тестовая отправка рассылки админу
 async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
