@@ -8,17 +8,45 @@ import re
 from models import Tracking, Stats
 from db import SessionLocal
 from sqlalchemy.future import select
+from utils.keyboards import main_menu_keyboard  # добавлено
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("📦 Поставить на слежение", callback_data="track_request")],
-    ]
-    await update.message.reply_text("Выберите действие:", reply_markup=InlineKeyboardMarkup(keyboard))
+    if update.message:
+        await update.message.reply_text(
+            "Выберите действие:",
+            reply_markup=main_menu_keyboard
+        )
+    elif update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text(
+            "Выберите действие:",
+            reply_markup=main_menu_keyboard
+        )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
     await update.message.reply_sticker(sticker_id)
-    await update.message.reply_text("Привет! Отправь мне номер контейнера для отслеживания.")
+    await show_menu(update, context)
+
+async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+
+    if data == 'start':
+        await query.answer()
+        await query.edit_message_text(
+            text="Выберите действие:",
+            reply_markup=main_menu_keyboard
+        )
+    elif data == 'dislocation':
+        await query.answer()
+        await query.edit_message_text(
+            text="Введите номер контейнера для получения дислокации."
+        )
+        # Дальше пользователь вводит контейнер — сработает handle_message
+    elif data == 'track_request':
+        from handlers.tracking_handlers import ask_containers
+        return await ask_containers(update, context)
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
@@ -98,7 +126,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             km_left = "—"
             forecast_days_calc = "—"
 
-        # Расшифровка дороги (если есть)
         operation_station = f"{row[3]} 🛤️ ({row[10]})" if row[10] else row[3]
 
         msg = (
