@@ -75,7 +75,7 @@ async def send_notifications(bot, target_time: time):
                     'Номер накладной', 'Осталось км', 'Прогноз дней',
                     'Номер вагона', 'Дорога'
                 ])
-
+                
                 logger.debug(f"[DF] {df.shape[0]} строк, {df.shape[1]} колонок")
                 logger.debug(f"[DF_PREVIEW]\n{df.head()}\n")
 
