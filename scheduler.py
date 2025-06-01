@@ -68,22 +68,21 @@ async def send_notifications(bot, target_time: time):
 
             if not rows:
                 await bot.send_message(sub.user_id, f"\U0001F4ED Нет данных по контейнерам {', '.join(containers)}")
-                continue
+            else:
+                df = pd.DataFrame(rows, columns=[
+                    'Номер контейнера', 'Станция отправления', 'Станция назначения',
+                    'Станция операции', 'Операция', 'Дата и время операции',
+                    'Номер накладной', 'Осталось км', 'Прогноз дней',
+                    'Номер вагона', 'Дорога'
+                ])
 
-            df = pd.DataFrame(rows, columns=[
-                'Номер контейнера', 'Станция отправления', 'Станция назначения',
-                'Станция операции', 'Операция', 'Дата и время операции',
-                'Номер накладной', 'Осталось км', 'Прогноз дней',
-                'Номер вагона', 'Дорога'
-            ])
+                logger.debug(f"[DF] {df.shape[0]} строк, {df.shape[1]} колонок")
+                logger.debug(f"[DF_PREVIEW]\n{df.head()}\n")
 
-            logger.debug(f"[DF] {df.shape[0]} строк, {df.shape[1]} колонок")
-            logger.debug(f"[DF_PREVIEW]\n{df.head()}\n")
-
-            file_path = generate_dislocation_excel(df)
-            filename = os.path.basename(file_path)
-            await bot.send_document(
-                chat_id=sub.user_id,
-                document=InputFile(file_path, filename=filename),
-                caption="\U0001F4E6 Актуальная дислокация контейнеров"
-            )
+                file_path = generate_dislocation_excel(df)
+                filename = os.path.basename(file_path)
+                await bot.send_document(
+                    chat_id=sub.user_id,
+                    document=InputFile(file_path, filename=filename),
+                    caption="\U0001F4E6 Актуальная дислокация контейнеров"
+                )
