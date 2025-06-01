@@ -9,6 +9,14 @@ from models import Tracking, Stats
 from db import SessionLocal
 from sqlalchemy.future import select
 from utils.keyboards import main_menu_keyboard  # добавлено
+from telegram.error import BadRequest
+
+COLUMNS = [
+    'Номер контейнера', 'Станция отправления', 'Станция назначения',
+    'Станция операции', 'Операция', 'Дата и время операции',
+    'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
+    'Номер вагона', 'Дорога операции'
+]
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
@@ -18,10 +26,16 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
-            "Выберите действие:",
-            reply_markup=main_menu_keyboard
-        )
+        try:
+            await update.callback_query.edit_message_text(
+                "Выберите действие:",
+                reply_markup=main_menu_keyboard
+            )
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await update.callback_query.answer("Меню уже открыто", show_alert=False)
+            else:
+                raise
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
@@ -31,30 +45,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-
-    if data == 'start':
-        await query.answer()
-        await query.edit_message_text(
-            text="Выберите действие:",
-            reply_markup=main_menu_keyboard
-        )
-    elif data == 'dislocation':
-        await query.answer()
-        await query.edit_message_text(
-            text="Введите номер контейнера для получения дислокации."
-        )
-        # Дальше пользователь вводит контейнер — сработает handle_message
-    elif data == 'track_request':
-        from handlers.tracking_handlers import ask_containers
-        return await ask_containers(update, context)
+    try:
+        if data == 'start':
+            await query.answer()
+            await query.edit_message_text(
+                text="Выберите действие:",
+                reply_markup=main_menu_keyboard
+            )
+        elif data == 'dislocation':
+            await query.answer()
+            await query.edit_message_text(
+                text="Введите номер контейнера для получения дислокации."
+            )
+        elif data == 'track_request':
+            from handlers.tracking_handlers import ask_containers
+            return await ask_containers(update, context)
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            await query.answer("Меню уже открыто", show_alert=False)
+        else:
+            raise
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+    await show_menu(update, context)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
+        await show_menu(update, context)
         return
 
     user_input = update.message.text
@@ -104,13 +124,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(container_numbers) > 1 and found_rows:
         from utils.send_tracking import create_excel_file, get_vladivostok_filename
 
-        if len(container_numbers) > 1 and found_rows:
-            file_path = create_excel_file(found_rows)
-            filename = get_vladivostok_filename()
-            await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
+        file_path = create_excel_file(found_rows, COLUMNS)
+        filename = get_vladivostok_filename()
+        await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
         if not_found:
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
+        await show_menu(update, context)
         return
 
     # Один контейнер — красивый ответ
@@ -143,5 +163,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(msg, parse_mode="HTML")
+        await show_menu(update, context)
     else:
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
+        await show_menu(update, context)
