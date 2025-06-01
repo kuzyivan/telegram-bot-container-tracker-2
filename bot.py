@@ -39,29 +39,27 @@ def main():
         await set_bot_commands(application)
     application.post_init = post_init
 
-    # Inline-кнопки — всегда выше!
+    # Важно! ConversationHandler — ПЕРВЫМ
+    application.add_handler(tracking_conversation_handler())
+    # Inline-меню
     application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
-    application.add_handler(CallbackQueryHandler(tracking_conversation_handler(), pattern="^track_request$"))
     application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-
     # Команды
     application.add_handler(CommandHandler("menu", show_menu))
     application.add_handler(CommandHandler("start", start))
-
     # ReplyKeyboard обработчик
     application.add_handler(MessageHandler(
         filters.Regex("^(📦 Дислокация|🔔 Задать слежение)$"),
         reply_keyboard_handler
     ))
-
     # Остальные обработчики
-    application.add_handler(tracking_conversation_handler())
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(CommandHandler("testnotify", test_notify))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))  # В САМОМ КОНЦЕ!
+    # Универсальный текст — ТОЛЬКО В КОНЦЕ!
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("✨ Бот запущен!")
 
@@ -114,4 +112,3 @@ if __name__ == "__main__":
     logger.info("🚀 Бот готов к работе на порту %d", PORT)
     logger.info("🔗 Бот запущен на хосте: %s", RENDER_HOSTNAME)
     logger.info("🔗 Бот запущен на порту: %d", PORT)
-    
