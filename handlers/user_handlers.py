@@ -1,15 +1,17 @@
-import tempfile
-import pandas as pd
-from openpyxl.styles import PatternFill
-from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
+from utils.keyboards import (
+    reply_keyboard,
+    dislocation_inline_keyboard,
+    tracking_inline_keyboard,
+    main_menu_keyboard
+)
+from telegram.error import BadRequest
+
 import re
 from models import Tracking, Stats
 from db import SessionLocal
 from sqlalchemy.future import select
-from utils.keyboards import main_menu_keyboard  # добавлено
-from telegram.error import BadRequest
 
 COLUMNS = [
     'Номер контейнера', 'Станция отправления', 'Станция назначения',
@@ -18,18 +20,26 @@ COLUMNS = [
     'Номер вагона', 'Дорога операции'
 ]
 
+# /start — всегда reply-клавиатура
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_sticker("CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ")
+    await update.message.reply_text(
+        "Добро пожаловать! Выберите действие:",
+        reply_markup=reply_keyboard
+    )
+
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text(
-            "Выберите действие:",
-            reply_markup=main_menu_keyboard
+            "Главное меню. Выберите действие:",
+            reply_markup=reply_keyboard
         )
     elif update.callback_query:
         await update.callback_query.answer()
         try:
             await update.callback_query.edit_message_text(
-                "Выберите действие:",
-                reply_markup=main_menu_keyboard
+                "Главное меню. Выберите действие:",
+                reply_markup=None
             )
         except BadRequest as e:
             if "Message is not modified" in str(e):
@@ -37,11 +47,24 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 raise
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sticker_id = "CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ"
-    await update.message.reply_sticker(sticker_id)
-    await show_menu(update, context)
+# ReplyKeyboard обработчик (кнопки снизу)
+async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "📦 Дислокация":
+        await update.message.reply_text(
+            "Для поиска контейнера нажмите кнопку ниже:",
+            reply_markup=dislocation_inline_keyboard
+        )
+    elif text == "🔔 Задать слежение":
+        await update.message.reply_text(
+            "Для постановки на слежение нажмите кнопку ниже:",
+            reply_markup=tracking_inline_keyboard
+        )
+    else:
+        # Не команда меню — ищем как обычный запрос контейнера
+        await handle_message(update, context)
 
+# Inline-кнопки меню (start/dislocation/track_request)
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
@@ -49,7 +72,7 @@ async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if data == 'start':
             await query.answer()
             await query.edit_message_text(
-                text="Выберите действие:",
+                text="Главное меню. Выберите действие:",
                 reply_markup=main_menu_keyboard
             )
         elif data == 'dislocation':
@@ -65,6 +88,12 @@ async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.answer("Меню уже открыто", show_alert=False)
         else:
             raise
+
+# Inline-кнопка "Ввести контейнер" для дислокации
+async def dislocation_inline_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.message.reply_text("Введите номер контейнера для поиска:")
+    # Дальше срабатывает handle_message
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
