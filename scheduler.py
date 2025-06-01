@@ -60,3 +60,17 @@ async def send_notifications(bot, target_time: time):
                     document=f,
                     filename=filename
                 )
+            logging.info(f"📤 Отправлено уведомление для {sub.user_id} ({sub.username or sub.user_id}) по времени {target_time}.")
+            await session.commit()
+# This code defines a scheduler for sending notifications about container tracking.
+# It uses APScheduler to run tasks at specific times and checks for new emails periodically.
+# The `send_notifications` function retrieves tracking data from the database and sends it to users via Telegram.
+# The notifications are sent based on user subscriptions and the specified notification time.
+# The scheduler is started with the `start_scheduler` function, which sets up the jobs.
+# The code also includes logging to track the execution of scheduled tasks.
+# The `SessionLocal` is used to manage database sessions, and the `TrackingSubscription` and `Tracking` models are used to query the database.
+# The `create_excel_file` and `get_vladivostok_filename` functions are used to generate Excel files for the tracking data.
+# The `check_mail` function is called periodically to check for new emails related to container tracking.
+#             logging.info(f"📤 Отправлено уведомление для {sub.user_id} ({sub.username or sub.user_id}).")
+
+
