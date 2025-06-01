@@ -39,6 +39,7 @@ def main():
         await set_bot_commands(application)
     application.post_init = post_init
 
+    application.add_handler(tracking_conversation_handler())
     # Важно! Inline-кнопки меню идут ПЕРВЫМИ (иначе ConversationHandler не всегда ловит их)
     application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
     application.add_handler(tracking_conversation_handler())
