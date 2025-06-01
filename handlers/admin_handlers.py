@@ -28,7 +28,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = [dict(zip(columns, row)) for row in subs]
         df = pd.DataFrame(data)
         file_path = create_excel_file(df.values.tolist(), list(df.columns))
-        filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
+        filename = get_vladivostok_filename("Заданные слежения")
         await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
 # /stats — статистика запросов за последние сутки в текстовом виде
