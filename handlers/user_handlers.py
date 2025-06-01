@@ -74,27 +74,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Несколько контейнеров — Excel файл
     if len(container_numbers) > 1 and found_rows:
-        df = pd.DataFrame(found_rows, columns=[
-            'Номер контейнера', 'Станция отправления', 'Станция назначения',
-            'Станция операции', 'Операция', 'Дата и время операции',
-            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-            'Номер вагона', 'Дорога операции'
-        ])
+        from utils.send_tracking import create_excel_file, get_vladivostok_filename
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Дислокация')
-                fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
-                worksheet = writer.sheets['Дислокация']
-                for cell in worksheet[1]:
-                    cell.fill = fill
-                for col in worksheet.columns:
-                    max_length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
-                    worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
-
-            vladivostok_time = datetime.utcnow() + timedelta(hours=10)
-            filename = f"Дислокация {vladivostok_time.strftime('%H-%M')}.xlsx"
-            await update.message.reply_document(document=open(tmp.name, "rb"), filename=filename)
+        if len(container_numbers) > 1 and found_rows:
+            file_path = create_excel_file(found_rows)
+            filename = get_vladivostok_filename()
+            await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
         if not_found:
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
