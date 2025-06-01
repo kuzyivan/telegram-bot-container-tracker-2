@@ -92,12 +92,13 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
 # /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
-async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def test_notify(update, context):
     if update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     async with SessionLocal() as session:
+        # Выбираем все подписки, не фильтруем по notify_time!
         result = await session.execute(select(TrackingSubscription))
         subscriptions = result.scalars().all()
 
@@ -110,7 +111,7 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data_per_user = {}
 
         for sub in subscriptions:
-            user_label = f"{sub.username or ''}_id{sub.user_id}"
+            user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
             rows = []
             for container in sub.containers:
                 res = await session.execute(
@@ -135,7 +136,6 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_path = create_excel_multisheet(data_per_user, columns)
         filename = get_vladivostok_filename("Тестовая дислокация")
-
         await update.message.reply_document(
             document=open(file_path, "rb"),
             filename=filename,
