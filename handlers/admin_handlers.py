@@ -4,12 +4,12 @@ from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
 from datetime import datetime, timedelta, time
 from sqlalchemy import text
+from sqlalchemy.future import select
 from db import SessionLocal
-from models import TrackingSubscription
-from scheduler import send_notifications
+from models import TrackingSubscription, Tracking
 
-# Новый импорт для единого экспорта Excel
-from utils.send_tracking import create_excel_file, get_vladivostok_filename
+# Универсальный экспорт Excel
+from utils.send_tracking import create_excel_file, create_excel_multisheet, get_vladivostok_filename
 
 # /tracking — выгрузка всех подписок на слежение в Excel
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -27,7 +27,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         columns = result.keys()
         data = [dict(zip(columns, row)) for row in subs]
         df = pd.DataFrame(data)
-        file_path = create_excel_file(df.values.tolist())  # тут можно использовать create_excel_file для совместимости оформления
+        file_path = create_excel_file(df.values.tolist(), list(df.columns))
         filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
         await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
@@ -87,14 +87,58 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     columns = result.keys()
     df = pd.DataFrame(rows, columns=columns)
-    file_path = create_excel_file(df.values.tolist(), columns=list(df.columns))  # унифицированная функция
+    file_path = create_excel_file(df.values.tolist(), list(df.columns))
     filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
     await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
-# /testnotify — тестовая отправка рассылки админу
+# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
 async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("⛔ Доступ запрещён.")
         return
-    await send_notifications(context.bot, time(9, 0))
-    await update.message.reply_text("✅ Тестовая рассылка дислокации выполнена.")
+
+    async with SessionLocal() as session:
+        result = await session.execute(select(TrackingSubscription))
+        subscriptions = result.scalars().all()
+
+        columns = [
+            'Номер контейнера', 'Станция отправления', 'Станция назначения',
+            'Станция операции', 'Операция', 'Дата и время операции',
+            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
+            'Номер вагона', 'Дорога операции'
+        ]
+        data_per_user = {}
+
+        for sub in subscriptions:
+            user_label = f"{sub.username or ''}_id{sub.user_id}"
+            rows = []
+            for container in sub.containers:
+                res = await session.execute(
+                    select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
+                )
+                track = res.scalars().first()
+                if track:
+                    rows.append([
+                        track.container_number,
+                        track.from_station,
+                        track.to_station,
+                        track.current_station,
+                        track.operation,
+                        track.operation_date,
+                        track.waybill,
+                        track.km_left,
+                        track.forecast_days,
+                        track.wagon_number,
+                        track.operation_road
+                    ])
+            data_per_user[user_label] = rows if rows else [["Нет данных"] + [""] * (len(columns)-1)]
+
+        file_path = create_excel_multisheet(data_per_user, columns)
+        filename = get_vladivostok_filename("Тестовая дислокация")
+
+        await update.message.reply_document(
+            document=open(file_path, "rb"),
+            filename=filename,
+            caption="Тестовая дислокация по всем подписчикам (разделено по листам)"
+        )
+        await update.message.reply_text("✅ Тестовая мульти-рассылка готова и отправлена одним файлом.")
