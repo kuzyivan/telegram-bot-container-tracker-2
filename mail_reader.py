@@ -66,6 +66,15 @@ async def process_file(filepath):
         if 'Номер контейнера' not in df.columns:
             raise ValueError("['Номер контейнера']")
 
+        # ЯВНО УКАЗЫВАЕМ ФОРМАТ ДАТЫ:
+        if 'Дата и время операции' in df.columns:
+            # если где-то пусто - всё равно не будет ошибки
+            df['Дата и время операции'] = pd.to_datetime(
+                df['Дата и время операции'].astype(str).str.strip(),
+                format='%d.%m.%Y %H:%M',
+                errors='coerce'
+            )
+
         records = []
         for _, row in df.iterrows():
             km_left = int(row.get('Расстояние оставшееся', 0))
@@ -77,7 +86,7 @@ async def process_file(filepath):
                 to_station=str(row.get('Станция назначения', '')).strip(),
                 current_station=str(row.get('Станция операции', '')).strip(),
                 operation=str(row.get('Операция', '')).strip(),
-                operation_date=str(row.get('Дата и время операции', '')).strip(),
+                operation_date=row.get('Дата и время операции'),  # теперь это datetime, не строка!
                 waybill=str(row.get('Номер накладной', '')).strip(),
                 km_left=km_left,
                 forecast_days=forecast_days,
