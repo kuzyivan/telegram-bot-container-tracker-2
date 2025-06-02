@@ -28,14 +28,12 @@ async def set_bot_commands(application):
     ])
 
 def main():
-    keep_alive()  # Автопинг для Render, если используешь
+    keep_alive()  # Автопинг для Render (если используешь)
     application = Application.builder().token(TOKEN).build()
 
-    # Запуск планировщика задач до старта webhook!
-    start_scheduler(application.bot)
-
-    # Установка команд бота (асинхронно)
+    # ВНИМАНИЕ: Планировщик только здесь — не раньше!
     async def post_init(application):
+        start_scheduler(application.bot)
         await set_bot_commands(application)
     application.post_init = post_init
 
@@ -62,7 +60,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("✨ Бот запущен!")
-    logger.info("🕓 Планировщик: задачи запущены.")
+    logger.info("🕓 Планировщик: задачи запущены (через post_init).")
     logger.info("🌐 Вебхук настроен на URL: %s", f"https://{RENDER_HOSTNAME}/{TOKEN}")
     logger.info("🚀 Бот готов к работе на порту %d", PORT)
     logger.info("🔗 Бот запущен на хосте: %s", RENDER_HOSTNAME)
@@ -77,4 +75,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
