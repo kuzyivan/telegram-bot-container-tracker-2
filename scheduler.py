@@ -6,18 +6,13 @@ from models import TrackingSubscription, Tracking
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from mail_reader import check_mail
 import logging
-import datetime
 
 scheduler = AsyncIOScheduler()
-
-def debug_scheduler_job():
-    logging.info(f"🕑 [DEBUG] Планировщик жив, job вызвана в {datetime.datetime.now()}")
 
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'interval', minutes=5)
-    scheduler.add_job(debug_scheduler_job, 'interval', minutes=5)  # DEBUG JOB
+    scheduler.add_job(check_mail, 'interval', minutes=30)
     logging.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
 

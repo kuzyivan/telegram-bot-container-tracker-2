@@ -28,7 +28,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = [dict(zip(columns, row)) for row in subs]
         df = pd.DataFrame(data)
         file_path = create_excel_file(df.values.tolist(), list(df.columns))
-        filename = get_vladivostok_filename("Заданные слежения")
+        filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
         await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
 # /stats — статистика запросов за последние сутки в текстовом виде
@@ -88,7 +88,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     columns = result.keys()
     df = pd.DataFrame(rows, columns=columns)
     file_path = create_excel_file(df.values.tolist(), list(df.columns))
-    filename = get_vladivostok_filename("Статистика запросов")
+    filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
     await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
 
 # /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
