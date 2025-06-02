@@ -19,23 +19,22 @@ DOWNLOAD_FOLDER = 'downloads'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 def check_mail():
-    check_time = datetime.now()
-    logger.info(f"📬 [Scheduler] === НАЧАЛО периодической проверки почты: {check_time}")
+    logger.info(f"📬 [Scheduler] === НАЧАЛО проверки почты: {datetime.now()}")
 
     if not EMAIL or not PASSWORD:
-        logger.error(f"❌ EMAIL или PASSWORD не заданы в переменных окружения. Время: {datetime.now()}")
-        logger.info(f"📬 [Scheduler] === КОНЕЦ проверки почты (ошибка конфигурации): {datetime.now()}")
+        logger.error(f"❌ EMAIL или PASSWORD не заданы!")
         return
 
     try:
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
+            messages = list(mailbox.fetch(reverse=True, limit=2))  # Только 2 последних письма!
+            logger.info(f"🔎 Найдено {len(messages)} последних писем для проверки.")
+
             latest_file = None
             latest_date = None
             latest_msg_subject = None
 
-            logger.info(f"🔎 Проверка новых писем на {IMAP_SERVER} начата: {datetime.now()}")
-
-            for msg in mailbox.fetch(reverse=True):  # последние письма первыми
+            for msg in messages:
                 logger.info(f"Письмо: {msg.date}, тема: {msg.subject}, вложения: {[a.filename for a in msg.attachments]}")
                 for att in msg.attachments:
                     logger.info(f"Вложение: {att.filename}")
@@ -62,12 +61,12 @@ def check_mail():
                     asyncio.set_event_loop(loop)
                 loop.create_task(process_file(filepath))
             else:
-                logger.warning("⚠ Не найден ни один файл .xlsx для скачивания. Проверь вложения писем!")
+                logger.warning("⚠ Не найден ни один файл .xlsx для скачивания в последних 2 письмах!")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e} (Время: {datetime.now()})\n{traceback.format_exc()}")
+        logger.error(f"❌ Ошибка при проверке почты: {e}\n{traceback.format_exc()}")
 
-    logger.info(f"📬 [Scheduler] === КОНЕЦ периодической проверки почты: {datetime.now()}")
+    logger.info(f"📬 [Scheduler] === КОНЕЦ проверки почты: {datetime.now()}")
 
 async def process_file(filepath):
     try:
@@ -76,14 +75,12 @@ async def process_file(filepath):
         if 'Номер контейнера' not in df.columns:
             raise ValueError("['Номер контейнера']")
 
-        # ЯВНО УКАЗЫВАЕМ ФОРМАТ ДАТЫ:
         if 'Дата и время операции' in df.columns:
             df['Дата и время операции'] = pd.to_datetime(
                 df['Дата и время операции'].astype(str).str.strip(),
                 format='%d.%m.%Y %H:%M',
                 errors='coerce'
             )
-        # Можно добавить доп.лог на NAN по дате:
         logger.info(f"Пустых дат операций: {df['Дата и время операции'].isna().sum()}")
 
         records = []
@@ -122,7 +119,7 @@ async def process_file(filepath):
         logger.info(f"📝 Обработка файла завершена: {filepath} ({datetime.now()})")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки {filepath}: {e} ({datetime.now()})\n{traceback.format_exc()}")
+        logger.error(f"❌ Ошибка обработки {filepath}: {e}\n{traceback.format_exc()}")
 
 def start_mail_checking():
     logger.info(f"📩 Запущена ручная проверка почты: {datetime.now()}")
