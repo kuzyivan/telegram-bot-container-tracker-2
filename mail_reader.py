@@ -6,7 +6,6 @@ import pandas as pd
 from sqlalchemy import delete
 from db import SessionLocal
 from models import Tracking
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,7 @@ DOWNLOAD_FOLDER = 'downloads'
 
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-def check_mail():
+async def check_mail():
     logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 15 минут)...")
 
     if not EMAIL or not PASSWORD:
@@ -25,34 +24,37 @@ def check_mail():
         return
 
     try:
-        with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
-            latest_file = None
-            latest_date = None
-
-            for msg in mailbox.fetch():
-                for att in msg.attachments:
-                    if att.filename.endswith('.xlsx'):
-                        msg_date = msg.date
-                        if latest_date is None or msg_date > latest_date:
-                            latest_date = msg_date
-                            latest_file = (att, att.filename)
-
-            if latest_file:
-                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
-                with open(filepath, 'wb') as f:
-                    f.write(latest_file[0].payload)
-                logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                loop.create_task(process_file(filepath))
-            else:
-                logger.info("⚠ Нет подходящих Excel-вложений в почте, обновление базы не требуется.")
+        # imap_tools не async, оборачиваем в executor, чтобы не блокировать event loop
+        import asyncio
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, fetch_latest_excel)
+        if result:
+            filepath = result
+            logger.info(f"📥 Скачан самый свежий файл: {filepath}")
+            await process_file(filepath)
+        else:
+            logger.info("⚠ Нет подходящих Excel-вложений в почте, обновление базы не требуется.")
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке почты: {e}")
+
+def fetch_latest_excel():
+    latest_file = None
+    latest_date = None
+    with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
+        for msg in mailbox.fetch():
+            for att in msg.attachments:
+                if att.filename.endswith('.xlsx'):
+                    msg_date = msg.date
+                    if latest_date is None or msg_date > latest_date:
+                        latest_date = msg_date
+                        latest_file = (att, att.filename)
+        if latest_file:
+            filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+            with open(filepath, 'wb') as f:
+                f.write(latest_file[0].payload)
+            return filepath
+    return None
 
 async def process_file(filepath):
     try:
@@ -95,7 +97,7 @@ async def process_file(filepath):
     except Exception as e:
         logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
-def start_mail_checking():
+async def start_mail_checking():
     logger.info("📩 Запущена проверка почты (ручной запуск)...")
-    check_mail()
+    await check_mail()
     logger.info("🔄 Проверка почты завершена.")
