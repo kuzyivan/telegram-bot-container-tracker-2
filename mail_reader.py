@@ -30,6 +30,7 @@ def check_mail():
         with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
             latest_file = None
             latest_date = None
+            latest_msg_subject = None
 
             logger.info(f"🔎 Проверка новых писем на {IMAP_SERVER} начата: {datetime.now()}")
 
@@ -40,11 +41,16 @@ def check_mail():
                         if latest_date is None or msg_date > latest_date:
                             latest_date = msg_date
                             latest_file = (att, att.filename)
+                            latest_msg_subject = msg.subject
+
             if latest_file:
                 filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
-                logger.info(f"📥 Скачан самый свежий файл: {filepath} ({datetime.now()})")
+                logger.info(
+                    f"📥 Скачан файл: {latest_file[1]} "
+                    f"({filepath}), тема письма: \"{latest_msg_subject}\", дата письма: {latest_date} ({datetime.now()})"
+                )
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
@@ -68,7 +74,6 @@ async def process_file(filepath):
 
         # ЯВНО УКАЗЫВАЕМ ФОРМАТ ДАТЫ:
         if 'Дата и время операции' in df.columns:
-            # если где-то пусто - всё равно не будет ошибки
             df['Дата и время операции'] = pd.to_datetime(
                 df['Дата и время операции'].astype(str).str.strip(),
                 format='%d.%m.%Y %H:%M',
@@ -86,7 +91,7 @@ async def process_file(filepath):
                 to_station=str(row.get('Станция назначения', '')).strip(),
                 current_station=str(row.get('Станция операции', '')).strip(),
                 operation=str(row.get('Операция', '')).strip(),
-                operation_date=row.get('Дата и время операции'),  # теперь это datetime, не строка!
+                operation_date=row.get('Дата и время операции'),
                 waybill=str(row.get('Номер накладной', '')).strip(),
                 km_left=km_left,
                 forecast_days=forecast_days,
