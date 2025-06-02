@@ -12,7 +12,7 @@ scheduler = AsyncIOScheduler()
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'interval', minutes=2)
+    scheduler.add_job(check_mail, 'interval', minutes=15)
     logging.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
 
