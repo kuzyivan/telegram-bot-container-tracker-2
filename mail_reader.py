@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from imap_tools import MailBox
 from datetime import datetime
 import pandas as pd
@@ -34,21 +35,24 @@ def check_mail():
 
             logger.info(f"🔎 Проверка новых писем на {IMAP_SERVER} начата: {datetime.now()}")
 
-            for msg in mailbox.fetch():
+            for msg in mailbox.fetch(reverse=True):  # последние письма первыми
+                logger.info(f"Письмо: {msg.date}, тема: {msg.subject}, вложения: {[a.filename for a in msg.attachments]}")
                 for att in msg.attachments:
-                    if att.filename.endswith('.xlsx'):
+                    logger.info(f"Вложение: {att.filename}")
+                    if att.filename and att.filename.lower().endswith('.xlsx'):
                         msg_date = msg.date
                         if latest_date is None or msg_date > latest_date:
                             latest_date = msg_date
                             latest_file = (att, att.filename)
                             latest_msg_subject = msg.subject
-
+                            logger.info(f"Файл выбран для скачивания: {att.filename} из письма '{msg.subject}' ({msg.date})")
             if latest_file:
-                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+                safe_filename = latest_file[1].replace(' ', '_')
+                filepath = os.path.join(DOWNLOAD_FOLDER, safe_filename)
                 with open(filepath, 'wb') as f:
                     f.write(latest_file[0].payload)
                 logger.info(
-                    f"📥 Скачан файл: {latest_file[1]} "
+                    f"📥 Скачан файл: {safe_filename} "
                     f"({filepath}), тема письма: \"{latest_msg_subject}\", дата письма: {latest_date} ({datetime.now()})"
                 )
                 try:
@@ -58,10 +62,10 @@ def check_mail():
                     asyncio.set_event_loop(loop)
                 loop.create_task(process_file(filepath))
             else:
-                logger.warning(f"⚠ Нет подходящих Excel-вложений в почте. Время: {datetime.now()}")
+                logger.warning("⚠ Не найден ни один файл .xlsx для скачивания. Проверь вложения писем!")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e} (Время: {datetime.now()})")
+        logger.error(f"❌ Ошибка при проверке почты: {e} (Время: {datetime.now()})\n{traceback.format_exc()}")
 
     logger.info(f"📬 [Scheduler] === КОНЕЦ периодической проверки почты: {datetime.now()}")
 
@@ -79,6 +83,8 @@ async def process_file(filepath):
                 format='%d.%m.%Y %H:%M',
                 errors='coerce'
             )
+        # Можно добавить доп.лог на NAN по дате:
+        logger.info(f"Пустых дат операций: {df['Дата и время операции'].isna().sum()}")
 
         records = []
         for _, row in df.iterrows():
@@ -100,6 +106,8 @@ async def process_file(filepath):
             )
             records.append(record)
 
+        logger.info(f"Будет добавлено в БД строк: {len(records)}. Пример первой: {records[0] if records else 'пусто'}")
+
         async with SessionLocal() as session:
             await session.execute(delete(Tracking))
             session.add_all(records)
@@ -114,7 +122,7 @@ async def process_file(filepath):
         logger.info(f"📝 Обработка файла завершена: {filepath} ({datetime.now()})")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки {filepath}: {e} ({datetime.now()})")
+        logger.error(f"❌ Ошибка обработки {filepath}: {e} ({datetime.now()})\n{traceback.format_exc()}")
 
 def start_mail_checking():
     logger.info(f"📩 Запущена ручная проверка почты: {datetime.now()}")
