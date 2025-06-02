@@ -16,7 +16,7 @@ def debug_scheduler_job():
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'interval', minutes=30)
+    scheduler.add_job(check_mail, 'interval', minutes=5)
     scheduler.add_job(debug_scheduler_job, 'interval', minutes=5)  # DEBUG JOB
     logging.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
