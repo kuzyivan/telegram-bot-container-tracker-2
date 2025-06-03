@@ -5,7 +5,7 @@ reply_keyboard = ReplyKeyboardMarkup(
     [
         [KeyboardButton("📦 Дислокация")],
         [KeyboardButton("🔔 Задать слежение")],
-        [KeyboardButton("❌ Отмена слежения")]  # Добавляем кнопку
+        [KeyboardButton("❌ Отмена слежения")]
     ],
     resize_keyboard=True
 )
@@ -18,7 +18,15 @@ tracking_inline_keyboard = InlineKeyboardMarkup([
     [InlineKeyboardButton("Ввести контейнер(ы)", callback_data="track_request")]
 ])
 
-# Для старого main_menu_keyboard — можешь оставить если используется где-то ещё
+# Подтверждение отмены слежения
+cancel_tracking_confirm_keyboard = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("✅ ДА", callback_data="cancel_tracking_yes"),
+        InlineKeyboardButton("❌ НЕТ", callback_data="cancel_tracking_no")
+    ]
+])
+
+# Для старого main_menu_keyboard — если используется
 main_menu_keyboard = InlineKeyboardMarkup([
     [InlineKeyboardButton("🚀 Старт", callback_data='start')],
     [InlineKeyboardButton("📦 Дислокация", callback_data='dislocation')],

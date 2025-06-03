@@ -6,6 +6,7 @@ from db import SessionLocal
 from sqlalchemy import delete
 from models import TrackingSubscription
 import datetime
+from utils.keyboards import cancel_tracking_confirm_keyboard
 
 # Состояния для ConversationHandler
 TRACK_CONTAINERS, SET_TIME = range(2)
@@ -62,12 +63,32 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# 4. Обработка отмены
+# 4. Обработка отмены внутри ConversationHandler
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отмена слежения")
     return ConversationHandler.END
 
-# 5. Обработка сброса всех слежений
+# 5. Старт отмены слежения (кнопка)
+async def cancel_tracking_start(update, context):
+    await update.message.reply_text(
+        "Вы уверены, что хотите отменить все ваши слежения?",
+        reply_markup=cancel_tracking_confirm_keyboard
+    )
+
+# 6. Callback обработка подтверждения/отмены
+async def cancel_tracking_confirm(update, context):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    if query.data == "cancel_tracking_yes":
+        async with SessionLocal() as session:
+            await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
+            await session.commit()
+        await query.edit_message_text("❌ Все ваши слежения отменены.")
+    elif query.data == "cancel_tracking_no":
+        await query.edit_message_text("Отмена слежения не выполнена.")
+
+# Старый вариант для команды /canceltracking
 async def cancel_tracking(update, context):
     user_id = update.effective_user.id
     async with SessionLocal() as session:

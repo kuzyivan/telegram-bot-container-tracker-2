@@ -14,7 +14,11 @@ from handlers.user_handlers import (
 )
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from db import SessionLocal
-from handlers.tracking_handlers import tracking_conversation_handler, cancel_tracking
+from handlers.tracking_handlers import (
+    tracking_conversation_handler,
+    cancel_tracking,                   # для команды /canceltracking
+    cancel_tracking_confirm            # для подтверждения по inline-кнопкам
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,7 +30,7 @@ async def set_bot_commands(application):
         BotCommand("stats", "Статистика (админ)"),
         BotCommand("exportstats", "Выгрузка (админ)"),
         BotCommand("testnotify", "Тестовая рассылка (админ)"),
-        BotCommand("canceltracking", "Отменить все слежения")  # новая команда
+        BotCommand("canceltracking", "Отменить все слежения")
     ])
 
 def main():
@@ -34,12 +38,12 @@ def main():
     application = Application.builder().token(TOKEN).build()
 
     async def post_init(application):
-        await start_mail_checking()                # ВАЖНО: теперь await!
+        await start_mail_checking()
         start_scheduler(application.bot)
         await set_bot_commands(application)
     application.post_init = post_init
 
-    # Важно! ConversationHandler — ПЕРВЫМ
+    # ConversationHandler — ПЕРВЫМ
     application.add_handler(tracking_conversation_handler())
     # Inline-меню
     application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
@@ -49,9 +53,11 @@ def main():
     application.add_handler(CommandHandler("start", start))
     # ReplyKeyboard обработчик
     application.add_handler(MessageHandler(
-        filters.Regex("^(📦 Дислокация|🔔 Задать слежение)$"),
+        filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
         reply_keyboard_handler
     ))
+    # Кнопка подтверждения отмены слежения
+    application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
     application.add_handler(CommandHandler("canceltracking", cancel_tracking))
     # Остальные обработчики
     application.add_handler(CommandHandler("stats", stats))
