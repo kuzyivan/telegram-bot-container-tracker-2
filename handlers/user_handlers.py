@@ -60,10 +60,13 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
             "Для постановки на слежение нажмите кнопку ниже:",
             reply_markup=tracking_inline_keyboard
         )
+    elif text == "❌ Отмена слежения":
+        from handlers.tracking_handlers import cancel_tracking
+        return await cancel_tracking(update, context)
     else:
         # Не команда меню — ищем как обычный запрос контейнера
         await handle_message(update, context)
-
+    
 # Inline-кнопки меню (start/dislocation/track_request)
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

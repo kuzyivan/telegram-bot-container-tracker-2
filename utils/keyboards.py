@@ -5,6 +5,7 @@ reply_keyboard = ReplyKeyboardMarkup(
     [
         [KeyboardButton("📦 Дислокация")],
         [KeyboardButton("🔔 Задать слежение")],
+        [KeyboardButton("❌ Отмена слежения")]  # Добавляем кнопку
     ],
     resize_keyboard=True
 )

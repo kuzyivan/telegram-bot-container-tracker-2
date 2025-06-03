@@ -14,7 +14,7 @@ from handlers.user_handlers import (
 )
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from db import SessionLocal
-from handlers.tracking_handlers import tracking_conversation_handler
+from handlers.tracking_handlers import tracking_conversation_handler, cancel_tracking
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,7 +25,8 @@ async def set_bot_commands(application):
         BotCommand("menu", "Главное меню"),
         BotCommand("stats", "Статистика (админ)"),
         BotCommand("exportstats", "Выгрузка (админ)"),
-        BotCommand("testnotify", "Тестовая рассылка (админ)")
+        BotCommand("testnotify", "Тестовая рассылка (админ)"),
+        BotCommand("canceltracking", "Отменить все слежения")  # новая команда
     ])
 
 def main():
@@ -51,6 +52,7 @@ def main():
         filters.Regex("^(📦 Дислокация|🔔 Задать слежение)$"),
         reply_keyboard_handler
     ))
+    application.add_handler(CommandHandler("canceltracking", cancel_tracking))
     # Остальные обработчики
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))

@@ -3,6 +3,7 @@ from telegram.ext import (
     ContextTypes, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 )
 from db import SessionLocal
+from sqlalchemy import delete
 from models import TrackingSubscription
 import datetime
 
@@ -65,6 +66,14 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отмена слежения")
     return ConversationHandler.END
+
+# 5. Обработка сброса всех слежений
+async def cancel_tracking(update, context):
+    user_id = update.effective_user.id
+    async with SessionLocal() as session:
+        await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
+        await session.commit()
+    await update.message.reply_text("❌ Все ваши слежения отменены.")
 
 # ConversationHandler для главного меню
 def tracking_conversation_handler():
