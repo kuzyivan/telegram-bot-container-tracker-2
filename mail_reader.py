@@ -3,7 +3,7 @@ import logging
 from imap_tools import MailBox
 import pandas as pd
 import sqlalchemy as sa
-from db import engine, SessionLocal  # Импортируем и engine, и SessionLocal
+from db import engine, SessionLocal
 from models import Tracking, TrackingTemp, create_temp_table
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ async def check_mail():
 
 def fetch_latest_excel():
     with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
-        # Ищем в последних 10 письмах для скорости
         messages = list(mailbox.fetch(reverse=True, limit=10))
         for msg in messages:
             for att in msg.attachments:
@@ -75,22 +74,22 @@ async def process_file(filepath):
                 logger.warning(f"Пропущена строка из-за ошибки данных: {row}. Ошибка: {e}")
                 continue
         
-        # --- ИСПРАВЛЕННОЕ АТОМАРНОЕ ОБНОВЛЕНИЕ ---
-        await create_temp_table()  # Убедимся, что временная таблица существует
+        # --- АТОМАРНОЕ ОБНОВЛЕНИЕ ---
+        await create_temp_table()
 
         # Шаг 1: Очистка и загрузка данных во временную таблицу через сессию
         async with SessionLocal() as session:
             async with session.begin():
+                # Полностью очищаем временную таблицу перед новой загрузкой
                 await session.execute(sa.delete(TrackingTemp))
                 if records_to_load:
-                    # Используем add_all - это правильный асинхронный способ
-                    session.add_all([
-                        TrackingTemp(**record_dict) for record_dict in records_to_load
-                    ])
+                    # Используем bulk_insert_mappings внутри run_sync, т.к. это синхронный метод
+                    await session.run_sync(
+                         lambda s: s.bulk_insert_mappings(TrackingTemp, records_to_load)
+                    )
         
         # Шаг 2: Атомарная замена таблиц через низкоуровневые DDL-команды
         async with engine.begin() as conn:
-            # Блокируем основную таблицу, чтобы избежать проблем с одновременным доступом
             await conn.execute(sa.text("LOCK TABLE tracking IN ACCESS EXCLUSIVE MODE"))
             await conn.execute(sa.text("DROP TABLE IF EXISTS tracking_old CASCADE"))
             await conn.execute(sa.text("ALTER TABLE tracking RENAME TO tracking_old"))
@@ -103,7 +102,6 @@ async def process_file(filepath):
         
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при обработке файла {filepath}: {e}", exc_info=True)
-        # При ошибке основная таблица `tracking` остается нетронутой
 
 async def start_mail_checking():
     logger.info("📩 Запущена первоначальная проверка почты...")
