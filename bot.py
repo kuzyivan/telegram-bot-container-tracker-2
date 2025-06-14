@@ -18,7 +18,7 @@ from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from db import SessionLocal
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
-    cancel_tracking,
+    cancel,
     cancel_tracking_confirm
 )
 
@@ -63,7 +63,7 @@ def main():
             reply_keyboard_handler
         ))
         application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
-        application.add_handler(CommandHandler("canceltracking", cancel_tracking))
+        application.add_handler(CommandHandler("canceltracking", cancel))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
