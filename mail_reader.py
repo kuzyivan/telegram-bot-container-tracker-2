@@ -1,13 +1,12 @@
 import os
-import logging
 from imap_tools.mailbox import MailBox
-from datetime import datetime
 import pandas as pd
 from sqlalchemy import delete
 from db import SessionLocal
 from models import Tracking
+from logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 EMAIL = os.getenv('EMAIL')
 PASSWORD = os.getenv('PASSWORD')
@@ -24,7 +23,6 @@ async def check_mail():
         return
 
     try:
-        # imap_tools не async, оборачиваем в executor, чтобы не блокировать event loop
         import asyncio
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, fetch_latest_excel)
@@ -36,24 +34,27 @@ async def check_mail():
             logger.info("⚠ Нет подходящих Excel-вложений в почте, обновление базы не требуется.")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e}")
+        logger.error(f"❌ Ошибка при проверке почты: {e}", exc_info=True)
 
 def fetch_latest_excel():
     latest_file = None
     latest_date = None
-    with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox: # type: ignore
-        for msg in mailbox.fetch():
-            for att in msg.attachments:
-                if att.filename.endswith('.xlsx'):
-                    msg_date = msg.date
-                    if latest_date is None or msg_date > latest_date:
-                        latest_date = msg_date
-                        latest_file = (att, att.filename)
-        if latest_file:
-            filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
-            with open(filepath, 'wb') as f:
-                f.write(latest_file[0].payload)
-            return filepath
+    try:
+        with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox: # type: ignore
+            for msg in mailbox.fetch():
+                for att in msg.attachments:
+                    if att.filename.endswith('.xlsx'):
+                        msg_date = msg.date
+                        if latest_date is None or msg_date > latest_date:
+                            latest_date = msg_date
+                            latest_file = (att, att.filename)
+            if latest_file:
+                filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+                with open(filepath, 'wb') as f:
+                    f.write(latest_file[0].payload)
+                return filepath
+    except Exception as e:
+        logger.error(f"❌ Ошибка при работе с почтой: {e}", exc_info=True)
     return None
 
 async def process_file(filepath):
@@ -82,10 +83,25 @@ async def process_file(filepath):
             )
             records.append(record)
 
-        async with SessionLocal() as session: # type: ignore
-            await session.execute(delete(Tracking))
-            session.add_all(records)
-            await session.commit()
+        # Атомарно обновляем данные в базе через временную таблицу:
+        with SessionLocal() as session:
+            try:
+                # Создаём временную таблицу
+                session.execute('CREATE TEMP TABLE IF NOT EXISTS tracking_tmp (LIKE tracking INCLUDING ALL)')
+                session.execute('TRUNCATE tracking_tmp')
+                session.bulk_save_objects(records)
+                session.commit()
+
+                # Меняем данные в основной таблице атомарно
+                session.execute('TRUNCATE tracking')
+                session.execute('INSERT INTO tracking SELECT * FROM tracking_tmp')
+                session.execute('DROP TABLE tracking_tmp')
+                session.commit()
+                logger.info("✅ База данных обновлена атомарно через временную таблицу.")
+            except Exception as db_e:
+                session.rollback()
+                logger.error(f"❌ Ошибка при обновлении базы: {db_e}", exc_info=True)
+                raise
 
         last_date = df['Дата и время операции'].dropna().max()
         logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
@@ -95,7 +111,7 @@ async def process_file(filepath):
         logger.info(f"🚛 Уникальных контейнеров: {df['Номер контейнера'].nunique()}")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка обработки {filepath}: {e}")
+        logger.error(f"❌ Ошибка обработки {filepath}: {e}", exc_info=True)
 
 async def start_mail_checking():
     logger.info("📩 Запущена проверка почты (ручной запуск)...")
