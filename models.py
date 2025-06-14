@@ -1,68 +1,61 @@
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Float, Time, ARRAY
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    text,
+)
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.sql import func
-from db import Base, engine
-import sqlalchemy as sa
 
-class TrackingSubscription(Base):
-    __tablename__ = "tracking_subscriptions"
+Base = declarative_base()
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    username = Column(String, nullable=True)
-    containers = Column(ARRAY(String), nullable=False)
-    notify_time = Column(Time, nullable=False)
-
-class Stats(Base):
-    __tablename__ = 'stats'
+# Основная временная таблица для обработки выгрузок
+class TrackingTemp(Base):
+    __tablename__ = "tracking_temp"
 
     id = Column(Integer, primary_key=True)
     container_number = Column(String)
-    user_id = Column(BigInteger)
+    from_station = Column(String)
+    to_station = Column(String)
+    current_station = Column(String)
+    operation = Column(String)
+    operation_date = Column(String)
+    waybill = Column(String)
+    km_left = Column(Integer)
+    forecast_days = Column(Float)
+    wagon_number = Column(String)
+    operation_road = Column(String)
+
+# Пример основной постоянной таблицы (если нужно, дополни своими)
+class Container(Base):
+    __tablename__ = "containers"
+
+    id = Column(Integer, primary_key=True)
+    container_number = Column(String, unique=True, index=True)
+    owner = Column(String)
+    status = Column(String)
+    updated_at = Column(String)
+    # ... добавь нужные поля
+
+# Пример таблицы пользователей (если нужно)
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    telegram_id = Column(String, unique=True, index=True)
     username = Column(String)
-    timestamp = Column(DateTime, default=func.now())
+    is_admin = Column(Integer)  # 0 или 1
 
-class Tracking(Base):
-    __tablename__ = 'tracking'
+# ----------------- #
+# ВСПОМОГАТЕЛЬНЫЕ   #
+# ----------------- #
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    container_number = Column(String, index=True)
-    from_station = Column(String)
-    to_station = Column(String)
-    current_station = Column(String)
-    operation = Column(String)
-    operation_date = Column(String)
-    waybill = Column(String)
-    km_left = Column(Integer)
-    forecast_days = Column(Float)
-    wagon_number = Column(String)
-    operation_road = Column(String)
-
-class TrackingTemp(Base):
-    __tablename__ = 'tracking_temp'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    container_number = Column(String, index=True)
-    from_station = Column(String)
-    to_station = Column(String)
-    current_station = Column(String)
-    operation = Column(String)
-    operation_date = Column(String)
-    waybill = Column(String)
-    km_left = Column(Integer)
-    forecast_days = Column(Float)
-    wagon_number = Column(String)
-    operation_road = Column(String)
-
-async def create_temp_table():
+async def create_temp_table(engine: AsyncEngine):
     """
-    Создает временную таблицу, если она еще не существует.
+    Удаляет временную таблицу tracking_temp (с индексами) и создаёт заново.
+    Вызывать перед загрузкой каждого нового файла!
     """
     async with engine.begin() as conn:
-        # ИСПРАВЛЕНО: Добавлен параметр checkfirst=True,
-        # чтобы избежать ошибки, если таблица и ее индексы уже созданы.
-        await conn.run_sync(
-            Base.metadata.create_all,
-            tables=[TrackingTemp.__table__],
-            checkfirst=True
-        )
+        await conn.execute(text('DROP TABLE IF EXISTS tracking_temp CASCADE;'))
+        await conn.run_sync(Base.metadata.create_all, tables=[TrackingTemp.__table__])
