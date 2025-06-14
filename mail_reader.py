@@ -1,10 +1,11 @@
 import os
 import logging
 from imap_tools import MailBox
+from datetime import datetime
 import pandas as pd
-import sqlalchemy as sa
-from db import engine, SessionLocal
-from models import Tracking, TrackingTemp, create_temp_table
+from sqlalchemy import delete
+from db import SessionLocal
+from models import Tracking
 
 logger = logging.getLogger(__name__)
 
@@ -16,94 +17,87 @@ DOWNLOAD_FOLDER = 'downloads'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 async def check_mail():
-    logger.info("📬 [Scheduler] Запущена проверка почты по расписанию...")
+    logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 15 минут)...")
+
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
         return
 
     try:
+        # imap_tools не async, оборачиваем в executor, чтобы не блокировать event loop
         import asyncio
         loop = asyncio.get_running_loop()
-        filepath = await loop.run_in_executor(None, fetch_latest_excel)
-        
-        if filepath:
+        result = await loop.run_in_executor(None, fetch_latest_excel)
+        if result:
+            filepath = result
             logger.info(f"📥 Скачан самый свежий файл: {filepath}")
             await process_file(filepath)
         else:
-            logger.info("⚠ Нет подходящих Excel-вложений в почте.")
+            logger.info("⚠ Нет подходящих Excel-вложений в почте, обновление базы не требуется.")
+
     except Exception as e:
-        logger.error(f"❌ Ошибка во время проверки почты: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка при проверке почты: {e}")
 
 def fetch_latest_excel():
+    latest_file = None
+    latest_date = None
     with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
-        messages = list(mailbox.fetch(reverse=True, limit=10))
-        for msg in messages:
+        for msg in mailbox.fetch():
             for att in msg.attachments:
-                if att.filename.lower().endswith('.xlsx'):
-                    filepath = os.path.join(DOWNLOAD_FOLDER, att.filename)
-                    with open(filepath, 'wb') as f:
-                        f.write(att.payload)
-                    return filepath
+                if att.filename.endswith('.xlsx'):
+                    msg_date = msg.date
+                    if latest_date is None or msg_date > latest_date:
+                        latest_date = msg_date
+                        latest_file = (att, att.filename)
+        if latest_file:
+            filepath = os.path.join(DOWNLOAD_FOLDER, latest_file[1])
+            with open(filepath, 'wb') as f:
+                f.write(latest_file[0].payload)
+            return filepath
     return None
 
 async def process_file(filepath):
     try:
         df = pd.read_excel(filepath, skiprows=3)
         if 'Номер контейнера' not in df.columns:
-            raise ValueError("В Excel-файле отсутствует столбец 'Номер контейнера'")
+            raise ValueError("['Номер контейнера']")
 
-        records_to_load = []
+        records = []
         for _, row in df.iterrows():
-            try:
-                km_left = int(row.get('Расстояние оставшееся', 0))
-                record = {
-                    'container_number': str(row['Номер контейнера']).strip().upper(),
-                    'from_station': str(row.get('Станция отправления', '')).strip(),
-                    'to_station': str(row.get('Станция назначения', '')).strip(),
-                    'current_station': str(row.get('Станция операции', '')).strip(),
-                    'operation': str(row.get('Операция', '')).strip(),
-                    'operation_date': str(row.get('Дата и время операции', '')).strip(),
-                    'waybill': str(row.get('Номер накладной', '')).strip(),
-                    'km_left': km_left,
-                    'forecast_days': round(km_left / 600, 1) if km_left else 0.0,
-                    'wagon_number': str(row.get('Номер вагона', '')).strip(),
-                    'operation_road': str(row.get('Дорога операции', '')).strip()
-                }
-                records_to_load.append(record)
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Пропущена строка из-за ошибки данных: {row}. Ошибка: {e}")
-                continue
-        
-        # --- АТОМАРНОЕ ОБНОВЛЕНИЕ ---
-        await create_temp_table()
+            km_left = int(row.get('Расстояние оставшееся', 0))
+            forecast_days = round(km_left / 600, 1) if km_left else 0.0
 
-        # Шаг 1: Очистка и загрузка данных во временную таблицу через сессию
+            record = Tracking(
+                container_number=str(row['Номер контейнера']).strip().upper(),
+                from_station=str(row.get('Станция отправления', '')).strip(),
+                to_station=str(row.get('Станция назначения', '')).strip(),
+                current_station=str(row.get('Станция операции', '')).strip(),
+                operation=str(row.get('Операция', '')).strip(),
+                operation_date=str(row.get('Дата и время операции', '')).strip(),
+                waybill=str(row.get('Номер накладной', '')).strip(),
+                km_left=km_left,
+                forecast_days=forecast_days,
+                wagon_number=str(row.get('Номер вагона', '')).strip(),
+                operation_road=str(row.get('Дорога операции', '')).strip()
+            )
+            records.append(record)
+
         async with SessionLocal() as session:
-            async with session.begin():
-                # Полностью очищаем временную таблицу перед новой загрузкой
-                await session.execute(sa.delete(TrackingTemp))
-                if records_to_load:
-                    # Используем bulk_insert_mappings внутри run_sync, т.к. это синхронный метод
-                    await session.run_sync(
-                         lambda s: s.bulk_insert_mappings(TrackingTemp, records_to_load)
-                    )
-        
-        # Шаг 2: Атомарная замена таблиц через низкоуровневые DDL-команды
-        async with engine.begin() as conn:
-            await conn.execute(sa.text("LOCK TABLE tracking IN ACCESS EXCLUSIVE MODE"))
-            await conn.execute(sa.text("DROP TABLE IF EXISTS tracking_old CASCADE"))
-            await conn.execute(sa.text("ALTER TABLE tracking RENAME TO tracking_old"))
-            await conn.execute(sa.text("ALTER TABLE tracking_temp RENAME TO tracking"))
+            await session.execute(delete(Tracking))
+            session.add_all(records)
+            await session.commit()
 
         last_date = df['Дата и время операции'].dropna().max()
-        logger.info(f"✅ База данных атомарно обновлена из файла {os.path.basename(filepath)}")
-        logger.info(f"📦 Загружено строк: {len(records_to_load)}")
+        logger.info(f"✅ База данных обновлена из файла {os.path.basename(filepath)}")
+        logger.info(f"📦 Загружено строк: {len(records)}")
         logger.info(f"🕓 Последняя дата операции в файле: {last_date}")
-        
+        logger.info(f"🚉 Уникальных станций операции: {df['Станция операции'].nunique()}")
+        logger.info(f"🚛 Уникальных контейнеров: {df['Номер контейнера'].nunique()}")
+
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка при обработке файла {filepath}: {e}", exc_info=True)
+        logger.error(f"❌ Ошибка обработки {filepath}: {e}")
 
 async def start_mail_checking():
-    logger.info("📩 Запущена первоначальная проверка почты...")
+    logger.info("📩 Запущена проверка почты (ручной запуск)...")
     await check_mail()
-    logger.info("🔄 Первоначальная проверка почты завершена.")
+    logger.info("🔄 Проверка почты завершена.")

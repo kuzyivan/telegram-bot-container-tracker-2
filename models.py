@@ -1,38 +1,40 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger
+from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Float, Time, ARRAY
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.sql import func
+from db import Base
 
 Base = declarative_base()
 
+class TrackingSubscription(Base):
+    __tablename__ = "tracking_subscriptions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False)
+    username = Column(String, nullable=True)
+    containers = Column(ARRAY(String), nullable=False)
+    notify_time = Column(Time, nullable=False)
+
+class Stats(Base):
+    __tablename__ = 'stats'
+
+    id = Column(Integer, primary_key=True)
+    container_number = Column(String)
+    user_id = Column(BigInteger)
+    username = Column(String)
+    timestamp = Column(DateTime, default=func.now())
 
 class Tracking(Base):
     __tablename__ = 'tracking'
 
     id = Column(Integer, primary_key=True)
-    container_number = Column(String, nullable=False, index=True)
-    station = Column(String, nullable=False)
-    operation = Column(String, nullable=False)
-    operation_date = Column(DateTime, nullable=False, index=True)
-    arrival = Column(Boolean, default=False)
-
-    def __repr__(self):
-        return (
-            f"<Tracking(container_number={self.container_number}, "
-            f"station={self.station}, operation={self.operation}, "
-            f"operation_date={self.operation_date}, arrival={self.arrival})>"
-        )
-
-
-class TrackingSubscription(Base):
-    __tablename__ = 'tracking_subscriptions'
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, nullable=False, index=True)      # id пользователя Telegram
-    container_number = Column(String, nullable=False, index=True) # Контейнер, который отслеживает пользователь
-    created_at = Column(DateTime, nullable=False)                 # Дата/время подписки
-    active = Column(Boolean, default=True)                        # Флаг активности подписки
-
-    def __repr__(self):
-        return (
-            f"<TrackingSubscription(user_id={self.user_id}, "
-            f"container_number={self.container_number}, active={self.active})>"
-        )
+    container_number = Column(String)
+    from_station = Column(String)
+    to_station = Column(String)
+    current_station = Column(String)
+    operation = Column(String)
+    operation_date = Column(String)
+    waybill = Column(String)
+    km_left = Column(Integer)
+    forecast_days = Column(Float)
+    wagon_number = Column(String)
+    operation_road = Column(String)
