@@ -31,14 +31,13 @@ class Tracking(Base):
     to_station = Column(String)
     current_station = Column(String)
     operation = Column(String)
-    operation_date = Column(String) # Рекомендуется использовать DateTime для сортировки
+    operation_date = Column(String)
     waybill = Column(String)
     km_left = Column(Integer)
     forecast_days = Column(Float)
     wagon_number = Column(String)
     operation_road = Column(String)
 
-# --- НОВОЕ: Временная таблица для безопасной загрузки данных ---
 class TrackingTemp(Base):
     __tablename__ = 'tracking_temp'
 
@@ -56,7 +55,14 @@ class TrackingTemp(Base):
     operation_road = Column(String)
 
 async def create_temp_table():
-    """Ensures the temporary table exists."""
+    """
+    Создает временную таблицу, если она еще не существует.
+    """
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[TrackingTemp.__table__])
-
+        # ИСПРАВЛЕНО: Добавлен параметр checkfirst=True,
+        # чтобы избежать ошибки, если таблица уже создана.
+        await conn.run_sync(
+            Base.metadata.create_all,
+            tables=[TrackingTemp.__table__],
+            checkfirst=True
+        )
