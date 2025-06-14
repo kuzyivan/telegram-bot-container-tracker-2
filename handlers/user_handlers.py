@@ -12,6 +12,9 @@ import re
 from models import Tracking, Stats
 from db import SessionLocal
 from sqlalchemy.future import select
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 COLUMNS = [
     'Номер контейнера', 'Станция отправления', 'Станция назначения',
@@ -22,6 +25,7 @@ COLUMNS = [
 
 # /start — всегда reply-клавиатура
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"/start от пользователя {update.effective_user.id}")
     await update.message.reply_sticker("CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ")
     await update.message.reply_text(
         "Добро пожаловать! Выберите действие:",
@@ -29,6 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"Показ главного меню пользователю {update.effective_user.id}")
     if update.message:
         await update.message.reply_text(
             "Главное меню. Выберите действие:",
@@ -45,11 +50,13 @@ async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if "Message is not modified" in str(e):
                 await update.callback_query.answer("Меню уже открыто", show_alert=False)
             else:
+                logger.error(f"Ошибка при показе меню: {e}", exc_info=True)
                 raise
 
 # ReplyKeyboard обработчик (кнопки снизу)
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    logger.info(f"reply_keyboard_handler: пользователь {update.effective_user.id} нажал '{text}'")
     if text == "📦 Дислокация":
         await update.message.reply_text(
             "Для поиска контейнера нажмите кнопку ниже:",
@@ -64,13 +71,14 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
         from handlers.tracking_handlers import cancel_tracking_start
         return await cancel_tracking_start(update, context)
     else:
-        # Не команда меню — ищем как обычный запрос контейнера
+        logger.info(f"Не команда меню — ищем '{text}' как обычный запрос контейнера.")
         await handle_message(update, context)
     
 # Inline-кнопки меню (start/dislocation/track_request)
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
+    logger.info(f"menu_button_handler: пользователь {query.from_user.id} выбрал {data}")
     try:
         if data == 'start':
             await query.answer()
@@ -90,26 +98,35 @@ async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if "Message is not modified" in str(e):
             await query.answer("Меню уже открыто", show_alert=False)
         else:
+            logger.error(f"Ошибка обработки inline-кнопки: {e}", exc_info=True)
             raise
 
 # Inline-кнопка "Ввести контейнер" для дислокации
 async def dislocation_inline_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"dislocation_inline_callback_handler: пользователь {update.effective_user.id}")
     await update.callback_query.answer()
     await update.callback_query.message.reply_text("Введите номер контейнера для поиска:")
     # Дальше срабатывает handle_message
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
+    logger.info(f"handle_sticker: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
     await show_menu(update, context)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id if user else "—"
+    user_name = user.username if user else "—"
+    logger.info(f"handle_message: пользователь {user_id} ({user_name}) отправил сообщение")
     if not update.message or not update.message.text:
+        logger.warning(f"handle_message: пустой ввод от пользователя {user_id}")
         await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
         await show_menu(update, context)
         return
 
     user_input = update.message.text
+    logger.info(f"Обрабатываем ввод: {user_input}")
     container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+' , user_input.strip()) if c]
     found_rows = []
     not_found = []
@@ -147,10 +164,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if not results:
                 not_found.append(container_number)
+                logger.info(f"Контейнер не найден: {container_number}")
                 continue
 
             row = results[0]
             found_rows.append(list(row))
+            logger.info(f"Контейнер найден: {container_number}")
 
     # Несколько контейнеров — Excel файл
     if len(container_numbers) > 1 and found_rows:
@@ -158,7 +177,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_path = create_excel_file(found_rows, COLUMNS)
         filename = get_vladivostok_filename()
-        await update.message.reply_document(document=open(file_path, "rb"), filename=filename)
+        try:
+            with open(file_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=filename)
+            logger.info(f"Отправлен Excel с дислокацией по {len(found_rows)} контейнерам пользователю {user_id}")
+        except Exception as e:
+            logger.error(f"Ошибка отправки Excel пользователю {user_id}: {e}", exc_info=True)
 
         if not_found:
             await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
@@ -195,7 +219,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(msg, parse_mode="HTML")
+        logger.info(f"Дислокация контейнера {row[0]} отправлена пользователю {user_id}")
         await show_menu(update, context)
     else:
+        logger.info(f"Ничего не найдено по введённым номерам для пользователя {user_id}")
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
         await show_menu(update, context)

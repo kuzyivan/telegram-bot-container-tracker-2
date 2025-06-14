@@ -7,12 +7,16 @@ from sqlalchemy import delete
 from models import TrackingSubscription
 import datetime
 from utils.keyboards import cancel_tracking_confirm_keyboard
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 # Состояния для ConversationHandler
 TRACK_CONTAINERS, SET_TIME = range(2)
 
 # 1. Запросить список контейнеров
 async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"[ask_containers] Пользователь {update.effective_user.id} начал постановку на слежение.")
     await update.callback_query.answer()
     await update.callback_query.message.reply_text(
         "Введите список контейнеров для слежения (через запятую):"
@@ -23,9 +27,11 @@ async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     containers = [c.strip().upper() for c in update.message.text.split(',') if c.strip()]
     if not containers:
+        logger.warning(f"[receive_containers] Пустой ввод контейнеров от пользователя {update.effective_user.id}")
         await update.message.reply_text("Список контейнеров пуст. Повторите ввод:")
         return TRACK_CONTAINERS
 
+    logger.info(f"[receive_containers] Пользователь {update.effective_user.id} выбрал контейнеры: {containers}")
     context.user_data['containers'] = containers
 
     keyboard = [
@@ -48,28 +54,37 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username
 
-    async with SessionLocal() as session:
-        sub = TrackingSubscription(
-            user_id=user_id,
-            username=username,
-            containers=containers,  # ARRAY в Postgres
-            notify_time=time_obj
-        )
-        session.add(sub)
-        await session.commit()
+    logger.info(f"[set_tracking_time] Пользователь {user_id} ({username}) ставит контейнеры {containers} на {time_obj.strftime('%H:%M')}")
 
-    await update.callback_query.message.reply_text(
-        f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {time_obj.strftime('%H:%M')} (по местному времени)"
-    )
-    return ConversationHandler.END
+    try:
+        async with SessionLocal() as session:
+            sub = TrackingSubscription(
+                user_id=user_id,
+                username=username,
+                containers=containers,  # ARRAY в Postgres
+                notify_time=time_obj
+            )
+            session.add(sub)
+            await session.commit()
+        logger.info(f"[set_tracking_time] Подписка успешно сохранена для пользователя {user_id} на {time_obj.strftime('%H:%M')}")
+        await update.callback_query.message.reply_text(
+            f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {time_obj.strftime('%H:%M')} (по местному времени)"
+        )
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"[set_tracking_time] Ошибка при сохранении подписки пользователя {user_id}: {e}", exc_info=True)
+        await update.callback_query.message.reply_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
+        return ConversationHandler.END
 
 # 4. Обработка отмены внутри ConversationHandler
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info(f"[cancel] Отмена слежения для пользователя {update.effective_user.id}")
     await update.message.reply_text("❌ Отмена слежения")
     return ConversationHandler.END
 
 # 5. Старт отмены слежения (кнопка)
 async def cancel_tracking_start(update, context):
+    logger.info(f"[cancel_tracking_start] Запрошена отмена слежения пользователем {update.effective_user.id}")
     await update.message.reply_text(
         "Вы уверены, что хотите отменить все ваши слежения?",
         reply_markup=cancel_tracking_confirm_keyboard
@@ -81,20 +96,33 @@ async def cancel_tracking_confirm(update, context):
     user_id = query.from_user.id
 
     if query.data == "cancel_tracking_yes":
-        async with SessionLocal() as session:
-            await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
-            await session.commit()
-        await query.edit_message_text("❌ Все ваши слежения отменены.")
+        logger.info(f"[cancel_tracking_confirm] Пользователь {user_id} подтвердил отмену слежений.")
+        try:
+            async with SessionLocal() as session:
+                await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
+                await session.commit()
+            await query.edit_message_text("❌ Все ваши слежения отменены.")
+            logger.info(f"[cancel_tracking_confirm] Все слежения пользователя {user_id} удалены.")
+        except Exception as e:
+            logger.error(f"[cancel_tracking_confirm] Ошибка при отмене слежений пользователя {user_id}: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка при отмене слежений.")
     elif query.data == "cancel_tracking_no":
+        logger.info(f"[cancel_tracking_confirm] Пользователь {user_id} отменил отмену слежений.")
         await query.edit_message_text("Отмена слежения не выполнена.")
 
 # Старый вариант для команды /canceltracking
 async def cancel_tracking(update, context):
     user_id = update.effective_user.id
-    async with SessionLocal() as session:
-        await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
-        await session.commit()
-    await update.message.reply_text("❌ Все ваши слежения отменены.")
+    logger.info(f"[cancel_tracking] Команда отмены всех слежений от пользователя {user_id}")
+    try:
+        async with SessionLocal() as session:
+            await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
+            await session.commit()
+        await update.message.reply_text("❌ Все ваши слежения отменены.")
+        logger.info(f"[cancel_tracking] Все слежения пользователя {user_id} удалены.")
+    except Exception as e:
+        logger.error(f"[cancel_tracking] Ошибка при удалении слежений пользователя {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при отмене слежений.")
 
 # ConversationHandler для главного меню
 def tracking_conversation_handler():
