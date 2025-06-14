@@ -16,15 +16,33 @@ TRACK_CONTAINERS, SET_TIME = range(2)
 
 # 1. Запросить список контейнеров
 async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"[ask_containers] Пользователь {update.effective_user.id} начал постановку на слежение.")
-    await update.callback_query.answer()
-    await update.callback_query.message.reply_text(
-        "Введите список контейнеров для слежения (через запятую):"
-    )
+    user = update.effective_user
+    user_id = user.id if user is not None else "Unknown"
+    logger.info(f"[ask_containers] Пользователь {user_id} начал постановку на слежение.")
+    if update.callback_query:
+        await update.callback_query.answer()
+        if update.callback_query.message is not None:
+            if update.effective_chat is not None:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="Введите список контейнеров для слежения (через запятую):"
+                )
+            else:
+                logger.warning("[ask_containers] effective_chat is None, cannot send message.")
+        else:
+            logger.warning("[ask_containers] callback_query.message is None, cannot send reply_text.")
+    else:
+        await update.message.reply_text(
+            "Введите список контейнеров для слежения (через запятую):"
+        )
     return TRACK_CONTAINERS
 
 # 2. Получить список контейнеров от пользователя
 async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        logger.warning(f"[receive_containers] Нет текста сообщения от пользователя {update.effective_user.id}")
+        await update.message.reply_text("Пожалуйста, введите список контейнеров через запятую.")
+        return TRACK_CONTAINERS
     containers = [c.strip().upper() for c in update.message.text.split(',') if c.strip()]
     if not containers:
         logger.warning(f"[receive_containers] Пустой ввод контейнеров от пользователя {update.effective_user.id}")
@@ -57,7 +75,8 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"[set_tracking_time] Пользователь {user_id} ({username}) ставит контейнеры {containers} на {time_obj.strftime('%H:%M')}")
 
     try:
-        async with SessionLocal() as session:
+        session = SessionLocal()
+        try:
             sub = TrackingSubscription(
                 user_id=user_id,
                 username=username,
@@ -65,7 +84,9 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 notify_time=time_obj
             )
             session.add(sub)
-            await session.commit()
+            session.commit()
+        finally:
+            session.close()
         logger.info(f"[set_tracking_time] Подписка успешно сохранена для пользователя {user_id} на {time_obj.strftime('%H:%M')}")
         await update.callback_query.message.reply_text(
             f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {time_obj.strftime('%H:%M')} (по местному времени)"
@@ -95,9 +116,12 @@ async def cancel_tracking_confirm(update, context):
     query = update.callback_query
     user_id = query.from_user.id
 
-    if query.data == "cancel_tracking_yes":
-        logger.info(f"[cancel_tracking_confirm] Пользователь {user_id} подтвердил отмену слежений.")
-        try:
+            session = SessionLocal()
+            try:
+                session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
+                session.commit()
+            finally:
+                session.close()
             async with SessionLocal() as session:
                 await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
                 await session.commit()
