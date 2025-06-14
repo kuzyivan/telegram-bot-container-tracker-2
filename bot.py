@@ -4,7 +4,7 @@ logger = get_logger(__name__)
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 )
-from telegram import BotCommand
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
@@ -23,15 +23,30 @@ from handlers.tracking_handlers import (
 )
 
 async def set_bot_commands(application):
-    await application.bot.set_my_commands([
+    # Команды для обычных пользователей (по умолчанию)
+    user_commands = [
         BotCommand("start", "Главное меню"),
         BotCommand("menu", "Главное меню"),
+        BotCommand("canceltracking", "Отменить все слежения"),
+    ]
+    await application.bot.set_my_commands(
+        commands=user_commands,
+        scope=BotCommandScopeDefault()
+    )
+    logger.info("Установлены команды для обычных пользователей.")
+
+    # Расширенные команды для администратора (видны только админу)
+    admin_commands = user_commands + [
         BotCommand("stats", "Статистика (админ)"),
         BotCommand("exportstats", "Выгрузка (админ)"),
         BotCommand("testnotify", "Тестовая рассылка (админ)"),
-        BotCommand("canceltracking", "Отменить все слежения")
-    ])
-    logger.info("Команды бота успешно установлены.")
+        BotCommand("tracking", "Выгрузка подписок (админ)"),
+    ]
+    await application.bot.set_my_commands(
+        commands=admin_commands,
+        scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID)
+    )
+    logger.info(f"Установлены расширенные команды для админа (ID: {ADMIN_CHAT_ID})")
 
 def main():
     logger.info("🚦 Старт бота!")
