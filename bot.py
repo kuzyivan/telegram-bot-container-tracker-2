@@ -35,6 +35,8 @@ async def set_bot_commands(application):
 
 def main():
     keep_alive()
+    if TOKEN is None:
+        raise ValueError("TOKEN must not be None. Please set the TOKEN in your config.")
     application = Application.builder().token(TOKEN).build()
 
     async def post_init(application):
