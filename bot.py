@@ -21,6 +21,7 @@ from handlers.tracking_handlers import (
     cancel,
     cancel_tracking_confirm
 )
+from handlers.broadcast import broadcast_conversation_handler
 
 async def set_bot_commands(application):
     # Команды для обычных пользователей (по умолчанию)
@@ -41,6 +42,7 @@ async def set_bot_commands(application):
         BotCommand("exportstats", "Выгрузка (админ)"),
         BotCommand("testnotify", "Тестовая рассылка (админ)"),
         BotCommand("tracking", "Выгрузка подписок (админ)"),
+        BotCommand("broadcast", "Рассылка (админ)"),  # Добавлено!
     ]
     await application.bot.set_my_commands(
         commands=admin_commands,
@@ -67,23 +69,33 @@ def main():
 
         application.post_init = post_init
 
-        # ConversationHandler — ПЕРВЫМ
+        # ----------- Регистрируем хендлеры ------------
+
+        # ConversationHandler для рассылки — первым!
+        application.add_handler(broadcast_conversation_handler)
+        # Остальные ConversationHandler'ы
         application.add_handler(tracking_conversation_handler())
+        # Кнопки меню
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
+        # Команды
         application.add_handler(CommandHandler("menu", show_menu))
         application.add_handler(CommandHandler("start", start))
-        application.add_handler(MessageHandler(
-            filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
-            reply_keyboard_handler
-        ))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
         application.add_handler(CommandHandler("canceltracking", cancel))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
+        # Кнопка отмены слежения
+        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
+        # Кнопки клавиатуры
+        application.add_handler(MessageHandler(
+            filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
+            reply_keyboard_handler
+        ))
+        # Стикеры
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
+        # Всё остальное — как обычное сообщение
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         logger.info("Все хендлеры зарегистрированы, бот готов к работе!")
