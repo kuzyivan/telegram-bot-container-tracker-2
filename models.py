@@ -60,7 +60,7 @@ async def create_temp_table():
     """
     async with engine.begin() as conn:
         # ИСПРАВЛЕНО: Добавлен параметр checkfirst=True,
-        # чтобы избежать ошибки, если таблица уже создана.
+        # чтобы избежать ошибки, если таблица и ее индексы уже созданы.
         await conn.run_sync(
             Base.metadata.create_all,
             tables=[TrackingTemp.__table__],
