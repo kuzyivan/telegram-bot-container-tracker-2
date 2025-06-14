@@ -1,57 +1,38 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Float,
-    text,
-)
-from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, BigInteger
 
 Base = declarative_base()
 
-# Основная рабочая таблица
+
 class Tracking(Base):
-    __tablename__ = "tracking"
+    __tablename__ = 'tracking'
 
     id = Column(Integer, primary_key=True)
-    container_number = Column(String, index=True)
-    from_station = Column(String)
-    to_station = Column(String)
-    current_station = Column(String)
-    operation = Column(String)
-    operation_date = Column(String)
-    waybill = Column(String)
-    km_left = Column(Integer)
-    forecast_days = Column(Float)
-    wagon_number = Column(String)
-    operation_road = Column(String)
-    updated_at = Column(String)
-    # Добавь остальные нужные поля по проекту
+    container_number = Column(String, nullable=False, index=True)
+    station = Column(String, nullable=False)
+    operation = Column(String, nullable=False)
+    operation_date = Column(DateTime, nullable=False, index=True)
+    arrival = Column(Boolean, default=False)
 
-# Временная таблица для массовой загрузки
-class TrackingTemp(Base):
-    __tablename__ = "tracking_temp"
+    def __repr__(self):
+        return (
+            f"<Tracking(container_number={self.container_number}, "
+            f"station={self.station}, operation={self.operation}, "
+            f"operation_date={self.operation_date}, arrival={self.arrival})>"
+        )
+
+
+class TrackingSubscription(Base):
+    __tablename__ = 'tracking_subscriptions'
 
     id = Column(Integer, primary_key=True)
-    container_number = Column(String)
-    from_station = Column(String)
-    to_station = Column(String)
-    current_station = Column(String)
-    operation = Column(String)
-    operation_date = Column(String)
-    waybill = Column(String)
-    km_left = Column(Integer)
-    forecast_days = Column(Float)
-    wagon_number = Column(String)
-    operation_road = Column(String)
+    user_id = Column(BigInteger, nullable=False, index=True)      # id пользователя Telegram
+    container_number = Column(String, nullable=False, index=True) # Контейнер, который отслеживает пользователь
+    created_at = Column(DateTime, nullable=False)                 # Дата/время подписки
+    active = Column(Boolean, default=True)                        # Флаг активности подписки
 
-# Вспомогательная функция для обновления временной таблицы
-async def create_temp_table(engine: AsyncEngine):
-    """
-    Удаляет временную таблицу tracking_temp (с индексами) и создаёт заново.
-    Вызывать перед загрузкой каждого нового файла!
-    """
-    async with engine.begin() as conn:
-        await conn.execute(text('DROP TABLE IF EXISTS tracking_temp CASCADE;'))
-        await conn.run_sync(Base.metadata.create_all, tables=[TrackingTemp.__table__])
+    def __repr__(self):
+        return (
+            f"<TrackingSubscription(user_id={self.user_id}, "
+            f"container_number={self.container_number}, active={self.active})>"
+        )
