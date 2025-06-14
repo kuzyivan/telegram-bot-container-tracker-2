@@ -1,6 +1,6 @@
 import os
 import logging
-from imap_tools import MailBox
+from imap_tools.mailbox import MailBox
 from datetime import datetime
 import pandas as pd
 from sqlalchemy import delete
@@ -41,7 +41,7 @@ async def check_mail():
 def fetch_latest_excel():
     latest_file = None
     latest_date = None
-    with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
+    with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox: # type: ignore
         for msg in mailbox.fetch():
             for att in msg.attachments:
                 if att.filename.endswith('.xlsx'):
