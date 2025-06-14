@@ -27,8 +27,8 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        with SessionLocal() as session:
-            result = session.execute(text("SELECT * FROM tracking_subscriptions"))
+        async with SessionLocal() as session:
+            result = await session.execute(text("SELECT * FROM tracking_subscriptions"))
             subs = result.fetchall()
             if not subs:
                 logger.info("[tracking] Нет активных слежений для выгрузки.")
@@ -70,7 +70,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        with SessionLocal() as session:
+        async with SessionLocal() as session:
             query = text("""
                 SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
                     STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
@@ -80,7 +80,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 GROUP BY user_id, username
                 ORDER BY запросов DESC
             """)
-            result = session.execute(query, {'admin_id': ADMIN_CHAT_ID})
+            result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
             rows = result.fetchall()
 
         if not rows:
@@ -131,9 +131,9 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        with SessionLocal() as session:
+        async with SessionLocal() as session:
             query = text("SELECT * FROM stats WHERE user_id != :admin_id")
-            result = session.execute(query, {'admin_id': ADMIN_CHAT_ID})
+            result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
             rows = result.fetchall()
 
         if not rows:
@@ -172,8 +172,8 @@ async def test_notify(update, context):
         return
 
     try:
-        with SessionLocal() as session:
-            result = session.execute(select(TrackingSubscription))
+        async with SessionLocal() as session:
+            result = await session.execute(select(TrackingSubscription))
             subscriptions = result.scalars().all()
 
             columns = [
@@ -188,7 +188,7 @@ async def test_notify(update, context):
                 user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
                 rows = []
                 for container in sub.containers:
-                    res = session.execute(
+                    res = await session.execute(
                         select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
                     )
                     track = res.scalars().first()
