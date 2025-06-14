@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+from sqlalchemy import select
 from config import DATABASE_URL
 
 if DATABASE_URL is None:
@@ -14,3 +15,15 @@ SessionLocal = async_sessionmaker(
 )
 
 Base = declarative_base()
+
+from models import Tracking
+
+async def get_all_user_ids():
+    """
+    Возвращает список всех уникальных user_id из таблицы tracking.
+    Используется для рассылки.
+    """
+    async with SessionLocal() as session:
+        result = await session.execute(select(Tracking.user_id).distinct())
+        user_ids = [row[0] for row in result.fetchall() if row[0] is not None]
+        return user_ids
