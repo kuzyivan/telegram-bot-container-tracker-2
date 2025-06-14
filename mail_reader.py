@@ -82,7 +82,7 @@ async def process_file(filepath):
             )
             records.append(record)
 
-        async with SessionLocal() as session:
+        async with SessionLocal() as session: # type: ignore
             await session.execute(delete(Tracking))
             session.add_all(records)
             await session.commit()
