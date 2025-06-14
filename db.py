@@ -6,8 +6,10 @@ if DATABASE_URL is None:
     raise ValueError("DATABASE_URL must be set and not None")
 
 engine = create_async_engine(DATABASE_URL, echo=True, future=True)
+
 SessionLocal = sessionmaker(
-    bind=engine,  # type: ignore    class_=AsyncSession,
+    bind=engine,
+    class_=AsyncSession,   # <-- Вот это ОБЯЗАТЕЛЬНО!
     expire_on_commit=False,
     autoflush=False,
     autocommit=False,

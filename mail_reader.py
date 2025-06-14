@@ -80,9 +80,11 @@ async def process_file(filepath):
             )
             records.append(record)
 
-        # Вот как надо работать с async session:
+        # Вот асинхронная работа с БД
         async with SessionLocal() as session:
-            await session.execute(text('CREATE TEMP TABLE IF NOT EXISTS tracking_tmp (LIKE tracking INCLUDING ALL)'))
+            await session.execute(
+                text('CREATE TEMP TABLE IF NOT EXISTS tracking_tmp (LIKE tracking INCLUDING ALL)')
+            )
             await session.execute(text('TRUNCATE tracking_tmp'))
             for record in records:
                 await session.execute(
