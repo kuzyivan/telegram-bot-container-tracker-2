@@ -5,7 +5,7 @@ from config import DATABASE_URL
 if DATABASE_URL is None:
     raise ValueError("DATABASE_URL must be set and not None")
 
-engine = create_async_engine(DATABASE_URL, echo=True, future=True)
+engine = create_async_engine(DATABASE_URL, future=True)
 
 SessionLocal = sessionmaker(
     bind=engine,
