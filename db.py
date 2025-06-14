@@ -1,5 +1,5 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 from config import DATABASE_URL
 
 if DATABASE_URL is None:
@@ -7,12 +7,10 @@ if DATABASE_URL is None:
 
 engine = create_async_engine(DATABASE_URL, future=True)
 
-SessionLocal = sessionmaker(
+SessionLocal = async_sessionmaker(
     bind=engine,
-    class_=AsyncSession,   # <-- Вот это ОБЯЗАТЕЛЬНО!
+    class_=AsyncSession,
     expire_on_commit=False,
-    autoflush=False,
-    autocommit=False,
 )
 
 Base = declarative_base()
