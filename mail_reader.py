@@ -1,6 +1,6 @@
 import os
 import logging
-from imap_tools.mailbox import MailBox
+from imap_tools import MailBox
 from datetime import datetime
 import pandas as pd
 from sqlalchemy import text
@@ -80,7 +80,7 @@ async def process_file(filepath):
             )
             records.append(record)
 
-        # Вот асинхронная работа с БД
+        # Асинхронная работа с БД
         async with SessionLocal() as session:
             await session.execute(
                 text('CREATE TEMP TABLE IF NOT EXISTS tracking_tmp (LIKE tracking INCLUDING ALL)')
