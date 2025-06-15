@@ -6,8 +6,8 @@ import pandas as pd
 from sqlalchemy import text
 from db import SessionLocal
 from models import Tracking
-
-logger = logging.getLogger(__name__)
+from logger import get_logger
+logger = get_logger(__name__)
 
 EMAIL = os.getenv('EMAIL')
 PASSWORD = os.getenv('PASSWORD')

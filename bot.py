@@ -23,6 +23,15 @@ from handlers.tracking_handlers import (
 )
 from handlers.broadcast import broadcast_conversation_handler
 
+# === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
+async def error_handler(update, context):
+    logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
+    # Если хочешь, можешь уведомить админа вот так:
+    # try:
+    #     await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"❗️Ошибка: {context.error}")
+    # except Exception as send_err:
+    #     logger.error("Ошибка отправки уведомления админу: %s", send_err, exc_info=True)
+
 async def set_bot_commands(application):
     user_commands = [
         BotCommand("start", "Главное меню"),
@@ -86,6 +95,9 @@ def main():
         ))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+        # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
+        application.add_error_handler(error_handler)
 
         logger.info("Все хендлеры зарегистрированы, бот готов к работе!")
 
