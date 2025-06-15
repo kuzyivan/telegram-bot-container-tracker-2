@@ -56,8 +56,9 @@ async def send_notifications(bot, target_time: time):
                             track.operation_road
                         ])
                 if not rows:
-                    await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(sub.containers)}")
-                    logger.info(f"Нет данных для пользователя {sub.user_id} ({sub.containers})")
+                    containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
+                    await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(containers_list)}")
+                    logger.info(f"Нет данных для пользователя {sub.user_id} ({containers_list})")
                     continue
                 file_path = create_excel_file(rows, columns)
                 filename = get_vladivostok_filename()
