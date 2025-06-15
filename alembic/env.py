@@ -9,9 +9,12 @@ import os
 
 load_dotenv()
 
+from typing import cast
+
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
     raise RuntimeError("❌ DATABASE_URL не задан в .env!")
+database_url = cast(str, database_url)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -70,7 +73,7 @@ def run_migrations_online() -> None:
     from sqlalchemy import create_engine
 
     connectable = create_engine(
-        database_url,
+        cast(str, database_url),
         poolclass=pool.NullPool,
     )
 
