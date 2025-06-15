@@ -1,6 +1,6 @@
 import os
 import logging
-from imap_tools import MailBox
+from imap_tools.mailbox import MailBox
 from datetime import datetime
 import pandas as pd
 from sqlalchemy import text
@@ -38,6 +38,9 @@ async def check_mail():
 def fetch_latest_excel():
     latest_file = None
     latest_date = None
+    if EMAIL is None or PASSWORD is None:
+        logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
+        return None
     with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder='INBOX') as mailbox:
         for msg in mailbox.fetch():
             for att in msg.attachments:
