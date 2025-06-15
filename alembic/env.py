@@ -11,7 +11,8 @@ from typing import cast
 # Загружаем переменные окружения из .env
 load_dotenv()
 
-database_url = os.getenv("DATABASE_URL")
+# Получаем переменные окружения
+database_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
 if not database_url:
     raise RuntimeError(
         "\n❌ DATABASE_URL не задан в .env или переменных окружения!\n"
@@ -21,10 +22,17 @@ if not database_url:
     )
 database_url = cast(str, database_url)
 
+# Если asyncpg — подменяем на psycopg2 для Alembic
+if database_url.startswith("postgresql+asyncpg"):
+    alembic_url = database_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+    print("⚡️ Alembic: asyncpg → psycopg2 (для миграций)")
+else:
+    alembic_url = database_url
+
 # Alembic Config
 config = context.config
-config.set_main_option('sqlalchemy.url', database_url)
-print(f"🔗 Alembic подключается к базе: {database_url.split('@')[-1].split('?')[0]}")  # не светим пароль
+config.set_main_option('sqlalchemy.url', alembic_url)
+print(f"🔗 Alembic подключается к базе: {alembic_url.split('@')[-1].split('?')[0]}")  # не светим пароль
 
 # Логирование
 if config.config_file_name is not None:
@@ -50,7 +58,7 @@ def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     from sqlalchemy import create_engine
     connectable = create_engine(
-        database_url,
+        alembic_url,
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
