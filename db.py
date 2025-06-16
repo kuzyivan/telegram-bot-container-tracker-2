@@ -24,7 +24,7 @@ from models import Stats
 
 async def get_all_user_ids():
     """
-    Возвращает список всех уникальных user_id из таблицы tracking.
+    Возвращает список всех уникальных user_id из таблицы stats.
     Используется для рассылки.
     """
     async with SessionLocal() as session:
