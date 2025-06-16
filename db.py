@@ -6,8 +6,12 @@ from config import DATABASE_URL
 if DATABASE_URL is None:
     raise ValueError("DATABASE_URL must be set and not None")
 
-engine = create_async_engine(DATABASE_URL, future=True)
-
+engine = create_async_engine(
+    DATABASE_URL,
+    future=True,
+    pool_recycle=300,    # Обновлять соединения каждые 5 минут
+    pool_pre_ping=True,  # Перед каждым использованием — пингуем
+)
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
