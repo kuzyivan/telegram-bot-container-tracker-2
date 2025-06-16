@@ -20,7 +20,7 @@ SessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
-from models import Tracking
+from models import Stats
 
 async def get_all_user_ids():
     """
@@ -28,6 +28,6 @@ async def get_all_user_ids():
     Используется для рассылки.
     """
     async with SessionLocal() as session:
-        result = await session.execute(select(Tracking.user_id).distinct())
+        result = await session.execute(select(Stats.user_id).distinct())
         user_ids = [row[0] for row in result.fetchall() if row[0] is not None]
         return user_ids
