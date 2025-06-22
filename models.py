@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Float, Time, ARRAY
+from sqlalchemy import Boolean, Column, Integer, String, BigInteger, DateTime, Float, Time, ARRAY
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
@@ -42,6 +42,15 @@ try:
         forecast_days = Column(Float)
         wagon_number = Column(String)
         operation_road = Column(String)
+
+    class User(Base):
+        __tablename__ = "users"
+        id = Column(Integer, primary_key=True)
+        telegram_id = Column(BigInteger, unique=True, nullable=False)
+        username = Column(String, nullable=True)
+        email = Column(String, nullable=True)
+        email_enabled = Column(Boolean, default=False)
+        # далее можно расширять profile fields    
 
     logger.info("Модели БД успешно определены и готовы к использованию.")
 
