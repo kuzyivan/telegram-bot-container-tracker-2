@@ -20,8 +20,7 @@ SessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
-from models import Stats, TrackingSubscription, Users
-
+from models import Stats, TrackingSubscriptions, Users
 async def get_all_user_ids():
     """
     Возвращает список всех уникальных user_id из таблицы stats.
