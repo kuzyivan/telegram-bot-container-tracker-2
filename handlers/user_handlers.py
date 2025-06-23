@@ -2,10 +2,9 @@ from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 
 from db import (
-    get_tracked_containers_by_user,
     remove_user_tracking,
-    get_all_user_ids,
-    set_user_email
+    get_tracked_containers_by_user,
+    set_user_email,
 )
 
 import logging
