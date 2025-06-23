@@ -74,16 +74,18 @@ async def cancel_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Обработка reply-клавиатуры ---
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    logger.info(f"reply_keyboard_handler: пользователь {update.effective_user.id} нажал '{text}'")
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
+        # После этого handle_message будет обрабатывать ввод — искать дислокацию
     elif text == "🔔 Задать слежение":
-        await update.message.reply_text("Введите номер контейнера для слежения:")
+        from handlers.tracking_handlers import ask_containers
+        # Передать управление ConversationHandler постановки на слежение
+        return await ask_containers(update, context)
     elif text == "❌ Отмена слежения":
-        await cancel_my_tracking(update, context)
+        from handlers.tracking_handlers import cancel_tracking_start
+        return await cancel_tracking_start(update, context)
     else:
-        logger.info(f"Не команда меню — ищем '{text}' как обычный запрос контейнера.")
-        await handle_message(update, context)
+        await update.message.reply_text("Команда не распознана. Используйте кнопки меню.")
 
 # --- Inline кнопки ---
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
