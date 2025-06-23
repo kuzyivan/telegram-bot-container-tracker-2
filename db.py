@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import select
+from sqlalchemy import select, delete, update
 from config import DATABASE_URL
 
 if DATABASE_URL is None:
@@ -9,8 +9,8 @@ if DATABASE_URL is None:
 engine = create_async_engine(
     DATABASE_URL,
     future=True,
-    pool_recycle=300,
-    pool_pre_ping=True,
+    pool_recycle=300,    # Обновлять соединения каждые 5 минут
+    pool_pre_ping=True,  # Перед каждым использованием — пингуем
 )
 SessionLocal = async_sessionmaker(
     bind=engine,
@@ -20,7 +20,7 @@ SessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
-from models import Stats, User  # Добавь User
+from models import Stats, TrackingSubscriptions, Users
 
 async def get_all_user_ids():
     """
@@ -32,35 +32,44 @@ async def get_all_user_ids():
         user_ids = [row[0] for row in result.fetchall() if row[0] is not None]
         return user_ids
 
-# --- ДОБАВЬ функции работы с User ---
+# ====== Добавлено для handlers/user_handlers ======
 
-async def set_user_email(telegram_id: int, username: str, email: str):
+async def get_tracked_containers_by_user(user_id):
+    """
+    Получить все отслеживаемые контейнеры пользователя.
+    """
     async with SessionLocal() as session:
-        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
-        if user:
-            user.email = email
-            user.email_enabled = True
-            user.username = username or user.username
-        else:
-            user = User(
-                telegram_id=telegram_id,
-                username=username,
-                email=email,
-                email_enabled=True,
-            )
-            session.add(user)
+        result = await session.execute(
+            select(TrackingSubscriptions.containers).where(TrackingSubscriptions.user_id == user_id)
+        )
+        row = result.scalar_one_or_none()
+        return row if row else []
+
+async def remove_user_tracking(user_id):
+    """
+    Удалить все подписки пользователя (отписка от всех контейнеров).
+    """
+    async with SessionLocal() as session:
+        await session.execute(
+            delete(TrackingSubscriptions).where(TrackingSubscriptions.user_id == user_id)
+        )
         await session.commit()
 
-async def disable_user_email(telegram_id: int):
+async def set_user_email(telegram_id, username, email):
+    """
+    Привязать или обновить email пользователя.
+    Если пользователь существует — обновить. Иначе — создать.
+    """
     async with SessionLocal() as session:
-        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        result = await session.execute(
+            select(Users).where(Users.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
         if user:
-            user.email_enabled = False
-            await session.commit()
-
-async def get_user_email(telegram_id: int):
-    async with SessionLocal() as session:
-        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
-        if user and user.email_enabled:
-            return user.email
-        return None
+            await session.execute(
+                update(Users).where(Users.telegram_id == telegram_id)
+                .values(username=username, email=email)
+            )
+        else:
+            session.add(Users(telegram_id=telegram_id, username=username, email=email))
+        await session.commit()
