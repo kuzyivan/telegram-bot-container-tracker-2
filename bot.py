@@ -86,8 +86,9 @@ def main():
         application.post_init = post_init
 
         # ----------- Регистрируем хендлеры ------------
+        application.add_handler(set_email_conv_handler)
         application.add_handler(broadcast_conversation_handler)
-        application.add_handler(tracking_conversation_handler())
+        application.add_handler(tracking_conversation_handler())   # ConversationHandler — обязательно выше
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
         application.add_handler(CommandHandler("menu", show_menu))
@@ -103,7 +104,7 @@ def main():
             reply_keyboard_handler
         ))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))   # Всегда последним!
 
         # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
         application.add_error_handler(error_handler)

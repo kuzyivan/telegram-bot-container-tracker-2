@@ -76,11 +76,10 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     text = update.message.text
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
-        # После этого handle_message будет обрабатывать ввод — искать дислокацию
+    # НЕ вызываем ask_containers вручную!
     elif text == "🔔 Задать слежение":
-        from handlers.tracking_handlers import ask_containers
-        # Передать управление ConversationHandler постановки на слежение
-        return await ask_containers(update, context)
+        # ConversationHandler сам отработает, не нужен вызов функции!
+        return
     elif text == "❌ Отмена слежения":
         from handlers.tracking_handlers import cancel_tracking_start
         return await cancel_tracking_start(update, context)

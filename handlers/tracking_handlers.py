@@ -170,7 +170,10 @@ async def cancel_tracking(update, context):
 # ConversationHandler для главного меню
 def tracking_conversation_handler():
     return ConversationHandler(
-        entry_points=[CallbackQueryHandler(ask_containers, pattern="^track_request$")],
+        entry_points=[
+            CallbackQueryHandler(ask_containers, pattern="^track_request$"),
+            MessageHandler(filters.Regex("^🔔 Задать слежение$"), ask_containers),  # добавь этот
+        ],
         states={
             TRACK_CONTAINERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_containers)],
             SET_TIME: [CallbackQueryHandler(set_tracking_time, pattern="^time_")]
