@@ -61,14 +61,14 @@ async def set_user_email(telegram_id, username, email):
     """
     async with SessionLocal() as session:
         result = await session.execute(
-            select(Users).where(Users.telegram_id == telegram_id)
+            select(User).where(User.telegram_id == telegram_id)
         )
         user = result.scalar_one_or_none()
         if user:
             await session.execute(
-                update(Users).where(Users.telegram_id == telegram_id)
+                update(User).where(User.telegram_id == telegram_id)
                 .values(username=username, email=email)
             )
         else:
-            session.add(Users(telegram_id=telegram_id, username=username, email=email))
+            session.add(User(telegram_id=telegram_id, username=username, email=email))
         await session.commit()
