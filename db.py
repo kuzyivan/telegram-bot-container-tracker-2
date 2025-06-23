@@ -20,7 +20,7 @@ SessionLocal = async_sessionmaker(
 
 Base = declarative_base()
 
-from models import Stats, TrackingSubscriptions, Users
+from models import Stats, TrackingSubscription, Users
 
 async def get_all_user_ids():
     """
