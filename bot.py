@@ -2,7 +2,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 
@@ -27,17 +27,14 @@ from handlers.broadcast import broadcast_conversation_handler
 # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
 async def error_handler(update, context):
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
-    # Если хочешь, можешь уведомить админа вот так:
-    # try:
-    #     await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"❗️Ошибка: {context.error}")
-    # except Exception as send_err:
-    #     logger.error("Ошибка отправки уведомления админу: %s", send_err, exc_info=True)
 
 async def set_bot_commands(application):
     user_commands = [
         BotCommand("start", "Главное меню"),
         BotCommand("menu", "Главное меню"),
         BotCommand("canceltracking", "Отменить все слежения"),
+        BotCommand("set_email", "Указать e-mail для отчётов"),
+        BotCommand("email_off", "Отключить рассылку на e-mail"),
     ]
     await application.bot.set_my_commands(
         commands=user_commands,
@@ -68,17 +65,16 @@ def main():
 
         application = Application.builder().token(TOKEN).build()
 
-SET_EMAIL = range(1)
-from handlers.user_handlers import set_email_command, process_email, cancel_email
-
-set_email_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler("set_email", set_email_command)],
-    states={
-        SET_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_email)]
-    },
-    fallbacks=[CommandHandler("cancel", cancel_email)],
-)
-application.add_handler(set_email_conv_handler)
+        # --- ConversationHandler для команды /set_email ---
+        SET_EMAIL = range(1)
+        set_email_conv_handler = ConversationHandler(
+            entry_points=[CommandHandler("set_email", set_email_command)],
+            states={
+                SET_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_email)]
+            },
+            fallbacks=[CommandHandler("cancel", cancel_email)],
+        )
+        application.add_handler(set_email_conv_handler)
 
         async def post_init(application):
             logger.info("Инициализация: запуск проверки почты и планировщика...")
