@@ -15,7 +15,7 @@ from models import Base
 config = context.config
 
 # Загружаем значение DATABASE_URL из .env
-config.set_main_option('sqlalchemy.url', os.getenv("ALEMBIC_DATABASE_URL"))
+config.set_main_option('sqlalchemy.url', os.getenv("ALEMBIC_DATABASE_URL")) # type: ignore
 
 # Интерпретируем конфигурационный файл логирования
 if config.config_file_name is not None:
@@ -37,7 +37,7 @@ def run_migrations_offline():
 
 def run_migrations_online():
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
+        config.get_section(config.config_ini_section), # type: ignore
         prefix='sqlalchemy.',
         poolclass=pool.NullPool,
     )
