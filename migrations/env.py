@@ -15,7 +15,7 @@ from models import Base
 config = context.config
 
 # Загружаем значение DATABASE_URL из .env
-config.set_main_option('sqlalchemy.url', os.getenv("DATABASE_URL"))
+config.set_main_option('sqlalchemy.url', os.getenv("ALEMBIC_DATABASE_URL"))
 
 # Интерпретируем конфигурационный файл логирования
 if config.config_file_name is not None:
