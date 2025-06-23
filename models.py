@@ -9,7 +9,7 @@ logger = get_logger(__name__)
 try:
     Base = declarative_base()
 
-    class TrackingSubscriptions(Base):
+    class TrackingSubscription(Base):
         __tablename__ = "tracking_subscriptions"
 
         id = Column(Integer, primary_key=True)
@@ -43,7 +43,7 @@ try:
         wagon_number = Column(String)
         operation_road = Column(String)
 
-    class Users(Base):
+    class User(Base):
         __tablename__ = "users"
         id = Column(Integer, primary_key=True)
         telegram_id = Column(BigInteger, unique=True, nullable=False)
