@@ -12,7 +12,8 @@ from scheduler import start_scheduler
 from utils.keep_alive import keep_alive
 from handlers.user_handlers import (
     start, handle_sticker, handle_message, show_menu,
-    menu_button_handler, reply_keyboard_handler, dislocation_inline_callback_handler
+    menu_button_handler, reply_keyboard_handler, dislocation_inline_callback_handler,
+    set_email_command, process_email, cancel_email
 )
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from db import SessionLocal
@@ -66,6 +67,18 @@ def main():
             raise ValueError("TOKEN must not be None. Please set the TOKEN in your config.")
 
         application = Application.builder().token(TOKEN).build()
+
+SET_EMAIL = range(1)
+from handlers.user_handlers import set_email_command, process_email, cancel_email
+
+set_email_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("set_email", set_email_command)],
+    states={
+        SET_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_email)]
+    },
+    fallbacks=[CommandHandler("cancel", cancel_email)],
+)
+application.add_handler(set_email_conv_handler)
 
         async def post_init(application):
             logger.info("Инициализация: запуск проверки почты и планировщика...")
