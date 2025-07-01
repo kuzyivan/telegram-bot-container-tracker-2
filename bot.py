@@ -111,12 +111,7 @@ def main():
 
         logger.info("Все хендлеры зарегистрированы, бот готов к работе!")
 
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=TOKEN,
-            webhook_url=f"https://{RENDER_HOSTNAME}/{TOKEN}",
-        )
+        application.run_polling()
 
         logger.info("Работа бота завершена корректно.")
 
