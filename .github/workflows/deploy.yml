@@ -1,0 +1,31 @@
+name: 🚀 Deploy to VDS
+
+on:
+  push:
+    branches:
+      - main  # или master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.VDS_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+        chmod 600 ~/.ssh/id_ed25519
+        ssh-keyscan -H 109.172.30.183 >> ~/.ssh/known_hosts
+
+    - name: Deploy via SSH
+      run: |
+        ssh -i ~/.ssh/id_ed25519 root@109.172.30.183 << 'EOF'
+          cd /opt/bot
+          git pull
+          source venv/bin/activate
+          pip install -r requirements.txt
+          supervisorctl restart telegrambot
+        EOF
