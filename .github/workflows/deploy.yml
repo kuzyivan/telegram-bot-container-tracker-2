@@ -24,7 +24,7 @@ jobs:
       run: |
         ssh -i ~/.ssh/id_ed25519 root@109.172.30.183 << 'EOF'
           cd /opt/bot
-          git pull
+          git pull origin main
           source venv/bin/activate
           pip install -r requirements.txt
           supervisorctl restart telegrambot
