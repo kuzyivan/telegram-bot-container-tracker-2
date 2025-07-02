@@ -5,6 +5,8 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from dotenv import load_dotenv
+load_dotenv()
 
 from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
 from mail_reader import start_mail_checking
