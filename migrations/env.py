@@ -11,6 +11,8 @@ load_dotenv()
 # Импортируем объект Base из models.py
 from models import Base
 
+print(f"🔗 Alembic подключается к: {os.getenv('ALEMBIC_DATABASE_URL')}")
+
 # Конфигурация Alembic
 config = context.config
 
