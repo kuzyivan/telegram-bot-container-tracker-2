@@ -8,10 +8,11 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from dotenv import load_dotenv
 load_dotenv()
 
-from config import TOKEN, ADMIN_CHAT_ID, RENDER_HOSTNAME, PORT
+from config import TOKEN, ADMIN_CHAT_ID 
 from mail_reader import start_mail_checking
 from scheduler import start_scheduler
-from utils.keep_alive import keep_alive
+
+#from utils.keep_alive import keep_alive
 from handlers.user_handlers import (
     start, handle_sticker, handle_message, show_menu,
     menu_button_handler, reply_keyboard_handler, dislocation_inline_callback_handler,
