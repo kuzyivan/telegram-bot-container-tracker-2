@@ -10,7 +10,7 @@ engine = create_async_engine(
     DATABASE_URL,
     future=True,
     pool_recycle=300,    # Обновлять соединения каждые 5 минут
-    pool_pre_ping=True,  # Перед каждым использованием — пингуем
+    pool_pre_ping=True,  # Пинговать соединение при каждом использовании
 )
 SessionLocal = async_sessionmaker(
     bind=engine,
@@ -21,44 +21,41 @@ SessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 from models import TrackingSubscription, Tracking, User, Stats
+
+# Получить пользователя по telegram_id (используется для проверки email, и проч.)
+async def get_user_by_telegram_id(telegram_id):
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        return result.scalar_one_or_none()
+
+# Получить все уникальные user_id для рассылки (статистика, возможно пригодится)
 async def get_all_user_ids():
-    """
-    Возвращает список всех уникальных user_id из таблицы stats.
-    Используется для рассылки.
-    """
     async with SessionLocal() as session:
         result = await session.execute(select(Stats.user_id).distinct())
         user_ids = [row[0] for row in result.fetchall() if row[0] is not None]
         return user_ids
 
-# ====== Добавлено для handlers/user_handlers ======
-
+# Получить все отслеживаемые контейнеры пользователя
 async def get_tracked_containers_by_user(user_id):
-    """
-    Получить все отслеживаемые контейнеры пользователя.
-    """
     async with SessionLocal() as session:
         result = await session.execute(
-            select(TrackingSubscriptions.containers).where(TrackingSubscriptions.user_id == user_id)
+            select(TrackingSubscription.containers).where(TrackingSubscription.user_id == user_id)
         )
         row = result.scalar_one_or_none()
         return row if row else []
 
+# Удалить все подписки пользователя (отписка от всех контейнеров)
 async def remove_user_tracking(user_id):
-    """
-    Удалить все подписки пользователя (отписка от всех контейнеров).
-    """
     async with SessionLocal() as session:
         await session.execute(
-            delete(TrackingSubscriptions).where(TrackingSubscriptions.user_id == user_id)
+            delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
         )
         await session.commit()
 
+# Привязать или обновить email пользователя
 async def set_user_email(telegram_id, username, email):
-    """
-    Привязать или обновить email пользователя.
-    Если пользователь существует — обновить. Иначе — создать.
-    """
     async with SessionLocal() as session:
         result = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
@@ -72,11 +69,9 @@ async def set_user_email(telegram_id, username, email):
         else:
             session.add(User(telegram_id=telegram_id, username=username, email=email))
         await session.commit()
-        
+
+# Создать новую подписку на отслеживание с указанием канала доставки
 async def create_tracking_subscription(user_id, username, containers, notify_time, delivery_channel):
-    """
-    Создать новую подписку на отслеживание с указанием канала доставки.
-    """
     async with SessionLocal() as session:
         subscription = TrackingSubscription(
             user_id=user_id,
@@ -86,4 +81,22 @@ async def create_tracking_subscription(user_id, username, containers, notify_tim
             delivery_channel=delivery_channel,
         )
         session.add(subscription)
-        await session.commit()        
+        await session.commit()
+
+# Получить все подписки пользователя (для админских нужд, опционально)
+async def get_subscriptions_by_user(user_id):
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
+        )
+        return result.scalars().all()
+
+# Получить список всех email подписчиков (например, для массовой email-рассылки)
+async def get_all_emails():
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(User.email).where(User.email != None)
+        )
+        return [row[0] for row in result.fetchall() if row[0]]
+
+# Можно добавить другие методы по необходимости (например, статистика, логирование и т.д.)

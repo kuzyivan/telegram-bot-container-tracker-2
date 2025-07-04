@@ -12,10 +12,8 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-# Состояния для ConversationHandler
 TRACK_CONTAINERS, SET_TIME, SET_CHANNEL = range(3)
 
-# 1. Запросить список контейнеров
 async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user is not None else "Unknown"
@@ -41,7 +39,6 @@ async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.warning("[ask_containers] update.message is None, cannot send reply_text.")
     return TRACK_CONTAINERS
 
-# 2. Получить список контейнеров от пользователя
 async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         user_id = update.effective_user.id if update.effective_user is not None else "Unknown"
@@ -72,7 +69,6 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     return SET_TIME
 
-# 3. Получить время и спросить канал доставки
 async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query is not None and update.callback_query.data is not None:
         await update.callback_query.answer()
@@ -86,14 +82,12 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data = {}
     context.user_data['notify_time'] = time_obj
 
-    # Спрашиваем, куда слать (Telegram/e-mail/оба)
     await update.callback_query.message.reply_text(
         "Куда присылать уведомления по этой подписке?",
         reply_markup=delivery_channel_keyboard()
     )
     return SET_CHANNEL
 
-# 4. Получить канал доставки, проверить e-mail, создать подписку
 async def set_delivery_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query is None or update.callback_query.data is None:
         logger.warning("[set_delivery_channel] update.callback_query is None or data is None, cannot answer or get data.")
@@ -141,9 +135,6 @@ async def set_delivery_channel(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.callback_query.message.reply_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
         return ConversationHandler.END
 
-# Остальные обработчики (отмена, удаление) — оставляй как у тебя было, выше всё совпадает.
-
-# ConversationHandler для главного меню с обновлёнными состояниями
 def tracking_conversation_handler():
     return ConversationHandler(
         entry_points=[
@@ -155,5 +146,5 @@ def tracking_conversation_handler():
             SET_TIME: [CallbackQueryHandler(set_tracking_time, pattern="^time_")],
             SET_CHANNEL: [CallbackQueryHandler(set_delivery_channel, pattern="^delivery_channel_")]
         },
-        fallbacks=[MessageHandler(filters.COMMAND, cancel)],
+        fallbacks=[],
     )

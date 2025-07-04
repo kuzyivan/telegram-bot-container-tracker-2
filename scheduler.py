@@ -14,7 +14,7 @@ scheduler = AsyncIOScheduler()
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'cron', minute=20)  # запуск каждый час в 20 минут 
+    scheduler.add_job(check_mail, 'cron', minute=20)
     logger.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
     logger.info("🟢 Планировщик запущен.")
@@ -61,25 +61,20 @@ async def send_notifications(bot, target_time: time):
                     select(User).where(User.id == sub.user_id)
                 )
                 user = user_result.scalar_one_or_none()
-                # -- Рассылка в зависимости от канала:
                 if not rows:
                     msg = f"📭 Нет данных по контейнерам {', '.join(containers_list)}"
-                    # В Telegram
                     if sub.delivery_channel in ["telegram", "both"]:
                         await bot.send_message(sub.user_id, msg)
-                    # В email
                     if sub.delivery_channel in ["email", "both"] and user and user.email:
                         await send_to_email(
                             user.email,
                             "Нет данных по отслеживанию",
                             msg,
-                            None  # без файла, т.к. нет данных
+                            None
                         )
                     logger.info(f"Нет данных для пользователя {sub.user_id} ({containers_list})")
                     continue
-
                 # Если данные есть, готовим файл
-                # В Telegram — как и раньше
                 if sub.delivery_channel in ["telegram", "both"]:
                     file_path = create_excel_file(rows, columns)
                     filename = get_vladivostok_filename()
@@ -93,7 +88,6 @@ async def send_notifications(bot, target_time: time):
                         logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id} (Telegram)")
                     except Exception as send_err:
                         logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
-                # В email — только если есть email
                 if sub.delivery_channel in ["email", "both"] and user and user.email:
                     try:
                         excel_bytes = generate_excel_report(rows, columns)
