@@ -19,10 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    pass
-
+    op.add_column(
+        'tracking_subscriptions',
+        sa.Column('delivery_channel', sa.String(), server_default='telegram')
+    )
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    pass
+    op.drop_column('tracking_subscriptions', 'delivery_channel')
