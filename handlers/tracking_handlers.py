@@ -2,11 +2,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 )
+import db
 from db import SessionLocal
 from sqlalchemy import delete, select
 from models import TrackingSubscription
 import datetime
-from utils.keyboards import cancel_tracking_confirm_keyboard
+from utils.keyboards import cancel_tracking_confirm_keyboard, delivery_channel_keyboard
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -180,3 +181,51 @@ def tracking_conversation_handler():
         },
         fallbacks=[MessageHandler(filters.COMMAND, cancel)],
     )
+
+@dp.message_handler(state=TrackingStates.waiting_for_notify_time)
+async def process_notify_time(message: types.Message, state: FSMContext):
+    notify_time = message.text.strip()
+    # валидация времени и сохранение
+    await state.update_data(notify_time=notify_time)
+
+    # Теперь спрашиваем канал
+    await message.answer(
+        "Куда присылать уведомления?",
+        reply_markup=delivery_channel_keyboard()
+    )
+    await TrackingStates.waiting_for_channel.set()
+
+    @dp.callback_query_handler(lambda c: c.data.startswith("delivery_channel_"), state=TrackingStates.waiting_for_channel)
+async def process_delivery_channel(callback_query: CallbackQuery, state: FSMContext):
+    channel = callback_query.data.replace("delivery_channel_", "")
+    user_id = callback_query.from_user.id
+
+    # Получаем пользователя из базы
+    user = await db.get_user_by_telegram_id(user_id)  # твоя функция поиска
+
+    # Проверяем, есть ли e-mail если выбран канал email/both
+    if channel in ["email", "both"]:
+        if not user.email:
+            await callback_query.message.answer(
+                "У тебя не указан e-mail. Введи команду /set_email и оформи подписку заново."
+            )
+            await state.finish()
+            return
+
+    # Сохраняем в FSMContext
+    await state.update_data(delivery_channel=channel)
+
+    # Завершаем FSM и создаём подписку
+    data = await state.get_data()
+    await db.create_tracking_subscription(
+        user_id=user_id,
+        username=user.username,
+        containers=data["containers"],
+        notify_time=data["notify_time"],
+        delivery_channel=channel,
+    )
+
+    await callback_query.message.answer("Подписка оформлена!")
+    await state.finish()
+
+    

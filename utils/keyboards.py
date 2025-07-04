@@ -1,4 +1,5 @@
 from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # Reply-клавиатура (всегда снизу)
 reply_keyboard = ReplyKeyboardMarkup(
@@ -42,3 +43,12 @@ universal_menu_keyboard_with_back = InlineKeyboardMarkup([
     [InlineKeyboardButton("Главное меню", callback_data='start')],
     [InlineKeyboardButton("Назад", callback_data='back')]
 ])
+
+def delivery_channel_keyboard():
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("В Telegram", callback_data="delivery_channel_telegram"),
+        InlineKeyboardButton("На e-mail", callback_data="delivery_channel_email"),
+        InlineKeyboardButton("В оба канала", callback_data="delivery_channel_both"),
+    )
+    return kb
