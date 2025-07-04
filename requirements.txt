@@ -9,3 +9,4 @@ python-dotenv
 sqlalchemy>=1.4
 alembic
 asyncpg
+aiosmtplib

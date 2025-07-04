@@ -72,3 +72,18 @@ async def set_user_email(telegram_id, username, email):
         else:
             session.add(User(telegram_id=telegram_id, username=username, email=email))
         await session.commit()
+        
+async def create_tracking_subscription(user_id, username, containers, notify_time, delivery_channel):
+    """
+    Создать новую подписку на отслеживание с указанием канала доставки.
+    """
+    async with SessionLocal() as session:
+        subscription = TrackingSubscription(
+            user_id=user_id,
+            username=username,
+            containers=containers,
+            notify_time=notify_time,
+            delivery_channel=delivery_channel,
+        )
+        session.add(subscription)
+        await session.commit()        
