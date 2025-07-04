@@ -13,7 +13,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 # Состояния для ConversationHandler
-TRACK_CONTAINERS, SET_TIME = range(2)
+TRACK_CONTAINERS, SET_TIME, SET_CHANNEL = range(3)
 
 # 1. Запросить список контейнеров
 async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -72,7 +72,7 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     return SET_TIME
 
-# 3. Установить время рассылки и сохранить подписку в БД
+# 3. Получить время и спросить канал доставки
 async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query is not None and update.callback_query.data is not None:
         await update.callback_query.answer()
@@ -84,148 +84,76 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data is None:
         context.user_data = {}
-    containers = context.user_data.get('containers', [])
+    context.user_data['notify_time'] = time_obj
+
+    # Спрашиваем, куда слать (Telegram/e-mail/оба)
+    await update.callback_query.message.reply_text(
+        "Куда присылать уведомления по этой подписке?",
+        reply_markup=delivery_channel_keyboard()
+    )
+    return SET_CHANNEL
+
+# 4. Получить канал доставки, проверить e-mail, создать подписку
+async def set_delivery_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query is None or update.callback_query.data is None:
+        logger.warning("[set_delivery_channel] update.callback_query is None or data is None, cannot answer or get data.")
+        return ConversationHandler.END
+    await update.callback_query.answer()
+    channel = update.callback_query.data.replace("delivery_channel_", "")
     user_id = update.effective_user.id if update.effective_user is not None else "Unknown"
     username = update.effective_user.username if update.effective_user is not None else "Unknown"
 
-    logger.info(f"[set_tracking_time] Пользователь {user_id} ({username}) ставит контейнеры {containers} на {time_obj.strftime('%H:%M')}")
+    # Получаем пользователя из базы
+    user = await db.get_user_by_telegram_id(user_id)
+    if channel in ["email", "both"]:
+        if not user or not user.email:
+            await update.callback_query.message.reply_text(
+                "У тебя не указан e-mail. Введи команду /set_email и оформи подписку заново."
+            )
+            return ConversationHandler.END
+
+    if context.user_data is None:
+        logger.error("[set_delivery_channel] context.user_data is None, ничего не сохранилось, отмена.")
+        await update.callback_query.message.reply_text("Ошибка: не удалось сохранить данные подписки.")
+        return ConversationHandler.END
+
+    containers = context.user_data.get('containers', [])
+    notify_time = context.user_data.get('notify_time', None)
 
     try:
         async with SessionLocal() as session:
             sub = TrackingSubscription(
                 user_id=user_id,
                 username=username,
-                containers=containers,  # ARRAY в Postgres
-                notify_time=time_obj
+                containers=containers,
+                notify_time=notify_time,
+                delivery_channel=channel
             )
             session.add(sub)
             await session.commit()
-        logger.info(f"[set_tracking_time] Подписка успешно сохранена для пользователя {user_id} на {time_obj.strftime('%H:%M')}")
-        if update.effective_chat is not None:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {time_obj.strftime('%H:%M')} (по местному времени)"
-            )
-        else:
-            logger.warning("[set_tracking_time] effective_chat is None, cannot send confirmation message.")
+        logger.info(f"[set_delivery_channel] Подписка успешно сохранена для пользователя {user_id}: {containers}, {notify_time}, канал: {channel}")
+        await update.callback_query.message.reply_text(
+            f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {notify_time.strftime('%H:%M')} по каналу: {channel}"
+        )
         return ConversationHandler.END
     except Exception as e:
-        logger.error(f"[set_tracking_time] Ошибка при сохранении подписки пользователя {user_id}: {e}", exc_info=True)
-        await update.callback_query.edit_message_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
+        logger.error(f"[set_delivery_channel] Ошибка при сохранении подписки пользователя {user_id}: {e}", exc_info=True)
+        await update.callback_query.message.reply_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
         return ConversationHandler.END
 
-# 4. Обработка отмены внутри ConversationHandler
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id if update.effective_user is not None else "Unknown"
-    logger.info(f"[cancel] Отмена слежения для пользователя {user_id}")
-    if update.message is not None:
-        await update.message.reply_text("❌ Отмена слежения")
-    else:
-        logger.warning("[cancel] update.message is None, cannot send reply_text.")
-    return ConversationHandler.END
+# Остальные обработчики (отмена, удаление) — оставляй как у тебя было, выше всё совпадает.
 
-# 5. Старт отмены слежения (кнопка)
-async def cancel_tracking_start(update, context):
-    logger.info(f"[cancel_tracking_start] Запрошена отмена слежения пользователем {update.effective_user.id}")
-    await update.message.reply_text(
-        "Вы уверены, что хотите отменить все ваши слежения?",
-        reply_markup=cancel_tracking_confirm_keyboard
-    )
-
-# 6. Callback обработка подтверждения/отмены
-async def cancel_tracking_confirm(update, context):
-    query = update.callback_query
-    user_id = query.from_user.id
-
-    if query.data == "cancel_tracking_yes":
-        try:
-            async with SessionLocal() as session:
-                await session.execute(
-                    delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
-                )
-                await session.commit()
-            await query.edit_message_text("❌ Все ваши слежения отменены.")
-            logger.info(f"[cancel_tracking_confirm] Все слежения пользователя {user_id} удалены.")
-        except Exception as e:
-            logger.error(f"[cancel_tracking_confirm] Ошибка при отмене слежений пользователя {user_id}: {e}", exc_info=True)
-            await query.edit_message_text("❌ Ошибка при отмене слежений.")
-    elif query.data == "cancel_tracking_no":
-        logger.info(f"[cancel_tracking_confirm] Пользователь {user_id} отменил отмену слежений.")
-        await query.edit_message_text("Отмена слежения не выполнена.")
-
-# Старый вариант для команды /canceltracking
-async def cancel_tracking(update, context):
-    user_id = update.effective_user.id if update.effective_user is not None else "Unknown"
-    try:
-        async with SessionLocal() as session:
-            await session.execute(
-                delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
-            )
-            await session.commit()
-        await update.message.reply_text("❌ Все ваши слежения отменены.")
-        logger.info(f"[cancel_tracking] Все слежения пользователя {user_id} удалены.")
-    except Exception as e:
-        logger.error(f"[cancel_tracking] Ошибка при удалении слежений пользователя {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ Ошибка при отмене слежений.")
-
-# ConversationHandler для главного меню
+# ConversationHandler для главного меню с обновлёнными состояниями
 def tracking_conversation_handler():
     return ConversationHandler(
         entry_points=[
             CallbackQueryHandler(ask_containers, pattern="^track_request$"),
-            MessageHandler(filters.Regex("^🔔 Задать слежение$"), ask_containers),  # добавь этот
+            MessageHandler(filters.Regex("^🔔 Задать слежение$"), ask_containers),
         ],
         states={
             TRACK_CONTAINERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_containers)],
-            SET_TIME: [CallbackQueryHandler(set_tracking_time, pattern="^time_")]
+            SET_TIME: [CallbackQueryHandler(set_tracking_time, pattern="^time_")],
+            SET_CHANNEL: [CallbackQueryHandler(set_delivery_channel, pattern="^delivery_channel_")]
         },
         fallbacks=[MessageHandler(filters.COMMAND, cancel)],
     )
-
-@dp.message_handler(state=TrackingStates.waiting_for_notify_time)
-async def process_notify_time(message: types.Message, state: FSMContext):
-    notify_time = message.text.strip()
-    # валидация времени и сохранение
-    await state.update_data(notify_time=notify_time)
-
-    # Теперь спрашиваем канал
-    await message.answer(
-        "Куда присылать уведомления?",
-        reply_markup=delivery_channel_keyboard()
-    )
-    await TrackingStates.waiting_for_channel.set()
-
-    @dp.callback_query_handler(lambda c: c.data.startswith("delivery_channel_"), state=TrackingStates.waiting_for_channel)
-async def process_delivery_channel(callback_query: CallbackQuery, state: FSMContext):
-    channel = callback_query.data.replace("delivery_channel_", "")
-    user_id = callback_query.from_user.id
-
-    # Получаем пользователя из базы
-    user = await db.get_user_by_telegram_id(user_id)  # твоя функция поиска
-
-    # Проверяем, есть ли e-mail если выбран канал email/both
-    if channel in ["email", "both"]:
-        if not user.email:
-            await callback_query.message.answer(
-                "У тебя не указан e-mail. Введи команду /set_email и оформи подписку заново."
-            )
-            await state.finish()
-            return
-
-    # Сохраняем в FSMContext
-    await state.update_data(delivery_channel=channel)
-
-    # Завершаем FSM и создаём подписку
-    data = await state.get_data()
-    await db.create_tracking_subscription(
-        user_id=user_id,
-        username=user.username,
-        containers=data["containers"],
-        notify_time=data["notify_time"],
-        delivery_channel=channel,
-    )
-
-    await callback_query.message.answer("Подписка оформлена!")
-    await state.finish()
-
-    
