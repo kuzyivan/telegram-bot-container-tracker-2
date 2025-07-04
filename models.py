@@ -42,6 +42,7 @@ try:
         forecast_days = Column(Float)
         wagon_number = Column(String)
         operation_road = Column(String)
+        delivery_channel = Column(String, default='telegram')  # telegram/email/both
 
     class User(Base):
         __tablename__ = "users"
