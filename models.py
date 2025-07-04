@@ -17,6 +17,7 @@ try:
         username = Column(String, nullable=True)
         containers = Column(ARRAY(String), nullable=False)
         notify_time = Column(Time, nullable=False)
+        delivery_channel = Column(String, default='telegram')  # telegram/email/both
 
     class Stats(Base):
         __tablename__ = 'stats'
@@ -42,7 +43,6 @@ try:
         forecast_days = Column(Float)
         wagon_number = Column(String)
         operation_road = Column(String)
-        delivery_channel = Column(String, default='telegram')  # telegram/email/both
 
     class User(Base):
         __tablename__ = "users"
