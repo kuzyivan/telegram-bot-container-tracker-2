@@ -61,7 +61,7 @@ async def set_bot_commands(application):
 def main():
     logger.info("🚦 Старт бота!")
     try:
-        keep_alive()
+        #keep_alive()
         if TOKEN is None:
             logger.critical("TOKEN must not be None. Проверь config.py")
             raise ValueError("TOKEN must not be None. Please set the TOKEN in your config.")
