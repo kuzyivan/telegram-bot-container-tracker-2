@@ -253,3 +253,5 @@ async def test_notify(update, context):
     except Exception as e:
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
+)
+
