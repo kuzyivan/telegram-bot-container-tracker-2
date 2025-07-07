@@ -1,5 +1,8 @@
 import os
 import smtplib
+from dotenv import load_dotenv
+load_dotenv()
+# остальной код как выше
 
 # Берём переменные из окружения
 SMTP_USER = os.getenv("SMTP_USER")
