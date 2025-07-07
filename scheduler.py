@@ -3,7 +3,9 @@ from sqlalchemy.future import select
 from datetime import time
 from db import SessionLocal
 from models import TrackingSubscription, Tracking, User
-from utils.send_tracking import create_excel_file, get_vladivostok_filename, generate_excel_report, send_to_email
+from utils.send_tracking import create_excel_file, get_vladivostok_filename, generate_excel_report, 
+from utils.email_sender import send_to_email
+
 from mail_reader import check_mail
 from logger import get_logger
 
