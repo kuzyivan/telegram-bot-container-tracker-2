@@ -13,6 +13,7 @@ TO_EMAIL = os.getenv("TO_EMAIL", "i.kuzmenko@aterminal.pro")  # Для тест�
 assert SMTP_USER and SMTP_PASS, "Переменные SMTP_USER и SMTP_PASS должны быть заданы!"
 
 server = smtplib.SMTP('smtp.yandex.ru', 587)
+server.set_debuglevel(1)
 server.starttls()
 server.login(SMTP_USER, SMTP_PASS)
 server.sendmail(FROM_EMAIL, TO_EMAIL, 'Subject: test\n\nhello')
