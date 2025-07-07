@@ -1,31 +1,74 @@
-# utils/email_sender.py
-
 import aiosmtplib
+import asyncio
+import logging
 from email.message import EmailMessage
+import os
+from dotenv import load_dotenv
 
-async def send_to_email(to_email, subject, text, file_bytes=None):
+# Загружаем переменные окружения
+load_dotenv()
+
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.yandex.ru")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USER = os.getenv("SMTP_USER", "bottrack@yandex.ru")
+SMTP_PASS = os.getenv("SMTP_PASS", "пароль_от_почты")
+FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
+
+logger = logging.getLogger("email_sender")
+
+async def send_to_email(
+    to_email: str,
+    subject: str,
+    text: str,
+    attachment_bytes: bytes = None,
+    attachment_filename: str = "report.xlsx"
+) -> bool:
+    """Асинхронно отправляет письмо с вложением. Возвращает True при успехе, False при ошибке."""
+
+    logger.info(f"[email_sender] Готовлюсь отправить письмо на {to_email} с темой '{subject}'")
     msg = EmailMessage()
     msg["From"] = FROM_EMAIL
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.set_content(text)
-    if file_bytes:
+
+    if attachment_bytes:
         msg.add_attachment(
-            file_bytes,
+            attachment_bytes,
             maintype="application",
             subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename="report.xlsx"
+            filename=attachment_filename,
         )
-    # Настройка TLS/STARTTLS по порту
-    smtp_kwargs = {
-        "hostname": SMTP_HOST,
-        "port": SMTP_PORT,
-        "username": SMTP_USER,
-        "password": SMTP_PASS,
-    }
-    if SMTP_PORT == 587:
-        smtp_kwargs["use_tls"] = True
-    else:  # 587 — STARTTLS для Яндекса и большинства провайдеров
-        smtp_kwargs["start_tls"] = True
-    await aiosmtplib.send(msg, **smtp_kwargs)
-    logger.info(f"Письмо отправлено на {to_email} (тема: {subject})")
+        logger.info(f"[email_sender] Прикрепил файл {attachment_filename}")
+
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=SMTP_HOST,
+            port=SMTP_PORT,
+            username=SMTP_USER,
+            password=SMTP_PASS,
+            use_tls=False,
+            start_tls=True,
+            timeout=20,
+        )
+        logger.info(f"[email_sender] ✅ Письмо отправлено на {to_email}")
+        return True
+    except Exception as e:
+        logger.error(f"[email_sender] ❌ Ошибка при отправке письма на {to_email}: {e}", exc_info=True)
+        return False
+
+# Тест CLI: python email_sender.py your@email.com
+if __name__ == "__main__":
+    import sys
+
+    logging.basicConfig(level=logging.INFO)
+    to = sys.argv[1] if len(sys.argv) > 1 else SMTP_USER
+    subject = "Тестовая email рассылка"
+    body = "Это тестовое письмо. Всё работает!"
+    logger.info(f"--- CLI ТЕСТ ---\nОтправка письма на {to}")
+    result = asyncio.run(send_to_email(to, subject, body))
+    if result:
+        print("Письмо успешно отправлено!")
+    else:
+        print("Ошибка при отправке письма!")
