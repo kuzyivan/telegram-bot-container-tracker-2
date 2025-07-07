@@ -23,7 +23,7 @@ async def send_to_email(to_email, subject, text, file_bytes=None):
         "username": SMTP_USER,
         "password": SMTP_PASS,
     }
-    if SMTP_PORT == 465:
+    if SMTP_PORT == 587:
         smtp_kwargs["use_tls"] = True
     else:  # 587 — STARTTLS для Яндекса и большинства провайдеров
         smtp_kwargs["start_tls"] = True
