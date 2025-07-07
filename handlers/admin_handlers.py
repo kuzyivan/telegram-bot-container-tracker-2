@@ -6,10 +6,16 @@ from datetime import datetime, timedelta, time
 from sqlalchemy import text
 from sqlalchemy.future import select
 from db import SessionLocal
-from models import TrackingSubscription, Tracking
+from models import TrackingSubscription, Tracking, User
 from logger import get_logger
 
-from utils.send_tracking import create_excel_file, create_excel_multisheet, get_vladivostok_filename
+from utils.send_tracking import (
+    create_excel_file,
+    create_excel_multisheet,
+    get_vladivostok_filename,
+    generate_excel_report,
+)
+from utils.email_sender import send_to_email
 
 logger = get_logger(__name__)
 
@@ -161,7 +167,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.effective_chat:
             await update.effective_chat.send_message("❌ Ошибка при экспорте статистики.")
 
-# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
+# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом + рассылка каждому e-mail
 async def test_notify(update, context):
     user = update.effective_user
     user_id = user.id if user is not None else None
@@ -173,6 +179,7 @@ async def test_notify(update, context):
 
     try:
         async with SessionLocal() as session:
+            # 1. Собираем все подписки
             result = await session.execute(select(TrackingSubscription))
             subscriptions = result.scalars().all()
 
@@ -184,6 +191,7 @@ async def test_notify(update, context):
             ]
             data_per_user = {}
 
+            # 2. Для каждого подписчика — собираем его трекинг и шлём ему на e-mail
             for sub in subscriptions:
                 user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
                 rows = []
@@ -206,8 +214,31 @@ async def test_notify(update, context):
                             track.wagon_number,
                             track.operation_road
                         ])
-                data_per_user[user_label] = rows if rows else [["Нет данных"] + [""] * (len(columns)-1)]
+                if not rows:
+                    rows = [["Нет данных"] + [""] * (len(columns) - 1)]
+                data_per_user[user_label] = rows
 
+                # ===== ДОБАВЛЕНО: Рассылка индивидуального Excel на e-mail пользователя =====
+                user_result = await session.execute(
+                    select(User).where(User.id == sub.user_id)
+                )
+                user_obj = user_result.scalar_one_or_none()
+                if user_obj and user_obj.email:
+                    excel_bytes = generate_excel_report(rows, columns)
+                    try:
+                        await send_to_email(
+                            user_obj.email,
+                            "🧪 Тестовая e-mail рассылка по подписке",
+                            "Вложение — твой Excel по всем контейнерам.",
+                            excel_bytes
+                        )
+                        logger.info(f"[test_notify] Тестовое письмо отправлено на {user_obj.email}")
+                    except Exception as mail_err:
+                        logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {mail_err}", exc_info=True)
+                else:
+                    logger.info(f"[test_notify] Пользователь {sub.user_id} не указал e-mail, рассылка пропущена.")
+
+            # 3. Итоговая Excel — один файл для Telegram (мультилист)
             file_path = create_excel_multisheet(data_per_user, columns)
             filename = get_vladivostok_filename("Тестовая дислокация")
             with open(file_path, "rb") as f:
@@ -218,6 +249,7 @@ async def test_notify(update, context):
                 )
             await update.message.reply_text("✅ Тестовая мульти-рассылка готова и отправлена одним файлом.")
             logger.info("[test_notify] Тестовая мульти-рассылка успешно отправлена.")
+
     except Exception as e:
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
