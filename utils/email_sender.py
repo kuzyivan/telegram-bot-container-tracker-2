@@ -10,11 +10,13 @@ from logger import get_logger
 logger = get_logger(__name__)
 load_dotenv()
 
+from typing import Optional
+
 async def send_to_email(
     to_email: str,
     subject: str,
     text: str,
-    attachment_bytes: bytes = None,
+    attachment_bytes: Optional[bytes] = None,
     attachment_filename: str = "report.xlsx"
 ) -> bool:
     """Асинхронно отправляет письмо с вложением. Возвращает True при успехе, False при ошибке."""
