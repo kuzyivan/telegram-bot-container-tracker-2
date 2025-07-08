@@ -32,6 +32,7 @@ async def get_user_by_telegram_id(telegram_id):
         return result.scalar_one_or_none()
 
 # Привязать или обновить email пользователя (и email_enabled)
+
 async def set_user_email(telegram_id, username, email, enable_email=True):
     async with SessionLocal() as session:
         result = await session.execute(
@@ -40,19 +41,16 @@ async def set_user_email(telegram_id, username, email, enable_email=True):
         user = result.scalar_one_or_none()
         if user:
             await session.execute(
-                update(User)
-                .where(User.telegram_id == telegram_id)
+                update(User).where(User.telegram_id == telegram_id)
                 .values(username=username, email=email, email_enabled=enable_email)
             )
         else:
-            session.add(
-                User(
-                    telegram_id=telegram_id,
-                    username=username,
-                    email=email,
-                    email_enabled=enable_email
-                )
-            )
+            session.add(User(
+                telegram_id=telegram_id,
+                username=username,
+                email=email,
+                email_enabled=enable_email
+            ))
         await session.commit()
 
 # Отключить рассылку на e-mail (ставит флаг False, но e-mail не удаляет)
