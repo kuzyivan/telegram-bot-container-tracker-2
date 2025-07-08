@@ -24,7 +24,7 @@ COLUMNS = [
     'Номер вагона', 'Дорога операции'
 ]
 
-# --- Главное меню ---
+# Главное меню
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [
         ["📦 Дислокация", "🔔 Задать слежение"],
@@ -39,7 +39,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# --- Email Conversation ---
+# Email Conversation
 async def set_email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Пожалуйста, отправьте ваш email для уведомлений, или /cancel для отмены.",
@@ -52,12 +52,10 @@ async def process_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.message.from_user.id
     username = update.message.from_user.username or ""
 
-    # Валидация email (давай честно: любой, кто прислал aboba@mail.ru — наш человек, но фильтр всё же нужен)
     if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
         await update.message.reply_text("❌ Некорректный email. Попробуй ещё раз или /cancel для отмены.")
         return SET_EMAIL
 
-    # Теперь пишем email и явно включаем e-mail-рассылку
     await set_user_email(telegram_id, username, email, enable_email=True)
     await update.message.reply_text(
         f"Email {email} успешно сохранён ✅", reply_markup=ReplyKeyboardRemove()
@@ -70,20 +68,20 @@ async def cancel_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# --- Обработка reply-клавиатуры ---
+# Обработка reply-клавиатуры
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
     elif text == "🔔 Задать слежение":
-        return
+        return  # Передано в ConversationHandler tracking_conversation_handler
     elif text == "❌ Отмена слежения":
         from handlers.tracking_handlers import cancel_tracking_start
         return await cancel_tracking_start(update, context)
     else:
         await update.message.reply_text("Команда не распознана. Используйте кнопки меню.")
 
-# --- Inline кнопки ---
+# Inline кнопки
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -99,19 +97,22 @@ async def dislocation_inline_callback_handler(update: Update, context: ContextTy
     await query.answer()
     await query.edit_message_text("Введите номер контейнера для поиска:")
 
-# --- Стикеры ---
+# Стикеры
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
     logger.info(f"handle_sticker: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
     await show_menu(update, context)
 
-# --- Главная функция поиска контейнеров ---
+# Главная функция поиска контейнеров
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from utils.send_tracking import create_excel_file, get_vladivostok_filename
+
     user = update.effective_user
     user_id = user.id if user else "—"
     user_name = user.username if user else "—"
     logger.info(f"handle_message: пользователь {user_id} ({user_name}) отправил сообщение")
+
     if not update.message or not update.message.text:
         logger.warning(f"handle_message: пустой ввод от пользователя {user_id}")
         await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
@@ -165,8 +166,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Контейнер найден: {container_number}")
 
     if len(container_numbers) > 1 and found_rows:
-        from utils.send_tracking import create_excel_file, get_vladivostok_filename
-
         file_path = create_excel_file(found_rows, COLUMNS)
         filename = get_vladivostok_filename()
         try:
@@ -217,7 +216,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ничего не найдено по введённым номерам.")
         await show_menu(update, context)
 
-# --- Показать отслеживаемые контейнеры пользователя ---
+# Показать отслеживаемые контейнеры пользователя
 async def show_my_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     containers = await get_tracked_containers_by_user(user_id)
@@ -227,7 +226,7 @@ async def show_my_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = "У вас нет активных подписок на контейнеры."
     await update.message.reply_text(msg)
 
-# --- Отмена всех подписок пользователя ---
+# Отмена всех подписок пользователя
 async def cancel_my_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     await remove_user_tracking(user_id)

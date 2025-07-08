@@ -74,7 +74,7 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # 3. Получить время и спросить канал доставки
 async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("== [set_tracking_time] Показываю выбор канала доставки пользователю ==")  # <--- ДОБАВЬ ВОТ ЭТУ СТРОКУ
+    logger.info("== [set_tracking_time] Показываю выбор канала доставки пользователю ==")
 
     if update.callback_query is not None and update.callback_query.data is not None:
         await update.callback_query.answer()
