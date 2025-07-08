@@ -1,16 +1,14 @@
 import aiosmtplib
 import asyncio
-import logging
 from email.message import EmailMessage
-import os
 from dotenv import load_dotenv
-
-# Загружаем переменные окружения
-load_dotenv()
+import re
 
 from config import SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT, FROM_EMAIL
+from logger import get_logger
 
-logger = logging.getLogger("email_sender")
+logger = get_logger(__name__)
+load_dotenv()
 
 async def send_to_email(
     to_email: str,
@@ -21,12 +19,17 @@ async def send_to_email(
 ) -> bool:
     """Асинхронно отправляет письмо с вложением. Возвращает True при успехе, False при ошибке."""
 
+    # Простая валидация e-mail
+    if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", to_email):
+        logger.warning(f"[email_sender] Некорректный e-mail: {to_email}")
+        return False
+
     logger.info(f"[email_sender] Готовлюсь отправить письмо на {to_email} с темой '{subject}'")
     msg = EmailMessage()
     msg["From"] = FROM_EMAIL
     msg["To"] = to_email
     msg["Subject"] = subject
-    msg.set_content(text)
+    msg.set_content(text, subtype="plain", charset="utf-8")
 
     if attachment_bytes:
         msg.add_attachment(
@@ -54,15 +57,12 @@ async def send_to_email(
         logger.error(f"[email_sender] ❌ Ошибка при отправке письма на {to_email}: {e}", exc_info=True)
         return False
 
-# Тест CLI: python email_sender.py your@email.com
+# CLI-тест: python email_sender.py your@email.com
 if __name__ == "__main__":
     import sys
-
-    logging.basicConfig(level=logging.INFO)
     to = sys.argv[1] if len(sys.argv) > 1 else SMTP_USER
     subject = "Тестовая email рассылка"
     body = "Это тестовое письмо. Всё работает!"
-    logger.info(f"--- CLI ТЕСТ ---\nОтправка письма на {to}")
     result = asyncio.run(send_to_email(to, subject, body))
     if result:
         print("Письмо успешно отправлено!")
