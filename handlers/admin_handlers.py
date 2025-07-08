@@ -191,7 +191,7 @@ async def test_notify(update, context):
             ]
             data_per_user = {}
 
-            # 2. Для каждого подписчика — собираем его трекинг и шлём ему на e-mail
+            # 2. Для каждого подписчика собираем его трекинг и шлём ему индивидуально на e-mail
             for sub in subscriptions:
                 user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
                 rows = []
@@ -253,5 +253,3 @@ async def test_notify(update, context):
     except Exception as e:
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
-)
-

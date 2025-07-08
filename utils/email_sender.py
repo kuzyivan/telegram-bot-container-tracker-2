@@ -8,11 +8,7 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения
 load_dotenv()
 
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.yandex.ru")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER = os.getenv("SMTP_USER", "bottrack@yandex.ru")
-SMTP_PASS = os.getenv("SMTP_PASS", "пароль_от_почты")
-FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
+from config import SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT, FROM_EMAIL
 
 logger = logging.getLogger("email_sender")
 
