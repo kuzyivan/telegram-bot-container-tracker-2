@@ -1,12 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
-from telegram.error import BadRequest
-from utils.keyboards import (
-    reply_keyboard,
-    dislocation_inline_keyboard,
-    tracking_inline_keyboard,
-    main_menu_keyboard
-)
+from utils.keyboards import reply_keyboard
 import re
 from models import Tracking, Stats
 from db import (
@@ -21,7 +15,6 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-# Стейты для ConversationHandler
 SET_EMAIL = range(1)
 
 COLUMNS = [
@@ -55,11 +48,17 @@ async def set_email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return SET_EMAIL
 
 async def process_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    email = update.message.text
+    email = update.message.text.strip()
     telegram_id = update.message.from_user.id
     username = update.message.from_user.username or ""
 
-    await set_user_email(telegram_id, username, email)
+    # Валидация email (давай честно: любой, кто прислал aboba@mail.ru — наш человек, но фильтр всё же нужен)
+    if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
+        await update.message.reply_text("❌ Некорректный email. Попробуй ещё раз или /cancel для отмены.")
+        return SET_EMAIL
+
+    # Теперь пишем email и явно включаем e-mail-рассылку
+    await set_user_email(telegram_id, username, email, enable_email=True)
     await update.message.reply_text(
         f"Email {email} успешно сохранён ✅", reply_markup=ReplyKeyboardRemove()
     )
@@ -76,9 +75,7 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     text = update.message.text
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
-    # НЕ вызываем ask_containers вручную!
     elif text == "🔔 Задать слежение":
-        # ConversationHandler сам отработает, не нужен вызов функции!
         return
     elif text == "❌ Отмена слежения":
         from handlers.tracking_handlers import cancel_tracking_start
@@ -109,7 +106,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
     await show_menu(update, context)
 
-# --- Главная рабочая функция поиска контейнеров ---
+# --- Главная функция поиска контейнеров ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user else "—"
@@ -167,7 +164,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found_rows.append(list(row))
             logger.info(f"Контейнер найден: {container_number}")
 
-    # Несколько контейнеров — Excel файл
     if len(container_numbers) > 1 and found_rows:
         from utils.send_tracking import create_excel_file, get_vladivostok_filename
 
@@ -185,7 +181,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_menu(update, context)
         return
 
-    # Один контейнер — красиво оформить
     elif found_rows:
         row = found_rows[0]
         wagon_number = str(row[9]) if row[9] else "—"
