@@ -178,20 +178,29 @@ async def test_notify(update, context):
                     select(User).where(User.id == sub.user_id)
                 )
                 user_obj = user_result.scalar_one_or_none()
-                if user_obj and user_obj.email:
+
+                if (
+                    sub.delivery_channel in ("email", "both")
+                    and user_obj
+                    and user_obj.email
+                    and user_obj.email_enabled
+                ):
                     excel_bytes = generate_excel_report(rows, columns)
                     try:
                         await send_to_email(
                             user_obj.email,
-                            "\ud83e\uddea Тестовая e-mail рассылка по подписке",
+                            "🪪 Тестовая e-mail рассылка по подписке",
                             "Вложение — твой Excel по всем контейнерам.",
                             excel_bytes
                         )
                         logger.info(f"[test_notify] Тестовое письмо отправлено на {user_obj.email}")
                     except Exception as mail_err:
-                        logger.error(f"[test_notify] \u274c Ошибка при отправке email {user_obj.email}: {mail_err}", exc_info=True)
+                        logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {mail_err}", exc_info=True)
                 else:
-                    logger.info(f"[test_notify] Пользователь {sub.user_id} не указал e-mail, рассылка пропущена.")
+                    logger.info(
+                        f"[test_notify] Пользователь {sub.user_id} — рассылка по email пропущена. "
+                        f"Причина: delivery_channel={sub.delivery_channel}, email={getattr(user_obj, 'email', None)}, enabled={getattr(user_obj, 'email_enabled', None)}"
+                    )
 
             file_path = create_excel_multisheet(data_per_user, columns)
             filename = get_vladivostok_filename("Тестовая дислокация")
