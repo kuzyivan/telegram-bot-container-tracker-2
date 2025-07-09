@@ -2,13 +2,11 @@ import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
-from datetime import datetime, timedelta
-from sqlalchemy import text
 from sqlalchemy.future import select
+from sqlalchemy import text
 from db import SessionLocal
 from models import TrackingSubscription, Tracking, User
 from logger import get_logger
-
 from utils.send_tracking import (
     create_excel_file,
     create_excel_multisheet,
@@ -44,6 +42,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"[tracking] Ошибка: {e}", exc_info=True)
         await update.message.reply_text("\u274c Ошибка экспорта.")
+
 
 # /stats — статистика за сутки
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,6 +81,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[stats] Ошибка: {e}", exc_info=True)
         await update.message.reply_text("\u274c Ошибка получения статистики.")
 
+
 # /exportstats — Excel-выгрузка всех запросов
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
@@ -107,14 +107,11 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[exportstats] Ошибка: {e}", exc_info=True)
         await update.message.reply_text("\u274c Ошибка экспорта.")
 
+
 # /testnotify — email + Excel в Telegram
 async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[test_notify] Запрос от {user_id}")
-
-logger.info(f"[test_notify] Проверка email-рассылки: delivery_channel={sub.delivery_channel}, email={user_obj.email}, email_enabled={user_obj.email_enabled}")
-if sub.delivery_channel in ("email", "both") and user_obj and user_obj.email and user_obj.email_enabled:
-    # Отправка email
     if user_id != ADMIN_CHAT_ID:
         await update.message.reply_text("\u26d4\ufe0f Доступ запрещён.")
         return
@@ -146,23 +143,25 @@ if sub.delivery_channel in ("email", "both") and user_obj and user_obj.email and
                             track.wagon_number, track.operation_road
                         ])
                 if not rows:
-                    rows = [["Нет данных"] + [""] * (len(columns) - 1)]
+                    rows = [["Нет данных"] + [""] * 10]
                 data_per_user[f"{sub.username or sub.user_id} (id:{sub.user_id})"] = rows
 
                 user_result = await session.execute(select(User).where(User.id == sub.user_id))
                 user_obj = user_result.scalar_one_or_none()
 
-                if sub.delivery_channel in ("email", "both") and user_obj and user_obj.email and user_obj.email_enabled:
+                if user_obj and user_obj.email:
                     logger.info(f"[test_notify] Отправка email: {user_obj.email}")
                     try:
                         success = await send_to_email(
                             user_obj.email,
-                            "\ud83e\uddea Тестовая e-mail рассылка по подписке",
-                            "Вложение — твой Excel по всем контейнерам.",
+                            "📦 Обновление контейнеров",
+                            "Во вложении — свежий Excel с дислокацией контейнеров.",
                             generate_excel_report(rows, columns)
                         )
-                        if not success:
-                            logger.warning(f"[test_notify] ❌ Не удалось отправить письмо {user_obj.email}")
+                        if success:
+                            logger.info(f"[test_notify] ✅ Отправлено успешно на {user_obj.email}")
+                        else:
+                            logger.warning(f"[test_notify] ❌ Не удалось отправить на {user_obj.email}")
                     except Exception as e:
                         logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {e}", exc_info=True)
 
