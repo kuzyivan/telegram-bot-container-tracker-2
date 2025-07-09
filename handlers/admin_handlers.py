@@ -2,7 +2,6 @@ import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
-from datetime import datetime, timedelta, time
 from sqlalchemy import text
 from sqlalchemy.future import select
 from db import SessionLocal
@@ -126,8 +125,8 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
         await update.message.reply_text("\u274c Ошибка при экспорте статистики.")
 
-# /testnotify — Excel с данными + рассылка каждому пользователю на email
-async def test_notify(update, context):
+# /testnotify — Сначала email-рассылка, потом Telegram-файл
+async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user is not None else None
     logger.info(f"[test_notify] Запрос тестовой мульти-рассылки от пользователя {user_id}")
@@ -148,8 +147,8 @@ async def test_notify(update, context):
             ]
             data_per_user = {}
 
+            # 1. Рассылка на email каждому пользователю
             for sub in subscriptions:
-                user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
                 rows = []
                 for container in sub.containers:
                     res = await session.execute(
@@ -172,39 +171,30 @@ async def test_notify(update, context):
                         ])
                 if not rows:
                     rows = [["Нет данных"] + [""] * (len(columns) - 1)]
-                data_per_user[user_label] = rows
+                data_per_user[f"{sub.username or sub.user_id} (id:{sub.user_id})"] = rows
 
                 user_result = await session.execute(select(User).where(User.id == sub.user_id))
                 user_obj = user_result.scalar_one_or_none()
 
                 if (
                     sub.delivery_channel in ("email", "both")
-                    and user_obj is not None
-                    and getattr(user_obj, "email", None) is not None
-                    and getattr(user_obj, "email_enabled", False) is True
+                    and user_obj and user_obj.email and user_obj.email_enabled
                 ):
-                    logger.info(f"[test_notify] Попытка отправки email пользователю {user_obj.username} ({user_obj.email})")
-                    excel_bytes = generate_excel_report(rows, columns)
                     try:
-                        logger.info(f"[test_notify] 📧 Готовимся вызвать send_to_email() с {user_obj.email}")
-                        send_success = await send_to_email(
+                        excel_bytes = generate_excel_report(rows, columns)
+                        logger.info(f"[test_notify] Отправляем email {user_obj.email}")
+                        await send_to_email(
                             str(user_obj.email),
                             "\ud83e\uddea Тестовая e-mail рассылка по подписке",
                             "Вложение — твой Excel по всем контейнерам.",
                             excel_bytes
                         )
-                        if send_success:
-                            logger.info(f"[test_notify] ✅ Тестовое письмо отправлено на {user_obj.email}")
-                        else:
-                            logger.error(f"[test_notify] ❌ Письмо НЕ отправлено на {user_obj.email}, send_to_email() вернул False")
-                    except Exception as mail_err:
-                        logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {mail_err}", exc_info=True)
+                    except Exception as e:
+                        logger.error(f"[test_notify] Ошибка при отправке email {user_obj.email}: {e}", exc_info=True)
                 else:
-                    logger.info(
-                        f"[test_notify] Пользователь {sub.user_id} — рассылка по email пропущена. "
-                        f"Причина: delivery_channel={sub.delivery_channel}, email={getattr(user_obj, 'email', None)}, enabled={getattr(user_obj, 'email_enabled', None)}"
-                    )
+                    logger.info(f"[test_notify] Email рассылка пропущена для {sub.user_id}")
 
+            # 2. Общий Excel-файл в Telegram
             file_path = create_excel_multisheet(data_per_user, columns)
             filename = get_vladivostok_filename("Тестовая дислокация")
             with open(file_path, "rb") as f:
