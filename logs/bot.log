@@ -88,3 +88,46 @@ Traceback (most recent call last):
   File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/utils/email_sender.py", line 53, in send_to_email
     response = await aiosmtplib.send(
 TypeError: send() got some positional-only arguments passed as keyword arguments: 'message'
+2025-07-09 22:37:33,168 INFO [email_sender:83] [email_sender] Запуск CLI-отправки
+2025-07-09 22:37:33,168 INFO [email_sender:27] [email_sender] ▶️ Запуск отправки письма на i.kuzmenko@aterminal.pro
+2025-07-09 22:37:33,169 INFO [email_sender:50] [email_sender] ⏳ Подключение к SMTP-серверу smtp.yandex.ru:587 как bottrack@yandex.ru
+2025-07-09 22:38:03,531 ERROR [email_sender:70] [email_sender] ❌ SMTP ошибка при отправке письма на i.kuzmenko@aterminal.pro: Timed out waiting for server ready message
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py", line 492, in wait_for
+    fut.result()
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/protocol.py", line 260, in read_response
+    result = await asyncio.wait_for(self._response_waiter, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/asyncio/tasks.py", line 494, in wait_for
+    raise exceptions.TimeoutError() from exc
+asyncio.exceptions.TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/smtp.py", line 513, in _create_connection
+    response = await protocol.read_response(timeout=timeout)
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/protocol.py", line 262, in read_response
+    raise SMTPReadTimeoutError("Timed out waiting for server response") from exc
+aiosmtplib.errors.SMTPReadTimeoutError: Timed out waiting for server response
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/utils/email_sender.py", line 53, in send_to_email
+    response = await aiosmtplib.send(
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/api.py", line 124, in send
+    async with client:
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/smtp.py", line 177, in __aenter__
+    await self.connect()
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/smtp.py", line 449, in connect
+    raise exc
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/smtp.py", line 442, in connect
+    response = await self._create_connection(
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/smtp.py", line 519, in _create_connection
+    raise SMTPConnectTimeoutError(
+aiosmtplib.errors.SMTPConnectTimeoutError: Timed out waiting for server ready message
