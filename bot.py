@@ -1,12 +1,13 @@
 from logger import get_logger
 logger = get_logger(__name__)
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
-from dotenv import load_dotenv
-load_dotenv()
 
 from config import TOKEN, ADMIN_CHAT_ID 
 from mail_reader import start_mail_checking
