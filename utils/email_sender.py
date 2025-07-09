@@ -51,7 +51,7 @@ async def send_to_email(
         start_time = time.perf_counter()
 
         response = await aiosmtplib.send(
-            message=msg,
+            msg,
             hostname=SMTP_HOST,
             port=SMTP_PORT,
             username=SMTP_USER,

@@ -72,3 +72,19 @@
 2025-07-09 18:59:46,226 INFO [email_sender:61] [send_to_email] ⏳ Отправка письма через SMTP на smtp.yandex.ru:587...
 2025-07-09 18:59:48,689 INFO [email_sender:76] [send_to_email] ✅ Письмо успешно отправлено на i.kuzmenko@aterminal.pro за 2.46 сек
 2025-07-09 18:59:48,690 INFO [email_sender:77] [send_to_email] 📬 SMTP response: ({}, '2.0.0 Ok: queued on mail-nwsmtp-smtp-production-main-95.vla.yp-c.yandex.net 1752051588-kxdn679MtKo0-pAQyaL7i')
+2025-07-09 22:21:15,996 INFO [email_sender:83] [email_sender] Запуск CLI-отправки
+2025-07-09 22:21:15,996 INFO [email_sender:27] [email_sender] ▶️ Запуск отправки письма на i.kuzmenko@aterminal.pro
+2025-07-09 22:21:15,996 INFO [email_sender:50] [email_sender] ⏳ Подключение к SMTP-серверу smtp.yandex.ru:587 как bottrack@yandex.ru
+2025-07-09 22:21:15,996 ERROR [email_sender:73] [email_sender] ❌ Общая ошибка при отправке письма на i.kuzmenko@aterminal.pro: send() got some positional-only arguments passed as keyword arguments: 'message'
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/utils/email_sender.py", line 53, in send_to_email
+    response = await aiosmtplib.send(
+TypeError: send() got some positional-only arguments passed as keyword arguments: 'message'
+2025-07-09 22:21:34,087 INFO [email_sender:83] [email_sender] Запуск CLI-отправки
+2025-07-09 22:21:34,088 INFO [email_sender:27] [email_sender] ▶️ Запуск отправки письма на i.kuzmenko@aterminal.pro
+2025-07-09 22:21:34,088 INFO [email_sender:50] [email_sender] ⏳ Подключение к SMTP-серверу smtp.yandex.ru:587 как bottrack@yandex.ru
+2025-07-09 22:21:34,088 ERROR [email_sender:73] [email_sender] ❌ Общая ошибка при отправке письма на i.kuzmenko@aterminal.pro: send() got some positional-only arguments passed as keyword arguments: 'message'
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/utils/email_sender.py", line 53, in send_to_email
+    response = await aiosmtplib.send(
+TypeError: send() got some positional-only arguments passed as keyword arguments: 'message'
