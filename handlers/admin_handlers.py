@@ -111,6 +111,10 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[test_notify] Запрос от {user_id}")
+
+logger.info(f"[test_notify] Проверка email-рассылки: delivery_channel={sub.delivery_channel}, email={user_obj.email}, email_enabled={user_obj.email_enabled}")
+if sub.delivery_channel in ("email", "both") and user_obj and user_obj.email and user_obj.email_enabled:
+    # Отправка email
     if user_id != ADMIN_CHAT_ID:
         await update.message.reply_text("\u26d4\ufe0f Доступ запрещён.")
         return
