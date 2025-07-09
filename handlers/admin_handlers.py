@@ -126,7 +126,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
         await update.message.reply_text("\u274c Ошибка при экспорте статистики.")
 
-# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом + рассылка каждому e-mail
+# /testnotify — Excel с данными + рассылка каждому пользователю на email
 async def test_notify(update, context):
     user = update.effective_user
     user_id = user.id if user is not None else None
@@ -174,16 +174,11 @@ async def test_notify(update, context):
                     rows = [["Нет данных"] + [""] * (len(columns) - 1)]
                 data_per_user[user_label] = rows
 
-                user_result = await session.execute(
-                    select(User).where(User.id == sub.user_id)
-                )
+                user_result = await session.execute(select(User).where(User.id == sub.user_id))
                 user_obj = user_result.scalar_one_or_none()
 
                 if (
-                    sub.delivery_channel in ("email", "both")
-                    and user_obj
-                    and user_obj.email
-                    and user_obj.email_enabled
+                    sub.delivery_channel in ("email", "both") and user_obj and user_obj.email and user_obj.email_enabled
                 ):
                     logger.info(f"[test_notify] Попытка отправки email пользователю {user_obj.username} ({user_obj.email})")
                     excel_bytes = generate_excel_report(rows, columns)
