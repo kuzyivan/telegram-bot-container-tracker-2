@@ -11,6 +11,7 @@ from config import SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT, FROM_EMAIL
 
 logger = get_logger(__name__)
 
+
 def create_excel_file(rows, columns):
     """
     Однолистовой Excel-файл.
@@ -36,10 +37,12 @@ def create_excel_file(rows, columns):
         logger.error("Ошибка при создании Excel-файла: %s", e, exc_info=True)
         raise
 
+
 def clean_sheet_name(name):
     clean = re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
     logger.debug("Очищено имя листа: %s -> %s", name, clean)
     return clean
+
 
 def create_excel_multisheet(data_per_user, columns):
     """
@@ -68,6 +71,7 @@ def create_excel_multisheet(data_per_user, columns):
         logger.error("Ошибка при создании мультилистового Excel-файла: %s", e, exc_info=True)
         raise
 
+
 def get_vladivostok_filename(prefix="Слежение контейнеров"):
     """
     Генерирует имя файла по Владивостокскому времени (UTC+10).
@@ -77,21 +81,60 @@ def get_vladivostok_filename(prefix="Слежение контейнеров"):
     logger.debug("Сгенерировано имя файла для Владивостока: %s", filename)
     return filename
 
+
 def generate_excel_report(rows, columns):
     """
     Генерирует Excel-файл в байтах (для вложения в письмо).
     """
-    df = pd.DataFrame(rows, columns=columns)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Экспорт')
-        worksheet = writer.sheets['Экспорт']
-        header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
-        for cell in worksheet[1]:
-            cell.fill = header_fill
-        for col in worksheet.columns:
-            max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-            worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
-    output.seek(0)
-    return output.read()
+    logger.info("Генерация Excel-файла в байтах")
+    try:
+        df = pd.DataFrame(rows, columns=columns)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Экспорт')
+            worksheet = writer.sheets['Экспорт']
+            header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+            for cell in worksheet[1]:
+                cell.fill = header_fill
+            for col in worksheet.columns:
+                max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
+        output.seek(0)
+        logger.info("Excel-файл успешно сгенерирован в памяти")
+        return output.read()
+    except Exception as e:
+        logger.error("Ошибка при генерации Excel-файла в байтах: %s", e, exc_info=True)
+        raise
 
+
+async def send_to_email(to_email, subject, body, excel_bytes, filename):
+    """
+    Отправляет email с Excel-файлом.
+    """
+    logger.info("Отправка email на адрес %s с темой '%s'", to_email, subject)
+    try:
+        message = EmailMessage()
+        message["From"] = FROM_EMAIL
+        message["To"] = to_email
+        message["Subject"] = subject
+        message.set_content(body)
+
+        message.add_attachment(
+            excel_bytes,
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            filename=filename,
+        )
+
+        await aiosmtplib.send(
+            message,
+            hostname=SMTP_HOST,
+            port=SMTP_PORT,
+            start_tls=True,
+            username=SMTP_USER,
+            password=SMTP_PASS,
+        )
+        logger.info("Email успешно отправлен на %s", to_email)
+    except Exception as e:
+        logger.error("Ошибка при отправке email на %s: %s", to_email, e, exc_info=True)
+        raise
