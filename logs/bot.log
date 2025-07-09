@@ -62,3 +62,13 @@
 2025-07-04 14:48:57,538 INFO [models:56] Модели БД успешно определены и готовы к использованию.
 2025-07-09 00:15:23,549 INFO [email_sender:29] [email_sender] Готовлюсь отправить письмо на i.kuzmenko@aterminal.pro с темой 'Тестовая email рассылка'
 2025-07-09 00:15:25,575 INFO [email_sender:56] [email_sender] ✅ Письмо отправлено на i.kuzmenko@aterminal.pro
+2025-07-09 18:59:46,090 INFO [email_sender:95] [CLI] 🚀 Тестовая отправка на email через __main__
+2025-07-09 18:59:46,090 INFO [email_sender:29] [send_to_email] 🚀 Вызов функции send_to_email:
+2025-07-09 18:59:46,090 INFO [email_sender:30] [send_to_email] Параметры:
+  📧 to_email: i.kuzmenko@aterminal.pro
+  📨 subject: Тестовая email рассылка
+  📎 attachment: нет
+2025-07-09 18:59:46,226 INFO [email_sender:56] [send_to_email] 🔍 SMTP DNS: smtp.yandex.ru → 77.88.21.158 (mail-smtp.stable.qloud-b.yandex.net)
+2025-07-09 18:59:46,226 INFO [email_sender:61] [send_to_email] ⏳ Отправка письма через SMTP на smtp.yandex.ru:587...
+2025-07-09 18:59:48,689 INFO [email_sender:76] [send_to_email] ✅ Письмо успешно отправлено на i.kuzmenko@aterminal.pro за 2.46 сек
+2025-07-09 18:59:48,690 INFO [email_sender:77] [send_to_email] 📬 SMTP response: ({}, '2.0.0 Ok: queued on mail-nwsmtp-smtp-production-main-95.vla.yp-c.yandex.net 1752051588-kxdn679MtKo0-pAQyaL7i')

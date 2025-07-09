@@ -186,15 +186,19 @@ async def test_notify(update, context):
                     logger.info(f"[test_notify] Попытка отправки email пользователю {user_obj.username} ({user_obj.email})")
                     excel_bytes = generate_excel_report(rows, columns)
                     try:
-                        await send_to_email(
+                        logger.info(f"[test_notify] 📧 Готовимся вызвать send_to_email() с {user_obj.email}")
+                        send_success = await send_to_email(
                             str(user_obj.email),
                             "\ud83e\uddea Тестовая e-mail рассылка по подписке",
                             "Вложение — твой Excel по всем контейнерам.",
                             excel_bytes
                         )
-                        logger.info(f"[test_notify] Тестовое письмо отправлено на {user_obj.email}")
+                        if send_success:
+                            logger.info(f"[test_notify] ✅ Тестовое письмо отправлено на {user_obj.email}")
+                        else:
+                            logger.error(f"[test_notify] ❌ Письмо НЕ отправлено на {user_obj.email}, send_to_email() вернул False")
                     except Exception as mail_err:
-                        logger.error(f"[test_notify] \u274c Ошибка при отправке email {user_obj.email}: {mail_err}", exc_info=True)
+                        logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {mail_err}", exc_info=True)
                 else:
                     logger.info(
                         f"[test_notify] Пользователь {sub.user_id} — рассылка по email пропущена. "
