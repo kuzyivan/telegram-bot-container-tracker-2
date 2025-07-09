@@ -21,8 +21,8 @@ from handlers.user_handlers import (
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
-   #cancel
-    #cancel_tracking_confirm
+    cancel,
+    cancel_tracking_confirm
 )
 from handlers.broadcast import broadcast_conversation_handler
 

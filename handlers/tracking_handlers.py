@@ -89,7 +89,6 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data = {}
     context.user_data['notify_time'] = time_obj
 
-    # Предлагаем выбрать канал доставки
     await update.callback_query.message.reply_text(
         "Куда присылать уведомления по этой подписке?",
         reply_markup=delivery_channel_keyboard()
@@ -106,7 +105,6 @@ async def set_delivery_channel(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id if update.effective_user is not None else "Unknown"
     username = update.effective_user.username if update.effective_user is not None else "Unknown"
 
-    # Получаем пользователя из базы
     user = await db.get_user_by_telegram_id(user_id)
     if channel in ["email", "both"]:
         if not user or not user.email:
@@ -143,6 +141,41 @@ async def set_delivery_channel(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"[set_delivery_channel] Ошибка при сохранении подписки пользователя {user_id}: {e}", exc_info=True)
         await update.callback_query.message.reply_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
         return ConversationHandler.END
+
+# Команда /canceltracking — предлагает подтвердить отмену
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.info(f"[cancel] Пользователь {user_id} вызвал /canceltracking")
+    await update.message.reply_text(
+        "⚠️ Ты уверен, что хочешь отменить все активные слежения?",
+        reply_markup=cancel_tracking_confirm_keyboard()
+    )
+
+# Хендлер нажатия кнопки "Подтвердить отмену слежения"
+async def cancel_tracking_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
+            )
+            subscriptions = result.scalars().all()
+            if not subscriptions:
+                await query.edit_message_text("У тебя нет активных подписок.")
+                return
+
+            for sub in subscriptions:
+                await session.delete(sub)
+            await session.commit()
+
+        await query.edit_message_text("✅ Все подписки на слежение успешно удалены.")
+        logger.info(f"[cancel_tracking_confirm] Пользователь {user_id} отменил все подписки.")
+    except Exception as e:
+        logger.error(f"[cancel_tracking_confirm] Ошибка при удалении подписок пользователя {user_id}: {e}", exc_info=True)
+        await query.edit_message_text("❌ Ошибка при отмене подписок. Попробуй позже.")
 
 # ConversationHandler для главного меню с обновлёнными состояниями
 def tracking_conversation_handler():
