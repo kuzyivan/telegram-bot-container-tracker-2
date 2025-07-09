@@ -178,13 +178,16 @@ async def test_notify(update, context):
                 user_obj = user_result.scalar_one_or_none()
 
                 if (
-                    sub.delivery_channel in ("email", "both") and user_obj and user_obj.email and user_obj.email_enabled
+                    sub.delivery_channel in ("email", "both")
+                    and user_obj is not None
+                    and getattr(user_obj, "email", None) is not None
+                    and getattr(user_obj, "email_enabled", False) is True
                 ):
                     logger.info(f"[test_notify] Попытка отправки email пользователю {user_obj.username} ({user_obj.email})")
                     excel_bytes = generate_excel_report(rows, columns)
                     try:
                         await send_to_email(
-                            user_obj.email,
+                            str(user_obj.email),
                             "\ud83e\uddea Тестовая e-mail рассылка по подписке",
                             "Вложение — твой Excel по всем контейнерам.",
                             excel_bytes

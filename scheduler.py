@@ -80,11 +80,11 @@ async def send_notifications(bot, target_time: time):
                         await bot.send_message(sub.user_id, msg)
                         logger.info(f"[Telegram] Отправлено сообщение о пустых данных для {sub.user_id}")
 
-                    if sub.delivery_channel in ["email", "both"] and user and user.email:
+                    if sub.delivery_channel in ["email", "both"] and user is not None and getattr(user, "email", None):
                         try:
                             logger.info(f"[Email] Пытаюсь отправить сообщение об отсутствии данных на {user.email}")
                             await send_to_email(
-                                user.email,
+                                str(user.email),
                                 "Нет данных по отслеживанию",
                                 msg,
                                 None
@@ -109,12 +109,12 @@ async def send_notifications(bot, target_time: time):
                     except Exception as send_err:
                         logger.error(f"[Telegram] ❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
 
-                if sub.delivery_channel in ["email", "both"] and user and user.email:
+                if sub.delivery_channel in ["email", "both"] and user is not None and getattr(user, "email", None):
                     try:
                         excel_bytes = generate_excel_report(rows, columns)
                         logger.info(f"[Email] Пытаюсь отправить файл с отчётом на {user.email}")
                         await send_to_email(
-                            user.email,
+                            str(user.email),
                             "Ваш отчёт по контейнерам",
                             "Смотри вложение",
                             excel_bytes
