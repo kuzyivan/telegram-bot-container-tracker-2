@@ -1,18 +1,17 @@
-import aiosmtplib
 import asyncio
+import aiosmtplib
+import re
 from email.message import EmailMessage
 from dotenv import load_dotenv
-import re
 import time
-import socket
 
 from config import SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT, FROM_EMAIL
 from logger import get_logger
 
-from typing import Optional
-
-logger = get_logger(__name__)
 load_dotenv()
+logger = get_logger(__name__)
+
+from typing import Optional
 
 async def send_to_email(
     to_email: str,
@@ -22,16 +21,14 @@ async def send_to_email(
     attachment_filename: str = "report.xlsx"
 ) -> bool:
     """
-    Асинхронно отправляет письмо с вложением.
-    Возвращает True при успехе, False при ошибке.
+    Асинхронно отправляет письмо с вложением. Возвращает True при успехе, False при ошибке.
     """
 
-    logger.info("[send_to_email] 🚀 Вызов функции send_to_email:")
-    logger.info(f"[send_to_email] Параметры:\n  📧 to_email: {to_email}\n  📨 subject: {subject}\n  📎 attachment: {'есть' if attachment_bytes else 'нет'}")
+    logger.info(f"[email_sender] ▶️ Запуск отправки письма на {to_email}")
 
-    # Простая валидация e-mail
+    # Простая проверка e-mail
     if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", to_email):
-        logger.warning(f"[send_to_email] ❌ Некорректный e-mail: {to_email}")
+        logger.warning(f"[email_sender] ❗️Некорректный адрес email: {to_email}")
         return False
 
     msg = EmailMessage()
@@ -47,53 +44,45 @@ async def send_to_email(
             subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             filename=attachment_filename,
         )
-        logger.info(f"[send_to_email] 📎 Прикреплён файл: {attachment_filename} (размер: {len(attachment_bytes)} байт)")
-
-    # Определение DNS-имени сервера
-    try:
-        ip = socket.gethostbyname(SMTP_HOST)
-        dns_name = socket.gethostbyaddr(ip)[0]
-        logger.info(f"[send_to_email] 🔍 SMTP DNS: {SMTP_HOST} → {ip} ({dns_name})")
-    except Exception as dns_err:
-        logger.warning(f"[send_to_email] ⚠️ Ошибка при получении DNS-имени: {dns_err}")
+        logger.info(f"[email_sender] 📎 Прикреплён файл: {attachment_filename}")
 
     try:
-        logger.info(f"[send_to_email] ⏳ Отправка письма через SMTP на {SMTP_HOST}:{SMTP_PORT}...")
+        logger.info(f"[email_sender] ⏳ Подключение к SMTP-серверу {SMTP_HOST}:{SMTP_PORT} как {SMTP_USER}")
         start_time = time.perf_counter()
 
-        send_result = await aiosmtplib.send(
-            msg,
+        response = await aiosmtplib.send(
+            message=msg,
             hostname=SMTP_HOST,
             port=SMTP_PORT,
             username=SMTP_USER,
             password=SMTP_PASS,
             use_tls=False,
             start_tls=True,
-            timeout=20,
+            timeout=30,
         )
 
         elapsed = time.perf_counter() - start_time
-        logger.info(f"[send_to_email] ✅ Письмо успешно отправлено на {to_email} за {elapsed:.2f} сек")
-        logger.info(f"[send_to_email] 📬 SMTP response: {send_result}")
-
+        logger.info(f"[email_sender] ✅ Письмо отправлено на {to_email} (за {elapsed:.2f} сек)")
+        logger.debug(f"[email_sender] SMTP-ответ: {response}")
         return True
 
-    except Exception as e:
-        logger.error(f"[send_to_email] ❌ Ошибка при отправке письма на {to_email}: {e}", exc_info=True)
+    except aiosmtplib.SMTPException as smtp_error:
+        logger.error(f"[email_sender] ❌ SMTP ошибка при отправке письма на {to_email}: {smtp_error}", exc_info=True)
+        return False
+    except Exception as general_error:
+        logger.error(f"[email_sender] ❌ Общая ошибка при отправке письма на {to_email}: {general_error}", exc_info=True)
         return False
 
-
-# CLI-тест: python utils/email_sender.py your@email.com
+# CLI тест (можно запускать: python email_sender.py your@email.com)
 if __name__ == "__main__":
     import sys
-    import logging
-    logging.basicConfig(level=logging.INFO)
-
-    to = sys.argv[1] if len(sys.argv) > 1 else SMTP_USER
-    subject = "Тестовая email рассылка"
-    body = "Это тестовое письмо. Всё работает!"
-    logger.info("[CLI] 🚀 Тестовая отправка на email через __main__")
-    result = asyncio.run(send_to_email(to, subject, body))
+    test_to = sys.argv[1] if len(sys.argv) > 1 else SMTP_USER
+    test_subject = "✅ Тестовая рассылка"
+    test_text = "Это тестовое письмо от трекинг-бота. Если ты это видишь — значит всё работает."
+    
+    logger.info("[email_sender] Запуск CLI-отправки")
+    result = asyncio.run(send_to_email(test_to, test_subject, test_text))
+    
     if result:
         print("✅ Письмо успешно отправлено!")
     else:

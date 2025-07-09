@@ -1,12 +1,12 @@
-python-telegram-bot[webhooks]==22.1
-imap-tools
-apscheduler
-pandas
-openpyxl
-psycopg2-binary
-requests>=2.31.0
-python-dotenv
-sqlalchemy>=1.4
-alembic
-asyncpg
-aiosmtplib
+python-telegram-bot[webhooks]==22.1  # Библиотека Telegram-бота с поддержкой webhook
+imap-tools                           # Чтение почты по IMAP (используется в mail_reader)
+apscheduler                          # Планировщик задач (для ежедневных рассылок и т.д.)
+pandas                               # Формирование Excel-отчётов
+openpyxl                             # Для сохранения .xlsx файлов с pandas
+psycopg2-binary                      # PostgreSQL драйвер для SQLAlchemy (синхронный)
+asyncpg                              # PostgreSQL драйвер для SQLAlchemy (асинхронный)
+requests>=2.31.0                     # HTTP-запросы (например, к API)
+python-dotenv                        # Загрузка переменных окружения из .env
+sqlalchemy>=1.4                      # ORM для работы с базой данных
+alembic                              # Миграции базы (если используешь SQLAlchemy)
+aiosmtplib                           # Асинхронная отправка писем по SMTP
