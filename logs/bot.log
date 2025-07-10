@@ -131,3 +131,7 @@ Traceback (most recent call last):
   File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2-1/venv/lib/python3.9/site-packages/aiosmtplib/smtp.py", line 519, in _create_connection
     raise SMTPConnectTimeoutError(
 aiosmtplib.errors.SMTPConnectTimeoutError: Timed out waiting for server ready message
+2025-07-09 22:39:31,208 INFO [email_sender:83] [email_sender] Запуск CLI-отправки
+2025-07-09 22:39:31,208 INFO [email_sender:27] [email_sender] ▶️ Запуск отправки письма на i.kuzmenko@aterminal.pro
+2025-07-09 22:39:31,209 INFO [email_sender:50] [email_sender] ⏳ Подключение к SMTP-серверу smtp.yandex.ru:587 как bottrack@yandex.ru
+2025-07-09 22:39:33,642 INFO [email_sender:65] [email_sender] ✅ Письмо отправлено на i.kuzmenko@aterminal.pro (за 2.43 сек)
