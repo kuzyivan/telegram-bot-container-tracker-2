@@ -12,8 +12,8 @@ from utils.send_tracking import (
     create_excel_multisheet,
     get_vladivostok_filename,
     generate_excel_report,
-    send_to_email,
 )
+from utils.email_sender import EmailSender
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[tracking] Запрос от {user_id}")
     if user_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔️ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
@@ -36,7 +36,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             df = pd.DataFrame([dict(zip(result.keys(), row)) for row in subs])
             file_path = create_excel_file(df.values.tolist(), list(df.columns))
-            filename = get_vladivostok_filename("tracking_subs")
+            filename = get_vladivostok_filename().replace("Слежение контейнеров", "tracking_subs")
             with open(file_path, "rb") as f:
                 await update.message.reply_document(document=f, filename=filename)
             logger.info("[tracking] Файл отправлен.")
@@ -50,7 +50,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[stats] Запрос от {user_id}")
     if user_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔️ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
@@ -88,15 +88,12 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[exportstats] Запрос от {user_id}")
     if user_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔️ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
         async with SessionLocal() as session:
-            result = await session.execute(
-                text("SELECT * FROM stats WHERE user_id != :admin_id"),
-                {'admin_id': ADMIN_CHAT_ID}
-            )
+            result = await session.execute(text("SELECT * FROM stats WHERE user_id != :admin_id"), {'admin_id': ADMIN_CHAT_ID})
             rows = result.fetchall()
             if not rows:
                 await update.message.reply_text("Нет данных.")
@@ -104,7 +101,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             df = pd.DataFrame(rows, columns=result.keys())
             file_path = create_excel_file(df.values.tolist(), list(df.columns))
-            filename = get_vladivostok_filename("Статистика")
+            filename = get_vladivostok_filename().replace("Слежение контейнеров", "Статистика")
             with open(file_path, "rb") as f:
                 await update.message.reply_document(document=f, filename=filename)
     except Exception as e:
@@ -117,7 +114,7 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[test_notify] Запрос от {user_id}")
     if user_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("⛔️ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
@@ -136,14 +133,13 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'Номер вагона', 'Дорога операции'
             ]
             data_per_user = {}
+            email_sender = EmailSender()
 
             for sub in subs:
                 rows = []
                 for container in sub.containers:
                     res = await session.execute(
-                        select(Tracking)
-                        .filter(Tracking.container_number == container)
-                        .order_by(Tracking.operation_date.desc())
+                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
                     )
                     track = res.scalars().first()
                     if track:
@@ -156,22 +152,23 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if not rows:
                     rows = [["Нет данных"] + [""] * 10]
 
-                user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
-                data_per_user[user_label] = rows
+                username_display = f"{sub.username or sub.user_id} (id:{sub.user_id})"
+                data_per_user[username_display] = rows
 
                 user_result = await session.execute(select(User).where(User.id == sub.user_id))
                 user_obj = user_result.scalar_one_or_none()
 
                 if user_obj and user_obj.email:
-                    logger.info(f"[test_notify] Отправка email: {user_obj.email}")
                     try:
-                        await send_to_email(
+                        logger.info(f"[test_notify] Отправка email: {user_obj.email}")
+                        await email_sender.send(
                             to_email=user_obj.email,
                             subject="📦 Обновление контейнеров",
                             text="Во вложении — свежий Excel с дислокацией контейнеров.",
-                            file_bytes=generate_excel_report(rows, columns)
+                            file_bytes=generate_excel_report(rows, columns),
+                            filename=get_vladivostok_filename(f"{sub.user_id}_test")
                         )
-                        logger.info(f"[test_notify] ✅ Успешно отправлено на {user_obj.email}")
+                        logger.info(f"[test_notify] ✅ Отправлено успешно на {user_obj.email}")
                     except Exception as e:
                         logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {e}", exc_info=True)
                 else:
@@ -187,6 +184,7 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
             await update.message.reply_text("✅ E-mail рассылка завершена. Excel-файл отправлен в Telegram.")
+
     except Exception as e:
         logger.error(f"[test_notify] Общая ошибка: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при выполнении рассылки.")

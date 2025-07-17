@@ -4,11 +4,10 @@ from datetime import time
 from db import SessionLocal
 from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import (
-    create_excel_file,
-    get_vladivostok_filename,
     generate_excel_report,
-    send_to_email
+    get_vladivostok_filename
 )
+from utils.email_sender import EmailSender
 from mail_reader import check_mail
 from logger import get_logger
 
@@ -43,14 +42,15 @@ async def send_notifications(bot, target_time: time):
                 'Номер вагона', 'Дорога операции'
             ]
 
+            sender = EmailSender()
+
             for sub in subscriptions:
                 logger.info(f"📦 Обработка подписки: user_id={sub.user_id}, канал={sub.delivery_channel}, контейнеры={sub.containers}")
+
                 rows = []
                 for container in sub.containers:
                     res = await session.execute(
-                        select(Tracking)
-                        .filter(Tracking.container_number == container)
-                        .order_by(Tracking.operation_date.desc())
+                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
                     )
                     track = res.scalars().first()
                     if track:
@@ -69,15 +69,13 @@ async def send_notifications(bot, target_time: time):
                         ])
 
                 containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
-
                 user_result = await session.execute(
                     select(User).where(User.id == sub.user_id)
                 )
                 user = user_result.scalar_one_or_none()
 
-                # === ЕСЛИ ДАННЫХ НЕТ ===
                 if not rows:
-                    msg = f"📭 Нет данных по контейнерам: {', '.join(containers_list)}"
+                    msg = f"📭 Нет данных по контейнерам {', '.join(containers_list)}"
                     logger.warning(f"Нет данных для user_id={sub.user_id}, email={getattr(user, 'email', None)}")
 
                     if sub.delivery_channel in ["telegram", "both"]:
@@ -86,28 +84,26 @@ async def send_notifications(bot, target_time: time):
 
                     if sub.delivery_channel in ["email", "both"] and user and user.email:
                         try:
-                            await send_to_email(
+                            logger.info(f"[Email] Пытаюсь отправить сообщение об отсутствии данных на {user.email}")
+                            await sender.send_email(
                                 to_email=user.email,
                                 subject="Нет данных по отслеживанию",
-                                text=msg,
-                                file_bytes=None
+                                text=msg
                             )
                             logger.info(f"[Email] Сообщение об отсутствии данных отправлено на {user.email}")
                         except Exception as mail_err:
                             logger.error(f"[Email] Ошибка при отправке письма об отсутствии данных на {user.email}: {mail_err}", exc_info=True)
                     continue
 
-                # === ЕСЛИ ДАННЫЕ ЕСТЬ ===
                 if sub.delivery_channel in ["telegram", "both"]:
                     try:
-                        file_path = create_excel_file(rows, columns)
                         filename = get_vladivostok_filename()
-                        with open(file_path, "rb") as f:
-                            await bot.send_document(
-                                chat_id=sub.user_id,
-                                document=f,
-                                filename=filename
-                            )
+                        excel_bytes = generate_excel_report(rows, columns)
+                        await bot.send_document(
+                            chat_id=sub.user_id,
+                            document=excel_bytes,
+                            filename=filename
+                        )
                         logger.info(f"[Telegram] ✅ Отправлен файл {filename} пользователю {sub.user_id}")
                     except Exception as send_err:
                         logger.error(f"[Telegram] ❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
@@ -115,13 +111,15 @@ async def send_notifications(bot, target_time: time):
                 if sub.delivery_channel in ["email", "both"] and user and user.email:
                     try:
                         excel_bytes = generate_excel_report(rows, columns)
-                        await send_to_email(
+                        logger.info(f"[Email] Пытаюсь отправить файл с отчётом на {user.email}")
+                        await sender.send_email(
                             to_email=user.email,
                             subject="Ваш отчёт по контейнерам",
-                            text="Смотри вложение",
-                            file_bytes=excel_bytes
+                            text="Во вложении — свежий Excel с дислокацией контейнеров.",
+                            attachment_bytes=excel_bytes,
+                            attachment_filename=get_vladivostok_filename()
                         )
-                        logger.info(f"[Email] ✅ Отчёт по контейнерам успешно отправлен на {user.email}")
+                        logger.info(f"[Email] ✅ Отчёт успешно отправлен на {user.email}")
                     except Exception as mail_err:
                         logger.error(f"[Email] ❌ Ошибка при отправке email {user.email}: {mail_err}", exc_info=True)
 
