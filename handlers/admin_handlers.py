@@ -113,13 +113,18 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else None
     logger.info(f"[test_notify] Запрос от {user_id}")
     if user_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("\u26d4\ufe0f Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
         async with SessionLocal() as session:
             result = await session.execute(select(TrackingSubscription))
             subs = result.scalars().all()
+
+            if not subs:
+                await update.message.reply_text("❌ Нет активных подписок для тестовой рассылки.")
+                return
+
             columns = [
                 'Номер контейнера', 'Станция отправления', 'Станция назначения',
                 'Станция операции', 'Операция', 'Дата и время операции',
@@ -144,7 +149,9 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ])
                 if not rows:
                     rows = [["Нет данных"] + [""] * 10]
-                data_per_user[f"{sub.username or sub.user_id} (id:{sub.user_id})"] = rows
+
+                username_display = f"{sub.username or sub.user_id} (id:{sub.user_id})"
+                data_per_user[username_display] = rows
 
                 user_result = await session.execute(select(User).where(User.id == sub.user_id))
                 user_obj = user_result.scalar_one_or_none()
@@ -153,10 +160,11 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"[test_notify] Отправка email: {user_obj.email}")
                     try:
                         success = await send_to_email(
-                            user_obj.email,
-                            "📦 Обновление контейнеров",
-                            "Во вложении — свежий Excel с дислокацией контейнеров.",
-                            generate_excel_report(rows, columns)
+                            to_email=user_obj.email,
+                            subject="📦 Обновление контейнеров",
+                            text="Во вложении — свежий Excel с дислокацией контейнеров.",
+                            attachment_bytes=generate_excel_report(rows, columns),
+                            attachment_filename=get_vladivostok_filename(f"{sub.user_id}_test")
                         )
                         if success:
                             logger.info(f"[test_notify] ✅ Отправлено успешно на {user_obj.email}")
@@ -164,6 +172,8 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             logger.warning(f"[test_notify] ❌ Не удалось отправить на {user_obj.email}")
                     except Exception as e:
                         logger.error(f"[test_notify] ❌ Ошибка при отправке email {user_obj.email}: {e}", exc_info=True)
+                else:
+                    logger.warning(f"[test_notify] Пропущена email-рассылка: нет email для пользователя {sub.user_id}")
 
             file_path = create_excel_multisheet(data_per_user, columns)
             filename = get_vladivostok_filename("Тестовая дислокация")
@@ -173,8 +183,9 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     filename=filename,
                     caption="Тестовая дислокация по всем подписчикам (разделено по листам)"
                 )
-            await update.message.reply_text("\u2705 E-mail рассылка завершена. Excel отправлен.")
+
+            await update.message.reply_text("✅ E-mail рассылка завершена. Excel-файл отправлен в Telegram.")
 
     except Exception as e:
         logger.error(f"[test_notify] Общая ошибка: {e}", exc_info=True)
-        await update.message.reply_text("\u274c Ошибка при выполнении рассылки.")
+        await update.message.reply_text("❌ Ошибка при выполнении рассылки.")
