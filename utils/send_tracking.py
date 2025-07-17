@@ -14,7 +14,6 @@ logger = get_logger(__name__)
 
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
 
-
 def create_excel_file(rows, columns):
     logger.info("Создание Excel-файла (один лист) с %d строк(ами)", len(rows))
     try:
@@ -35,12 +34,10 @@ def create_excel_file(rows, columns):
         logger.error("Ошибка при создании Excel-файла: %s", e, exc_info=True)
         raise
 
-
 def clean_sheet_name(name):
     clean = re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
     logger.debug("Очищено имя листа: %s -> %s", name, clean)
     return clean
-
 
 def create_excel_multisheet(data_per_user, columns):
     logger.info("Создание мультилистового Excel-файла для %d пользователей", len(data_per_user))
@@ -64,13 +61,11 @@ def create_excel_multisheet(data_per_user, columns):
         logger.error("Ошибка при создании мультилистового Excel-файла: %s", e, exc_info=True)
         raise
 
-
 def get_vladivostok_filename(prefix="Слежение контейнеров"):
     vladivostok_time = datetime.utcnow() + timedelta(hours=10)
     filename = f"{prefix} {vladivostok_time.strftime('%H-%M')}.xlsx"
     logger.debug("Сгенерировано имя файла для Владивостока: %s", filename)
     return filename
-
 
 def generate_excel_report(rows, columns):
     logger.info("Генерация Excel-файла в байтах")
@@ -93,11 +88,7 @@ def generate_excel_report(rows, columns):
         logger.error("Ошибка при генерации Excel-файла в байтах: %s", e, exc_info=True)
         raise
 
-
 async def send_to_email(to_email, subject, body, attachment_bytes=None, attachment_filename="report.xlsx") -> bool:
-    """
-    Отправка email-сообщения с вложением Excel (опционально).
-    """
     if not to_email or not isinstance(to_email, str):
         logger.error("❌ send_to_email: Email не передан или имеет неверный формат.")
         raise ValueError("Invalid recipient email")
