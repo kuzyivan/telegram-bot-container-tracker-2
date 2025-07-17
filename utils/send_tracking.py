@@ -16,9 +16,6 @@ MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def create_excel_file(rows, columns):
-    """
-    Создание Excel-файла (один лист).
-    """
     logger.info("Создание Excel-файла (один лист) с %d строк(ами)", len(rows))
     try:
         df = pd.DataFrame(rows, columns=columns)
@@ -40,18 +37,12 @@ def create_excel_file(rows, columns):
 
 
 def clean_sheet_name(name):
-    """
-    Очистка имени листа для Excel.
-    """
     clean = re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
     logger.debug("Очищено имя листа: %s -> %s", name, clean)
     return clean
 
 
 def create_excel_multisheet(data_per_user, columns):
-    """
-    Мультилистовой Excel-файл (по пользователям).
-    """
     logger.info("Создание мультилистового Excel-файла для %d пользователей", len(data_per_user))
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -75,9 +66,6 @@ def create_excel_multisheet(data_per_user, columns):
 
 
 def get_vladivostok_filename(prefix="Слежение контейнеров"):
-    """
-    Имя файла по Владивостокскому времени (UTC+10).
-    """
     vladivostok_time = datetime.utcnow() + timedelta(hours=10)
     filename = f"{prefix} {vladivostok_time.strftime('%H-%M')}.xlsx"
     logger.debug("Сгенерировано имя файла для Владивостока: %s", filename)
@@ -85,9 +73,6 @@ def get_vladivostok_filename(prefix="Слежение контейнеров"):
 
 
 def generate_excel_report(rows, columns):
-    """
-    Генерация Excel-файла в памяти (в виде байтов).
-    """
     logger.info("Генерация Excel-файла в байтах")
     try:
         df = pd.DataFrame(rows, columns=columns)
@@ -109,40 +94,43 @@ def generate_excel_report(rows, columns):
         raise
 
 
-async def send_to_email(to_email, subject, text, file_bytes=None):
+async def send_to_email(to_email, subject, body, attachment_bytes=None, attachment_filename="report.xlsx") -> bool:
     """
-    Отправка письма с вложением Excel-файла (по e-mail).
+    Отправка email-сообщения с вложением Excel (опционально).
     """
     if not to_email or not isinstance(to_email, str):
-        raise ValueError("Invalid email address")
+        logger.error("❌ send_to_email: Email не передан или имеет неверный формат.")
+        raise ValueError("Invalid recipient email")
 
     msg = EmailMessage()
-    msg["From"] = FROM_EMAIL
+    msg["From"] = FROM_EMAIL or SMTP_USER
     msg["To"] = to_email
     msg["Subject"] = subject
-    msg.set_content(text)
+    msg.set_content(body)
 
-    if file_bytes:
-        if len(file_bytes) > MAX_ATTACHMENT_SIZE:
-            raise ValueError("Attachment size exceeds limit")
+    if attachment_bytes:
+        if len(attachment_bytes) > MAX_ATTACHMENT_SIZE:
+            raise ValueError("Attachment size exceeds 10 MB limit")
         msg.add_attachment(
-            file_bytes,
+            attachment_bytes,
             maintype="application",
             subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename="tracking_report.xlsx"
+            filename=attachment_filename
         )
 
     try:
+        logger.info(f"📧 Отправка письма на {to_email} через {SMTP_HOST}:{SMTP_PORT}")
         await aiosmtplib.send(
-            msg,
+            message=msg,
             hostname=SMTP_HOST,
             port=SMTP_PORT,
             username=SMTP_USER,
             password=SMTP_PASS,
-            start_tls=SMTP_PORT != 465,
-            timeout=10
+            start_tls=(SMTP_PORT != 465),
+            timeout=15
         )
-        logger.info(f"Email sent to {to_email}")
+        logger.info(f"✅ Письмо успешно отправлено на {to_email}")
+        return True
     except Exception as e:
-        logger.error(f"Email failed to {to_email}: {str(e).replace(SMTP_PASS, '***')}")
-        raise
+        logger.error(f"❌ Ошибка при отправке письма на {to_email}: {str(e).replace(SMTP_PASS, '***')}", exc_info=True)
+        return False

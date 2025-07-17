@@ -5,20 +5,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Переменные окружения
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
 TO_EMAIL = os.getenv("TO_EMAIL", "i.kuzmenko@aterminal.pro")
 
-# Подготовка письма
 msg = EmailMessage()
-msg['Subject'] = '✅ Тест SMTP-подключения'
-msg['From'] = FROM_EMAIL
-msg['To'] = TO_EMAIL
-msg.set_content("Привет! Это тестовое письмо от Telegram-бота.")
+msg["Subject"] = "test"
+msg["From"] = FROM_EMAIL
+msg["To"] = TO_EMAIL
+msg.set_content("hello")
 
-# Отправка
 server = smtplib.SMTP('smtp.yandex.ru', 587)
 server.set_debuglevel(1)
 server.starttls()
