@@ -107,34 +107,37 @@ def generate_excel_report(rows, columns):
         raise
 
 
-async def send_to_email(to_email, subject, body, excel_bytes, filename):
-    """
-    Отправляет email с Excel-файлом.
-    """
-    logger.info("Отправка email на адрес %s с темой '%s'", to_email, subject)
-    try:
-        message = EmailMessage()
-        message["From"] = FROM_EMAIL
-        message["To"] = to_email
-        message["Subject"] = subject
-        message.set_content(body)
+async def send_to_email(to_email, subject, text, file_bytes=None):
+    if not to_email or not isinstance(to_email, str):
+        raise ValueError("Invalid email address")
+    
+    msg = EmailMessage()
+    msg["From"] = FROM_EMAIL
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(text)
 
-        message.add_attachment(
-            excel_bytes,
+    if file_bytes:
+        if len(file_bytes) > MAX_ATTACHMENT_SIZE:
+            raise ValueError("Attachment size exceeds limit")
+        msg.add_attachment(
+            file_bytes,
             maintype="application",
             subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=filename,
+            filename="tracking_report.xlsx"
         )
 
+    try:
         await aiosmtplib.send(
-            message,
+            msg,
             hostname=SMTP_HOST,
             port=SMTP_PORT,
-            start_tls=True,
             username=SMTP_USER,
             password=SMTP_PASS,
+            start_tls=SMTP_PORT != 465,
+            timeout=10
         )
-        logger.info("Email успешно отправлен на %s", to_email)
+        logger.info(f"Email sent to {to_email}")
     except Exception as e:
-        logger.error("Ошибка при отправке email на %s: %s", to_email, e, exc_info=True)
+        logger.error(f"Email failed to {to_email}: {str(e).replace(SMTP_PASS, '***')}")
         raise
