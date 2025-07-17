@@ -83,12 +83,11 @@ async def send_notifications(bot, target_time: time):
                     if sub.delivery_channel in ["email", "both"] and user is not None and getattr(user, "email", None):
                         try:
                             logger.info(f"[Email] Пытаюсь отправить сообщение об отсутствии данных на {user.email}")
-                            aawait send_to_email(
-                                to_email=str(user.email),
-                                subject="Ваш отчёт по контейнерам",
-                                text="Смотри вложение",
-                                attachment_bytes=excel_bytes,
-                                attachment_filename=get_vladivostok_filename()
+                            await send_to_email(
+                                str(user.email),
+                                "Нет данных по отслеживанию",
+                                msg,
+                                None
                             )
                             logger.info(f"[Email] Сообщение об отсутствии данных отправлено на {user.email}")
                         except Exception as mail_err:
@@ -96,20 +95,19 @@ async def send_notifications(bot, target_time: time):
                     continue
 
                 # === РАССЫЛКА ПРИ НАЛИЧИИ ДАННЫХ ===
-                if sub.delivery_channel in ["email", "both"] and user is not None and getattr(user, "email", None):
+                if sub.delivery_channel in ["telegram", "both"]:
                     try:
-                        excel_bytes = generate_excel_report(rows, columns)
-                        logger.info(f"[Email] Пытаюсь отправить файл с отчётом на {user.email}")
-                        await send_to_email(
-                            to_email=str(user.email),
-                            subject="Ваш отчёт по контейнерам",
-                            text="Смотри вложение",
-                            attachment_bytes=excel_bytes,
-                            attachment_filename=get_vladivostok_filename()
-                        )
-                        logger.info(f"[Email] ✅ Отчёт по контейнеру успешно отправлен на {user.email}")
-                    except Exception as mail_err:
-                        logger.error(f"[Email] ❌ Ошибка при отправке email {user.email}: {mail_err}", exc_info=True)
+                        file_path = create_excel_file(rows, columns)
+                        filename = get_vladivostok_filename()
+                        with open(file_path, "rb") as f:
+                            await bot.send_document(
+                                chat_id=sub.user_id,
+                                document=f,
+                                filename=filename
+                            )
+                        logger.info(f"[Telegram] ✅ Отправлен файл {filename} пользователю {sub.user_id}")
+                    except Exception as send_err:
+                        logger.error(f"[Telegram] ❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
 
                 if sub.delivery_channel in ["email", "both"] and user is not None and getattr(user, "email", None):
                     try:
