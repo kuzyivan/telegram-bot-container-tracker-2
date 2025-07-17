@@ -9,7 +9,7 @@ from telegram.ext import (
 )
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 
-from config import TOKEN, ADMIN_CHAT_ID 
+from config import TOKEN, ADMIN_CHAT_ID, check_smtp_config
 from mail_reader import start_mail_checking
 from scheduler import start_scheduler
 
@@ -69,6 +69,10 @@ def main():
         if not TOKEN:
             logger.critical("❌ TOKEN не установлен. Проверь config.py или .env.")
             raise ValueError("TOKEN must not be None")
+
+        # Проверка SMTP конфигурации
+        if not check_smtp_config():
+            logger.warning("⚠️ E-mail уведомления будут недоступны — SMTP-конфигурация неполная.")
 
         application = Application.builder().token(TOKEN).build()
 

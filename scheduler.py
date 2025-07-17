@@ -114,10 +114,11 @@ async def send_notifications(bot, target_time: time):
                         excel_bytes = generate_excel_report(rows, columns)
                         logger.info(f"[Email] Пытаюсь отправить файл с отчётом на {user.email}")
                         await send_to_email(
-                            str(user.email),
-                            "Ваш отчёт по контейнерам",
-                            "Смотри вложение",
-                            excel_bytes
+                            to_email=str(user.email),
+                            subject="Ваш отчёт по контейнерам",
+                            text="Смотри вложение",
+                            attachment_bytes=excel_bytes,
+                            attachment_filename=get_vladivostok_filename()
                         )
                         logger.info(f"[Email] ✅ Отчёт по контейнерам успешно отправлен на {user.email}")
                     except Exception as mail_err:

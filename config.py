@@ -33,6 +33,20 @@ SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER)
 
-# Проверка критичных для почты
-if not SMTP_USER or not SMTP_PASS:
-    logger.warning("⚠️ SMTP_USER или SMTP_PASS не заданы — e-mail рассылка работать не будет.")
+# === Проверка SMTP конфигурации ===
+def check_smtp_config():
+    missing = []
+    for var_name, var_value in [
+        ("SMTP_HOST", SMTP_HOST),
+        ("SMTP_PORT", SMTP_PORT),
+        ("SMTP_USER", SMTP_USER),
+        ("SMTP_PASS", SMTP_PASS),
+    ]:
+        if not var_value:
+            missing.append(var_name)
+
+    if missing:
+        logger.warning(f"⚠️ Не заданы переменные SMTP: {', '.join(missing)} — e-mail рассылка отключена.")
+        return False
+
+    return True
