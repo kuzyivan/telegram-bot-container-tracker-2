@@ -30,6 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["📦 Дислокация", "🔔 Задать слежение"],
         ["❌ Отмена слежения"]
     ]
+    await update.message.reply_sticker("CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ")
     await update.message.reply_text(
         "Привет! Я бот для отслеживания контейнеров 🚢\n"
         "Выберите действие в меню:",
