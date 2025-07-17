@@ -6,6 +6,7 @@ from openpyxl.styles import PatternFill
 from datetime import datetime, timedelta
 import tempfile
 import re
+
 from logger import get_logger
 from config import SMTP_USER, SMTP_PASS, SMTP_HOST, SMTP_PORT, FROM_EMAIL
 
@@ -15,6 +16,9 @@ MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 def create_excel_file(rows, columns):
+    """
+    Создание Excel-файла (один лист).
+    """
     logger.info("Создание Excel-файла (один лист) с %d строк(ами)", len(rows))
     try:
         df = pd.DataFrame(rows, columns=columns)
@@ -36,12 +40,18 @@ def create_excel_file(rows, columns):
 
 
 def clean_sheet_name(name):
+    """
+    Очистка имени листа для Excel.
+    """
     clean = re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
     logger.debug("Очищено имя листа: %s -> %s", name, clean)
     return clean
 
 
 def create_excel_multisheet(data_per_user, columns):
+    """
+    Мультилистовой Excel-файл (по пользователям).
+    """
     logger.info("Создание мультилистового Excel-файла для %d пользователей", len(data_per_user))
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -65,6 +75,9 @@ def create_excel_multisheet(data_per_user, columns):
 
 
 def get_vladivostok_filename(prefix="Слежение контейнеров"):
+    """
+    Имя файла по Владивостокскому времени (UTC+10).
+    """
     vladivostok_time = datetime.utcnow() + timedelta(hours=10)
     filename = f"{prefix} {vladivostok_time.strftime('%H-%M')}.xlsx"
     logger.debug("Сгенерировано имя файла для Владивостока: %s", filename)
@@ -72,6 +85,9 @@ def get_vladivostok_filename(prefix="Слежение контейнеров"):
 
 
 def generate_excel_report(rows, columns):
+    """
+    Генерация Excel-файла в памяти (в виде байтов).
+    """
     logger.info("Генерация Excel-файла в байтах")
     try:
         df = pd.DataFrame(rows, columns=columns)
@@ -94,6 +110,9 @@ def generate_excel_report(rows, columns):
 
 
 async def send_to_email(to_email, subject, text, file_bytes=None):
+    """
+    Отправка письма с вложением Excel-файла (по e-mail).
+    """
     if not to_email or not isinstance(to_email, str):
         raise ValueError("Invalid email address")
 

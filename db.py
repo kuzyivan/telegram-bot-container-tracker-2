@@ -23,6 +23,7 @@ Base = declarative_base()
 from models import TrackingSubscription, Tracking, User, Stats
 
 # --- USERS ---
+
 # Получить пользователя по telegram_id
 async def get_user_by_telegram_id(telegram_id):
     async with SessionLocal() as session:
@@ -32,7 +33,6 @@ async def get_user_by_telegram_id(telegram_id):
         return result.scalar_one_or_none()
 
 # Привязать или обновить email пользователя (и email_enabled)
-
 async def set_user_email(telegram_id, username, email, enable_email=True):
     async with SessionLocal() as session:
         result = await session.execute(
@@ -41,7 +41,8 @@ async def set_user_email(telegram_id, username, email, enable_email=True):
         user = result.scalar_one_or_none()
         if user:
             await session.execute(
-                update(User).where(User.telegram_id == telegram_id)
+                update(User)
+                .where(User.telegram_id == telegram_id)
                 .values(username=username, email=email, email_enabled=enable_email)
             )
         else:
@@ -53,7 +54,7 @@ async def set_user_email(telegram_id, username, email, enable_email=True):
             ))
         await session.commit()
 
-# Отключить рассылку на e-mail (ставит флаг False, но e-mail не удаляет)
+# Отключить рассылку на e-mail (оставляет email, но выключает рассылку)
 async def disable_user_email(telegram_id):
     async with SessionLocal() as session:
         await session.execute(
@@ -67,11 +68,14 @@ async def disable_user_email(telegram_id):
 async def get_all_emails():
     async with SessionLocal() as session:
         result = await session.execute(
-            select(User.email).where(User.email != None, User.email_enabled == True)
+            select(User.email)
+            .where(User.email.is_not(None), User.email_enabled == True)
         )
         return [row[0] for row in result.fetchall() if row[0]]
 
 # --- STATS ---
+
+# Получить уникальные user_id из таблицы Stats
 async def get_all_user_ids():
     async with SessionLocal() as session:
         result = await session.execute(select(Stats.user_id).distinct())
@@ -79,11 +83,13 @@ async def get_all_user_ids():
         return user_ids
 
 # --- TRACKING ---
+
 # Получить все отслеживаемые контейнеры пользователя
 async def get_tracked_containers_by_user(user_id):
     async with SessionLocal() as session:
         result = await session.execute(
-            select(TrackingSubscription.containers).where(TrackingSubscription.user_id == user_id)
+            select(TrackingSubscription.containers)
+            .where(TrackingSubscription.user_id == user_id)
         )
         row = result.scalar_one_or_none()
         return row if row else []
@@ -92,11 +98,12 @@ async def get_tracked_containers_by_user(user_id):
 async def remove_user_tracking(user_id):
     async with SessionLocal() as session:
         await session.execute(
-            delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
+            delete(TrackingSubscription)
+            .where(TrackingSubscription.user_id == user_id)
         )
         await session.commit()
 
-# Создать новую подписку на отслеживание с указанием канала доставки
+# Создать новую подписку на отслеживание
 async def create_tracking_subscription(user_id, username, containers, notify_time, delivery_channel):
     async with SessionLocal() as session:
         subscription = TrackingSubscription(
@@ -109,12 +116,11 @@ async def create_tracking_subscription(user_id, username, containers, notify_tim
         session.add(subscription)
         await session.commit()
 
-# Получить все подписки пользователя (для админских нужд, опционально)
+# Получить подписки пользователя (для админских нужд)
 async def get_subscriptions_by_user(user_id):
     async with SessionLocal() as session:
         result = await session.execute(
-            select(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
+            select(TrackingSubscription)
+            .where(TrackingSubscription.user_id == user_id)
         )
         return result.scalars().all()
-
-# Можно добавить другие методы по необходимости (например, статистика, логирование и т.д.)
