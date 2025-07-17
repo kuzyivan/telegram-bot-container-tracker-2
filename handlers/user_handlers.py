@@ -26,10 +26,6 @@ COLUMNS = [
 
 # Главное меню
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply_keyboard = [
-        ["📦 Дислокация", "🔔 Задать слежение"],
-        ["❌ Отмена слежения"]
-    ]
     await update.message.reply_sticker("CAACAgIAAxkBAAIC6mgUWmOtztmC0dnqI3C2l4wcikA-AAJvbAACa_OZSGYOhHaiIb7mNgQ")
     await update.message.reply_text(
         "Привет! Я бот для отслеживания контейнеров 🚢\n"
@@ -54,7 +50,7 @@ async def process_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.message.from_user.username or ""
 
     if not re.match(r"^[\w\.-]+@[\w\.-]+\.\w+$", email):
-        await update.message.reply_text("❌ Некорректный email. Попробуй ещё раз или /cancel для отмены.")
+        await update.message.reply_text("\u274c Некорректный email. Попробуй ещё раз или /cancel для отмены.")
         return SET_EMAIL
 
     await set_user_email(telegram_id, username, email, enable_email=True)
@@ -116,7 +112,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message or not update.message.text:
         logger.warning(f"handle_message: пустой ввод от пользователя {user_id}")
-        await update.message.reply_text("⛔ Пожалуйста, отправь текстовый номер контейнера.")
+        await update.message.reply_text("⛔️ Пожалуйста, отправь текстовый номер контейнера.")
         await show_menu(update, context)
         return
 
@@ -193,11 +189,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             km_left = "—"
             forecast_days_calc = "—"
 
-        operation_station = f"{row[3]} 🛤️ ({row[10]})" if row[10] else row[3]
+        operation_station = f"{row[3]} 🚤 ({row[10]})" if row[10] else row[3]
 
         msg = (
             f"📦 <b>Контейнер</b>: <code>{row[0]}</code>\n\n"
-            f"🛤 <b>Маршрут</b>:\n"
+            f"🚤 <b>Маршрут</b>:\n"
             f"<b>{row[1]}</b> 🚂 → <b>{row[2]}</b>\n\n"
             f"📍 <b>Текущая станция</b>: {operation_station}\n"
             f"📅 <b>Последняя операция</b>:\n"
