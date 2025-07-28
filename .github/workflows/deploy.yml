@@ -3,7 +3,7 @@ name: 🚀 Deploy to VDS
 on:
   push:
     branches:
-      - main  # или master
+      - main
 
 jobs:
   deploy:
@@ -23,9 +23,22 @@ jobs:
     - name: Deploy via SSH
       run: |
         ssh -i ~/.ssh/id_ed25519 root@109.172.30.183 << 'EOF'
-          cd /opt/bot
+          set -e
+          cd /opt/telegram-bot-container-tracker-2
+
+          echo "⚙️ Очистка локальных изменений..."
+          git reset --hard
+          git clean -fd
+
+          echo "⬇️ Git pull..."
           git pull origin main
+
+          echo "🐍 Виртуальное окружение..."
+          [ ! -d venv ] && python3 -m venv venv
           source venv/bin/activate
+          pip install --upgrade pip
           pip install -r requirements.txt
+
+          echo "♻️ Перезапуск бота..."
           supervisorctl restart telegrambot
         EOF
