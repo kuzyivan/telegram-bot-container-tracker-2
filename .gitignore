@@ -1,4 +1,5 @@
 .env
+venv/
 repomix-output.txt
 repomix-output.xml
 repomix-output.json
