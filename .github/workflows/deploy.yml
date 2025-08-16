@@ -10,15 +10,20 @@ jobs:
     name: ⚙️ Deploy to Server
     runs-on: ubuntu-latest
 
+    env:
+      USER: ${{ secrets.USER }}
+      HOST: ${{ secrets.HOST }}
+      KEY: ${{ secrets.KEY }}
+
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
 
     - name: 🔎 Проверка секретов
       run: |
-        if [ -z "${{ secrets.KEY }}" ]; then echo "❌ Secret KEY не установлен" && exit 1; fi
-        if [ -z "${{ secrets.USER }}" ]; then echo "❌ Secret USER не установлен" && exit 1; fi
-        if [ -z "${{ secrets.HOST }}" ]; then echo "❌ Secret HOST не установлен" && exit 1; fi
+        if [ -z "$KEY" ]; then echo "❌ Secret KEY не установлен" && exit 1; fi
+        if [ -z "$USER" ]; then echo "❌ Secret USER не установлен" && exit 1; fi
+        if [ -z "$HOST" ]; then echo "❌ Secret HOST не установлен" && exit 1; fi
 
     - name: 🛡️ Setup SSH Agent
       uses: webfactory/ssh-agent@v0.9.0
@@ -27,12 +32,12 @@ jobs:
 
     - name: 📦 Rsync files to server
       run: |
-        echo "📡 Отправка на ${{ secrets.USER }}@${{ secrets.HOST }}"
-        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${{ secrets.USER }}@${{ secrets.HOST }}:/root/AtermTrackBot
+        echo "📡 Отправка на $USER@$HOST"
+        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ $USER@$HOST:/root/AtermTrackBot
 
     - name: 🔄 Restart systemd service
       run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} << 'EOF'
+        ssh -o StrictHostKeyChecking=no $USER@$HOST << 'EOF'
           echo "🚀 Перезапуск systemd сервиса..."
           sudo systemctl restart atermtrackbot.service
           sudo systemctl status atermtrackbot.service --no-pager
