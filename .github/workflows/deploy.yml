@@ -1,4 +1,4 @@
-name: deploy
+name: Deploy to AtermTrackBot server
 
 on:
   push:
@@ -7,23 +7,22 @@ on:
 
 jobs:
   deploy:
+    name: Deploy via SSH
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.7.0
+        uses: webfactory/ssh-agent@v0.8.0
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
+          ssh-private-key: ${{ secrets.KEY }}
 
-      - name: Deploy via SSH
+      - name: Rsync to Server
         run: |
-          ssh -o StrictHostKeyChecking=no root@109.172.30.183 << 'EOF'
-            cd /root/AtermTrackBot
-            git pull origin main
-            source venv/bin/activate
-            pip install -r requirements.txt
-            systemctl restart atermtrackbot.service
-          EOF
+          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${{ secrets.USER }}@${{ secrets.HOST }}:/root/AtermTrackBot
+
+      - name: Restart systemd service
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} "sudo systemctl restart atermtrackbot.service"
