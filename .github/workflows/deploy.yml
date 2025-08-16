@@ -16,9 +16,9 @@ jobs:
 
     - name: 🔎 Проверка секретов
       run: |
-        : "${{ secrets.KEY    ?: '❌ Secret KEY не установлен' }}"
-        : "${{ secrets.USER   ?: '❌ Secret USER не установлен' }}"
-        : "${{ secrets.HOST   ?: '❌ Secret HOST не установлен' }}"
+        if [ -z "${{ secrets.KEY }}" ]; then echo "❌ Secret KEY не установлен" && exit 1; fi
+        if [ -z "${{ secrets.USER }}" ]; then echo "❌ Secret USER не установлен" && exit 1; fi
+        if [ -z "${{ secrets.HOST }}" ]; then echo "❌ Secret HOST не установлен" && exit 1; fi
 
     - name: 🛡️ Setup SSH Agent
       uses: webfactory/ssh-agent@v0.9.0
