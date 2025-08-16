@@ -1,4 +1,4 @@
-name: Deploy to AtermTrackBot server
+name: 🚀 Deploy AtermTrackBot
 
 on:
   push:
@@ -7,22 +7,22 @@ on:
 
 jobs:
   deploy:
-    name: Deploy via SSH
+    name: ⚙️ Deploy to Server
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.8.0
-        with:
-          ssh-private-key: ${{ secrets.KEY }}
+    - name: 🛡️ Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.KEY }}
 
-      - name: Rsync to Server
-        run: |
-          rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${{ secrets.USER }}@${{ secrets.HOST }}:/root/AtermTrackBot
+    - name: 📦 Rsync files to server
+      run: |
+        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ ${{ secrets.USER }}@${{ secrets.HOST }}:/root/AtermTrackBot
 
-      - name: Restart systemd service
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} "sudo systemctl restart atermtrackbot.service"
+    - name: 🔄 Restart systemd service
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.USER }}@${{ secrets.HOST }} "sudo systemctl restart atermtrackbot.service && sudo systemctl status atermtrackbot.service --no-pager"
