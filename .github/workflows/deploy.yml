@@ -1,31 +1,29 @@
-name: 🚀 Deploy to VDS
+name: deploy
 
 on:
   push:
     branches:
-      - main  # или master
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.VDS_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
-        chmod 600 ~/.ssh/id_ed25519
-        ssh-keyscan -H 109.172.30.183 >> ~/.ssh/known_hosts
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY }}
 
-    - name: Deploy via SSH
-      run: |
-        ssh -i ~/.ssh/id_ed25519 root@109.172.30.183 << 'EOF'
-          cd /opt/bot
-          git pull origin main
-          source venv/bin/activate
-          pip install -r requirements.txt
-          supervisorctl restart telegrambot
-        EOF
+      - name: Deploy via SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no root@109.172.30.183 << 'EOF'
+            cd /root/AtermTrackBot
+            git pull origin main
+            source venv/bin/activate
+            pip install -r requirements.txt
+            systemctl restart atermtrackbot.service
+          EOF
