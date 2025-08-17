@@ -1,3 +1,4 @@
+import asyncio
 from logger import get_logger
 logger = get_logger(__name__)
 
@@ -56,7 +57,7 @@ async def set_bot_commands(application):
     logger.info(f"Установлены расширенные команды для админа (ID: {ADMIN_CHAT_ID})")
 
 # === ТОЧКА ЗАПУСКА БОТА ===
-def main():
+async def main():
     logger.info("🚦 Старт бота!")
 
     try:
@@ -112,11 +113,11 @@ def main():
         application.add_error_handler(error_handler)
 
         logger.info("Все хендлеры зарегистрированы, бот готов к работе!")
-        application.run_polling()
+        await application.run_polling()
         logger.info("Работа бота завершена корректно.")
 
     except Exception as e:
         logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
