@@ -33,7 +33,7 @@ jobs:
     - name: 📦 Rsync files to server
       run: |
         echo "📡 Отправка на $USER@$HOST"
-        rrsync -avz --delete \
+        rsync -avz --delete \
           --exclude='venv/' \
           --exclude='.env' \
           --exclude='.ssh/' \
