@@ -34,6 +34,7 @@ jobs:
       run: |
         echo "📡 Отправка на $USER@$HOST"
         rsync -avz --delete \
+         --exclude='venv' \
          --exclude '.env' \
          -e "ssh -o StrictHostKeyChecking=no" ./ $USER@$HOST:/root/AtermTrackBot
 
