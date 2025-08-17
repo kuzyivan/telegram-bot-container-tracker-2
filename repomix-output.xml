@@ -225,6 +225,83 @@ universal_menu_keyboard_with_back = InlineKeyboardMarkup([
 ])
 </file>
 
+<file path="utils/send_tracking.py">
+import pandas as pd
+from openpyxl.styles import PatternFill
+from datetime import datetime, timedelta
+import tempfile
+import re
+from logger import get_logger
+
+logger = get_logger(__name__)
+
+def create_excel_file(rows, columns):
+    """
+    Однолистовой Excel-файл.
+    rows: список списков с данными
+    columns: список названий столбцов
+    """
+    logger.info("Создание Excel-файла (один лист) с %d строк(ами)", len(rows))
+    try:
+        df = pd.DataFrame(rows, columns=columns)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Экспорт')
+                worksheet = writer.sheets['Экспорт']
+                header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+                for cell in worksheet[1]:
+                    cell.fill = header_fill
+                for col in worksheet.columns:
+                    max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                    worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
+            logger.info("Excel-файл успешно создан: %s", tmp.name)
+            return tmp.name
+    except Exception as e:
+        logger.error("Ошибка при создании Excel-файла: %s", e, exc_info=True)
+        raise
+
+def clean_sheet_name(name):
+    clean = re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
+    logger.debug("Очищено имя листа: %s -> %s", name, clean)
+    return clean
+
+def create_excel_multisheet(data_per_user, columns):
+    """
+    Мультилистовой Excel-файл по пользователям.
+    data_per_user: dict{user_label: [rows]}
+    columns: список названий столбцов
+    """
+    logger.info("Создание мультилистового Excel-файла для %d пользователей", len(data_per_user))
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
+                for user_label, rows in data_per_user.items():
+                    sheet_name = clean_sheet_name(user_label)
+                    df = pd.DataFrame(rows, columns=columns)
+                    df.to_excel(writer, index=False, sheet_name=sheet_name)
+                    worksheet = writer.sheets[sheet_name]
+                    header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
+                    for cell in worksheet[1]:
+                        cell.fill = header_fill
+                    for col in worksheet.columns:
+                        max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
+                        worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
+            logger.info("Мультилистовый Excel-файл успешно создан: %s", tmp.name)
+            return tmp.name
+    except Exception as e:
+        logger.error("Ошибка при создании мультилистового Excel-файла: %s", e, exc_info=True)
+        raise
+
+def get_vladivostok_filename(prefix="Слежение контейнеров"):
+    """
+    Генерирует имя файла по Владивостокскому времени (UTC+10).
+    """
+    vladivostok_time = datetime.utcnow() + timedelta(hours=10)
+    filename = f"{prefix} {vladivostok_time.strftime('%H-%M')}.xlsx"
+    logger.debug("Сгенерировано имя файла для Владивостока: %s", filename)
+    return filename
+</file>
+
 <file path="backup_db.py">
 import os
 import subprocess
@@ -458,86 +535,235 @@ async def send_email(to, subject, body, attachments=None):
     await asyncio.to_thread(_send)
 </file>
 
-<file path="utils/send_tracking.py">
-import pandas as pd
-from openpyxl.styles import PatternFill
-from datetime import datetime, timedelta
-import tempfile
-import re
-from logger import get_logger
-
-logger = get_logger(__name__)
-
-def create_excel_file(rows, columns):
-    """
-    Однолистовой Excel-файл.
-    rows: список списков с данными
-    columns: список названий столбцов
-    """
-    logger.info("Создание Excel-файла (один лист) с %d строк(ами)", len(rows))
-    try:
-        df = pd.DataFrame(rows, columns=columns)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Экспорт')
-                worksheet = writer.sheets['Экспорт']
-                header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
-                for cell in worksheet[1]:
-                    cell.fill = header_fill
-                for col in worksheet.columns:
-                    max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-                    worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
-            logger.info("Excel-файл успешно создан: %s", tmp.name)
-            return tmp.name
-    except Exception as e:
-        logger.error("Ошибка при создании Excel-файла: %s", e, exc_info=True)
-        raise
-
-def clean_sheet_name(name):
-    clean = re.sub(r'[:\\/?*\[\]]', '_', str(name))[:31]
-    logger.debug("Очищено имя листа: %s -> %s", name, clean)
-    return clean
-
-def create_excel_multisheet(data_per_user, columns):
-    """
-    Мультилистовой Excel-файл по пользователям.
-    data_per_user: dict{user_label: [rows]}
-    columns: список названий столбцов
-    """
-    logger.info("Создание мультилистового Excel-файла для %d пользователей", len(data_per_user))
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
-                for user_label, rows in data_per_user.items():
-                    sheet_name = clean_sheet_name(user_label)
-                    df = pd.DataFrame(rows, columns=columns)
-                    df.to_excel(writer, index=False, sheet_name=sheet_name)
-                    worksheet = writer.sheets[sheet_name]
-                    header_fill = PatternFill(start_color='87CEEB', end_color='87CEEB', fill_type='solid')
-                    for cell in worksheet[1]:
-                        cell.fill = header_fill
-                    for col in worksheet.columns:
-                        max_length = max(len(str(cell.value)) if cell.value else 0 for cell in col)
-                        worksheet.column_dimensions[col[0].column_letter].width = max_length + 2
-            logger.info("Мультилистовый Excel-файл успешно создан: %s", tmp.name)
-            return tmp.name
-    except Exception as e:
-        logger.error("Ошибка при создании мультилистового Excel-файла: %s", e, exc_info=True)
-        raise
-
-def get_vladivostok_filename(prefix="Слежение контейнеров"):
-    """
-    Генерирует имя файла по Владивостокскому времени (UTC+10).
-    """
-    vladivostok_time = datetime.utcnow() + timedelta(hours=10)
-    filename = f"{prefix} {vladivostok_time.strftime('%H-%M')}.xlsx"
-    logger.debug("Сгенерировано имя файла для Владивостока: %s", filename)
-    return filename
-</file>
-
 <file path="Makefile">
 deploy:
 	ssh root@109.172.30.183 "~/auto_deploy.sh"
+</file>
+
+<file path="handlers/admin_handlers.py">
+import pandas as pd
+from telegram import Update
+from telegram.ext import ContextTypes
+from config import ADMIN_CHAT_ID
+from datetime import datetime, timedelta, time
+from sqlalchemy import text
+from sqlalchemy.future import select
+from db import SessionLocal
+from models import TrackingSubscription, Tracking
+from logger import get_logger
+
+from utils.send_tracking import create_excel_file, create_excel_multisheet, get_vladivostok_filename
+
+logger = get_logger(__name__)
+
+# /tracking — выгрузка всех подписок на слежение в Excel
+async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id if user is not None else None
+    logger.info(f"[tracking] Запрос выгрузки всех подписок от пользователя {user_id}")
+    if user_id != ADMIN_CHAT_ID:
+        logger.warning(f"[tracking] Отказ в доступе пользователю {user_id}")
+        if update.message:
+            await update.message.reply_text("⛔ Доступ запрещён.")
+        elif update.effective_chat:
+            await update.effective_chat.send_message("⛔ Доступ запрещён.")
+        return
+
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(text("SELECT * FROM tracking_subscriptions"))
+            subs = result.fetchall()
+            if not subs:
+                logger.info("[tracking] Нет активных слежений для выгрузки.")
+                if update.message:
+                    await update.message.reply_text("Нет активных слежений.")
+                elif update.effective_chat:
+                    await update.effective_chat.send_message("Нет активных слежений.")
+                return
+
+            columns = result.keys()
+            data = [dict(zip(columns, row)) for row in subs]
+            df = pd.DataFrame(data)
+            file_path = create_excel_file(df.values.tolist(), list(df.columns))
+            filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
+            with open(file_path, "rb") as f:
+                if update.message:
+                    await update.message.reply_document(document=f, filename=filename)
+                elif update.effective_chat:
+                    await update.effective_chat.send_document(document=f, filename=filename)
+            logger.info(f"[tracking] Выгрузка подписок успешно отправлена администратору.")
+    except Exception as e:
+        logger.error(f"[tracking] Ошибка выгрузки подписок: {e}", exc_info=True)
+        if update.message:
+            await update.message.reply_text("❌ Ошибка при экспорте подписок.")
+        elif update.effective_chat:
+            await update.effective_chat.send_message("❌ Ошибка при экспорте подписок.")
+
+# /stats — статистика запросов за последние сутки в текстовом виде
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id if user is not None else None
+    logger.info(f"[stats] Запрос статистики за сутки от пользователя {user_id}")
+    if user_id != ADMIN_CHAT_ID:
+        logger.warning(f"[stats] Отказ в доступе пользователю {user_id}")
+        if update.message:
+            await update.message.reply_text("⛔ Доступ запрещён.")
+        elif update.effective_chat:
+            await update.effective_chat.send_message("⛔ Доступ запрещён.")
+        return
+
+    try:
+        async with SessionLocal() as session:
+            query = text("""
+                SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
+                    STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
+                FROM stats
+                WHERE timestamp >= NOW() - INTERVAL '1 day'
+                    AND user_id != :admin_id
+                GROUP BY user_id, username
+                ORDER BY запросов DESC
+            """)
+            result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
+            rows = result.fetchall()
+
+        if not rows:
+            logger.info("[stats] Нет статистики за последние сутки.")
+            if update.message:
+                await update.message.reply_text("Нет статистики за последние сутки.")
+            elif update.effective_chat:
+                await update.effective_chat.send_message("Нет статистики за последние сутки.")
+            return
+
+        text_msg = "📊 Статистика за последние 24 часа:\n\n"
+        messages = []
+        for row in rows:
+            entry = (
+                f"👤 {row.username} (ID: {row.user_id})\n"
+                f"Запросов: {row.запросов}\n"
+                f"Контейнеры: {row.контейнеры}\n\n"
+            )
+            if len(text_msg) + len(entry) > 4000:
+                messages.append(text_msg)
+                text_msg = ""
+            text_msg += entry
+        messages.append(text_msg)
+        for msg in messages:
+            if update.message:
+                await update.message.reply_text(msg)
+            elif update.effective_chat:
+                await update.effective_chat.send_message(msg)
+        logger.info("[stats] Статистика успешно отправлена администратору.")
+    except Exception as e:
+        logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
+        if update.message:
+            await update.message.reply_text("❌ Ошибка при получении статистики.")
+        elif update.effective_chat:
+            await update.effective_chat.send_message("❌ Ошибка при получении статистики.")
+
+# /exportstats — Excel выгрузка всех запросов за всё время (кроме админа)
+async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = user.id if user is not None else None
+    logger.info(f"[exportstats] Запрос Excel-выгрузки всех запросов от пользователя {user_id}")
+    if user_id != ADMIN_CHAT_ID:
+        logger.warning(f"[exportstats] Отказ в доступе пользователю {user_id}")
+        if update.message:
+            await update.message.reply_text("⛔ Доступ запрещён.")
+        elif update.effective_chat:
+            await update.effective_chat.send_message("⛔ Доступ запрещён.")
+        return
+
+    try:
+        async with SessionLocal() as session:
+            query = text("SELECT * FROM stats WHERE user_id != :admin_id")
+            result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
+            rows = result.fetchall()
+
+        if not rows:
+            logger.info("[exportstats] Нет данных для экспорта.")
+            if update.message:
+                await update.message.reply_text("Нет данных для экспорта.")
+            elif update.effective_chat:
+                await update.effective_chat.send_message("Нет данных для экспорта.")
+            return
+
+        columns = list(result.keys())
+        df = pd.DataFrame(rows, columns=columns)
+        file_path = create_excel_file(df.values.tolist(), list(df.columns))
+        filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
+        with open(file_path, "rb") as f:
+            if update.message:
+                await update.message.reply_document(document=f, filename=filename)
+            elif update.effective_chat:
+                await update.effective_chat.send_document(document=f, filename=filename)
+        logger.info(f"[exportstats] Статистика в Excel успешно отправлена администратору.")
+    except Exception as e:
+        logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
+        if update.message:
+            await update.message.reply_text("❌ Ошибка при экспорте статистики.")
+        elif update.effective_chat:
+            await update.effective_chat.send_message("❌ Ошибка при экспорте статистики.")
+
+# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
+async def test_notify(update, context):
+    user = update.effective_user
+    user_id = user.id if user is not None else None
+    logger.info(f"[test_notify] Запрос тестовой мульти-рассылки от пользователя {user_id}")
+    if user_id != ADMIN_CHAT_ID:
+        logger.warning(f"[test_notify] Отказ в доступе пользователю {user_id}")
+        await update.message.reply_text("⛔ Доступ запрещён.")
+        return
+
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(select(TrackingSubscription))
+            subscriptions = result.scalars().all()
+
+            columns = [
+                'Номер контейнера', 'Станция отправления', 'Станция назначения',
+                'Станция операции', 'Операция', 'Дата и время операции',
+                'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
+                'Номер вагона', 'Дорога операции'
+            ]
+            data_per_user = {}
+
+            for sub in subscriptions:
+                user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
+                rows = []
+                for container in sub.containers:
+                    res = await session.execute(
+                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
+                    )
+                    track = res.scalars().first()
+                    if track:
+                        rows.append([
+                            track.container_number,
+                            track.from_station,
+                            track.to_station,
+                            track.current_station,
+                            track.operation,
+                            track.operation_date,
+                            track.waybill,
+                            track.km_left,
+                            track.forecast_days,
+                            track.wagon_number,
+                            track.operation_road
+                        ])
+                data_per_user[user_label] = rows if rows else [["Нет данных"] + [""] * (len(columns)-1)]
+
+            file_path = create_excel_multisheet(data_per_user, columns)
+            filename = get_vladivostok_filename("Тестовая дислокация")
+            with open(file_path, "rb") as f:
+                await update.message.reply_document(
+                    document=f,
+                    filename=filename,
+                    caption="Тестовая дислокация по всем подписчикам (разделено по листам)"
+                )
+            await update.message.reply_text("✅ Тестовая мульти-рассылка готова и отправлена одним файлом.")
+            logger.info("[test_notify] Тестовая мульти-рассылка успешно отправлена.")
+    except Exception as e:
+        logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
 </file>
 
 <file path="handlers/broadcast.py">
@@ -782,232 +1008,6 @@ alembic
 asyncpg
 </file>
 
-<file path="handlers/admin_handlers.py">
-import pandas as pd
-from telegram import Update
-from telegram.ext import ContextTypes
-from config import ADMIN_CHAT_ID
-from datetime import datetime, timedelta, time
-from sqlalchemy import text
-from sqlalchemy.future import select
-from db import SessionLocal
-from models import TrackingSubscription, Tracking
-from logger import get_logger
-
-from utils.send_tracking import create_excel_file, create_excel_multisheet, get_vladivostok_filename
-
-logger = get_logger(__name__)
-
-# /tracking — выгрузка всех подписок на слежение в Excel
-async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id if user is not None else None
-    logger.info(f"[tracking] Запрос выгрузки всех подписок от пользователя {user_id}")
-    if user_id != ADMIN_CHAT_ID:
-        logger.warning(f"[tracking] Отказ в доступе пользователю {user_id}")
-        if update.message:
-            await update.message.reply_text("⛔ Доступ запрещён.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("⛔ Доступ запрещён.")
-        return
-
-    try:
-        async with SessionLocal() as session:
-            result = await session.execute(text("SELECT * FROM tracking_subscriptions"))
-            subs = result.fetchall()
-            if not subs:
-                logger.info("[tracking] Нет активных слежений для выгрузки.")
-                if update.message:
-                    await update.message.reply_text("Нет активных слежений.")
-                elif update.effective_chat:
-                    await update.effective_chat.send_message("Нет активных слежений.")
-                return
-
-            columns = result.keys()
-            data = [dict(zip(columns, row)) for row in subs]
-            df = pd.DataFrame(data)
-            file_path = create_excel_file(df.values.tolist(), list(df.columns))
-            filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
-            with open(file_path, "rb") as f:
-                if update.message:
-                    await update.message.reply_document(document=f, filename=filename)
-                elif update.effective_chat:
-                    await update.effective_chat.send_document(document=f, filename=filename)
-            logger.info(f"[tracking] Выгрузка подписок успешно отправлена администратору.")
-    except Exception as e:
-        logger.error(f"[tracking] Ошибка выгрузки подписок: {e}", exc_info=True)
-        if update.message:
-            await update.message.reply_text("❌ Ошибка при экспорте подписок.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("❌ Ошибка при экспорте подписок.")
-
-# /stats — статистика запросов за последние сутки в текстовом виде
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id if user is not None else None
-    logger.info(f"[stats] Запрос статистики за сутки от пользователя {user_id}")
-    if user_id != ADMIN_CHAT_ID:
-        logger.warning(f"[stats] Отказ в доступе пользователю {user_id}")
-        if update.message:
-            await update.message.reply_text("⛔ Доступ запрещён.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("⛔ Доступ запрещён.")
-        return
-
-    try:
-        async with SessionLocal() as session:
-            query = text("""
-                SELECT user_id, COALESCE(username, '—') AS username, COUNT(*) AS запросов,
-                    STRING_AGG(DISTINCT container_number, ', ') AS контейнеры
-                FROM stats
-                WHERE timestamp >= NOW() - INTERVAL '1 day'
-                    AND user_id != :admin_id
-                GROUP BY user_id, username
-                ORDER BY запросов DESC
-            """)
-            result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
-            rows = result.fetchall()
-
-        if not rows:
-            logger.info("[stats] Нет статистики за последние сутки.")
-            if update.message:
-                await update.message.reply_text("Нет статистики за последние сутки.")
-            elif update.effective_chat:
-                await update.effective_chat.send_message("Нет статистики за последние сутки.")
-            return
-
-        text_msg = "📊 Статистика за последние 24 часа:\n\n"
-        messages = []
-        for row in rows:
-            entry = (
-                f"👤 {row.username} (ID: {row.user_id})\n"
-                f"Запросов: {row.запросов}\n"
-                f"Контейнеры: {row.контейнеры}\n\n"
-            )
-            if len(text_msg) + len(entry) > 4000:
-                messages.append(text_msg)
-                text_msg = ""
-            text_msg += entry
-        messages.append(text_msg)
-        for msg in messages:
-            if update.message:
-                await update.message.reply_text(msg)
-            elif update.effective_chat:
-                await update.effective_chat.send_message(msg)
-        logger.info("[stats] Статистика успешно отправлена администратору.")
-    except Exception as e:
-        logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
-        if update.message:
-            await update.message.reply_text("❌ Ошибка при получении статистики.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("❌ Ошибка при получении статистики.")
-
-# /exportstats — Excel выгрузка всех запросов за всё время (кроме админа)
-async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    user_id = user.id if user is not None else None
-    logger.info(f"[exportstats] Запрос Excel-выгрузки всех запросов от пользователя {user_id}")
-    if user_id != ADMIN_CHAT_ID:
-        logger.warning(f"[exportstats] Отказ в доступе пользователю {user_id}")
-        if update.message:
-            await update.message.reply_text("⛔ Доступ запрещён.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("⛔ Доступ запрещён.")
-        return
-
-    try:
-        async with SessionLocal() as session:
-            query = text("SELECT * FROM stats WHERE user_id != :admin_id")
-            result = await session.execute(query, {'admin_id': ADMIN_CHAT_ID})
-            rows = result.fetchall()
-
-        if not rows:
-            logger.info("[exportstats] Нет данных для экспорта.")
-            if update.message:
-                await update.message.reply_text("Нет данных для экспорта.")
-            elif update.effective_chat:
-                await update.effective_chat.send_message("Нет данных для экспорта.")
-            return
-
-        columns = list(result.keys())
-        df = pd.DataFrame(rows, columns=columns)
-        file_path = create_excel_file(df.values.tolist(), list(df.columns))
-        filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
-        with open(file_path, "rb") as f:
-            if update.message:
-                await update.message.reply_document(document=f, filename=filename)
-            elif update.effective_chat:
-                await update.effective_chat.send_document(document=f, filename=filename)
-        logger.info(f"[exportstats] Статистика в Excel успешно отправлена администратору.")
-    except Exception as e:
-        logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
-        if update.message:
-            await update.message.reply_text("❌ Ошибка при экспорте статистики.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("❌ Ошибка при экспорте статистики.")
-
-# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
-async def test_notify(update, context):
-    user = update.effective_user
-    user_id = user.id if user is not None else None
-    logger.info(f"[test_notify] Запрос тестовой мульти-рассылки от пользователя {user_id}")
-    if user_id != ADMIN_CHAT_ID:
-        logger.warning(f"[test_notify] Отказ в доступе пользователю {user_id}")
-        await update.message.reply_text("⛔ Доступ запрещён.")
-        return
-
-    try:
-        async with SessionLocal() as session:
-            result = await session.execute(select(TrackingSubscription))
-            subscriptions = result.scalars().all()
-
-            columns = [
-                'Номер контейнера', 'Станция отправления', 'Станция назначения',
-                'Станция операции', 'Операция', 'Дата и время операции',
-                'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-                'Номер вагона', 'Дорога операции'
-            ]
-            data_per_user = {}
-
-            for sub in subscriptions:
-                user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
-                rows = []
-                for container in sub.containers:
-                    res = await session.execute(
-                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
-                    )
-                    track = res.scalars().first()
-                    if track:
-                        rows.append([
-                            track.container_number,
-                            track.from_station,
-                            track.to_station,
-                            track.current_station,
-                            track.operation,
-                            track.operation_date,
-                            track.waybill,
-                            track.km_left,
-                            track.forecast_days,
-                            track.wagon_number,
-                            track.operation_road
-                        ])
-                data_per_user[user_label] = rows if rows else [["Нет данных"] + [""] * (len(columns)-1)]
-
-            file_path = create_excel_multisheet(data_per_user, columns)
-            filename = get_vladivostok_filename("Тестовая дислокация")
-            with open(file_path, "rb") as f:
-                await update.message.reply_document(
-                    document=f,
-                    filename=filename,
-                    caption="Тестовая дислокация по всем подписчикам (разделено по листам)"
-                )
-            await update.message.reply_text("✅ Тестовая мульти-рассылка готова и отправлена одним файлом.")
-            logger.info("[test_notify] Тестовая мульти-рассылка успешно отправлена.")
-    except Exception as e:
-        logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
-        await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
-</file>
-
 <file path="migrations/versions/03a7f0ead8f9_init.py">
 """init
 
@@ -1225,166 +1225,6 @@ except Exception as e:
     logger.critical(f"❌ Ошибка при инициализации моделей: {e}", exc_info=True)
 </file>
 
-<file path="scheduler.py">
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy.future import select
-from datetime import time
-from db import SessionLocal
-from models import TrackingSubscription, Tracking, User
-from utils.send_tracking import create_excel_file, get_vladivostok_filename
-from utils.email_sender import send_email
-from mail_reader import check_mail
-from logger import get_logger
-
-logger = get_logger(__name__)
-
-scheduler = AsyncIOScheduler()
-
-def start_scheduler(bot):
-    scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
-    scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'cron', minute=20)  # запуск каждый час в 20 минут 
-    logger.info("🕓 Планировщик: задачи добавлены.")
-    scheduler.start()
-    logger.info("🟢 Планировщик запущен.")
-
-async def send_notifications(bot, target_time: time):
-    logger.info(f"🔔 Старт рассылки уведомлений для времени: {target_time}")
-    try:
-        async with SessionLocal() as session:
-            result = await session.execute(
-                select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
-            )
-            subscriptions = result.scalars().all()
-            logger.info(f"Найдено подписок для уведомления: {len(subscriptions)}")
-            columns = [
-                "Контейнер",
-                "Операция",
-                "Дата операции",
-                "Накладная",
-                "Остаток км",
-                "Прогноз дней",
-                "Номер вагона",
-                "Дорога операции"
-            ]
-            for sub in subscriptions:
-                rows = []
-                for track in sub.tracking:
-                    rows.append([
-                        track.container,
-                        track.operation,
-                        track.operation_date,
-                        track.waybill,
-                        track.km_left,
-                        track.forecast_days,
-                        track.wagon_number,
-                        track.operation_road
-                    ])
-                if not rows:
-                    containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
-                    await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(containers_list)}")
-                    logger.info(f"Нет данных для пользователя {sub.user_id} ({containers_list})")
-                    continue
-                file_path = create_excel_file(rows, columns)
-                filename = get_vladivostok_filename()
-                try:
-                    with open(file_path, "rb") as f:
-                        await bot.send_document(
-                            chat_id=sub.user_id,
-                            document=f,
-                            filename=filename
-                        )
-                    logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id}")
-                except Exception as send_err:
-                    logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
-
-                user_res = await session.execute(
-                    select(User).where(User.telegram_id == sub.user_id)
-                )
-                user = user_res.scalars().first()
-                if user and user.email_enabled and user.email:
-                    await send_email(
-                        to=user.email,
-                        subject="Отчёт по контейнерам",
-                        body="Во вложении файл с текущей информацией о контейнерах.",
-                        attachments=[file_path],
-                    )
-    except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
-</file>
-
-<file path="alembic/env.py">
-from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
-from dotenv import load_dotenv
-import os
-from typing import cast
-
-# Загрузка .env
-load_dotenv()
-
-# Получение DATABASE_URL
-database_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
-if not database_url:
-    raise RuntimeError(
-        "\n❌ DATABASE_URL не задан в .env или переменных окружения!\n"
-        "Проверь файл .env или команду export.\n"
-        "Пример:\n"
-        "export DATABASE_URL='postgresql+asyncpg://user:pass@host:port/db'\n"
-    )
-database_url = cast(str, database_url)
-
-# Подмена asyncpg → psycopg2
-if database_url.startswith("postgresql+asyncpg"):
-    alembic_url = database_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
-    print("⚡️ Alembic: asyncpg → psycopg2 (для миграций)")
-else:
-    alembic_url = database_url
-
-# Настройка Alembic
-config = context.config
-config.set_main_option("sqlalchemy.url", alembic_url)
-print(f"🔗 Alembic подключается к базе: {alembic_url.split('@')[-1].split('?')[0]}")
-
-# Логирование
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-# 👇 Подключаем метадату моделей
-from models import Base  # или путь вроде app.models или bot.models
-target_metadata = Base.metadata
-
-def run_migrations_offline() -> None:
-    context.configure(
-        url=alembic_url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
-    with context.begin_transaction():
-        context.run_migrations()
-
-def run_migrations_online() -> None:
-    from sqlalchemy import create_engine
-    connectable = create_engine(
-        alembic_url,
-        poolclass=pool.NullPool,
-    )
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
-
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
-</file>
-
 <file path="handlers/tracking_handlers.py">
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -1568,6 +1408,157 @@ def tracking_conversation_handler():
         },
         fallbacks=[MessageHandler(filters.COMMAND, cancel)],
     )
+</file>
+
+<file path="scheduler.py">
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.future import select
+from datetime import time
+from db import SessionLocal
+from models import TrackingSubscription, Tracking
+from utils.send_tracking import create_excel_file, get_vladivostok_filename
+from mail_reader import check_mail
+from logger import get_logger
+
+logger = get_logger(__name__)
+
+scheduler = AsyncIOScheduler()
+
+def start_scheduler(bot):
+    scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
+    scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
+    scheduler.add_job(check_mail, 'cron', minute=20)  # запуск каждый час в 20 минут 
+    logger.info("🕓 Планировщик: задачи добавлены.")
+    scheduler.start()
+    logger.info("🟢 Планировщик запущен.")
+
+async def send_notifications(bot, target_time: time):
+    logger.info(f"🔔 Старт рассылки уведомлений для времени: {target_time}")
+    try:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
+            )
+            subscriptions = result.scalars().all()
+            logger.info(f"Найдено подписок для уведомления: {len(subscriptions)}")
+            columns = [
+                'Номер контейнера', 'Станция отправления', 'Станция назначения',
+                'Станция операции', 'Операция', 'Дата и время операции',
+                'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
+                'Номер вагона', 'Дорога операции'
+            ]
+            for sub in subscriptions:
+                rows = []
+                for container in sub.containers:
+                    res = await session.execute(
+                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
+                    )
+                    track = res.scalars().first()
+                    if track:
+                        rows.append([
+                            track.container_number,
+                            track.from_station,
+                            track.to_station,
+                            track.current_station,
+                            track.operation,
+                            track.operation_date,
+                            track.waybill,
+                            track.km_left,
+                            track.forecast_days,
+                            track.wagon_number,
+                            track.operation_road
+                        ])
+                if not rows:
+                    containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
+                    await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(containers_list)}")
+                    logger.info(f"Нет данных для пользователя {sub.user_id} ({containers_list})")
+                    continue
+                file_path = create_excel_file(rows, columns)
+                filename = get_vladivostok_filename()
+                try:
+                    with open(file_path, "rb") as f:
+                        await bot.send_document(
+                            chat_id=sub.user_id,
+                            document=f,
+                            filename=filename
+                        )
+                    logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id}")
+                except Exception as send_err:
+                    logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
+    except Exception as e:
+        logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
+</file>
+
+<file path="alembic/env.py">
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+from dotenv import load_dotenv
+import os
+from typing import cast
+
+# Загрузка .env
+load_dotenv()
+
+# Получение DATABASE_URL
+database_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
+if not database_url:
+    raise RuntimeError(
+        "\n❌ DATABASE_URL не задан в .env или переменных окружения!\n"
+        "Проверь файл .env или команду export.\n"
+        "Пример:\n"
+        "export DATABASE_URL='postgresql+asyncpg://user:pass@host:port/db'\n"
+    )
+database_url = cast(str, database_url)
+
+# Подмена asyncpg → psycopg2
+if database_url.startswith("postgresql+asyncpg"):
+    alembic_url = database_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+    print("⚡️ Alembic: asyncpg → psycopg2 (для миграций)")
+else:
+    alembic_url = database_url
+
+# Настройка Alembic
+config = context.config
+config.set_main_option("sqlalchemy.url", alembic_url)
+print(f"🔗 Alembic подключается к базе: {alembic_url.split('@')[-1].split('?')[0]}")
+
+# Логирование
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# 👇 Подключаем метадату моделей
+from models import Base  # или путь вроде app.models или bot.models
+target_metadata = Base.metadata
+
+def run_migrations_offline() -> None:
+    context.configure(
+        url=alembic_url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+def run_migrations_online() -> None:
+    from sqlalchemy import create_engine
+    connectable = create_engine(
+        alembic_url,
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+        )
+        with context.begin_transaction():
+            context.run_migrations()
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
 </file>
 
 <file path="mail_reader.py">
