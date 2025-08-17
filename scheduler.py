@@ -2,8 +2,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import time
 from db import SessionLocal
-from models import TrackingSubscription, Tracking
+from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
+from utils.email_sender import send_email
 from mail_reader import check_mail
 from logger import get_logger
 
@@ -29,32 +30,28 @@ async def send_notifications(bot, target_time: time):
             subscriptions = result.scalars().all()
             logger.info(f"Найдено подписок для уведомления: {len(subscriptions)}")
             columns = [
-                'Номер контейнера', 'Станция отправления', 'Станция назначения',
-                'Станция операции', 'Операция', 'Дата и время операции',
-                'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-                'Номер вагона', 'Дорога операции'
+                "Контейнер",
+                "Операция",
+                "Дата операции",
+                "Накладная",
+                "Остаток км",
+                "Прогноз дней",
+                "Номер вагона",
+                "Дорога операции"
             ]
             for sub in subscriptions:
                 rows = []
-                for container in sub.containers:
-                    res = await session.execute(
-                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
-                    )
-                    track = res.scalars().first()
-                    if track:
-                        rows.append([
-                            track.container_number,
-                            track.from_station,
-                            track.to_station,
-                            track.current_station,
-                            track.operation,
-                            track.operation_date,
-                            track.waybill,
-                            track.km_left,
-                            track.forecast_days,
-                            track.wagon_number,
-                            track.operation_road
-                        ])
+                for track in sub.tracking:
+                    rows.append([
+                        track.container,
+                        track.operation,
+                        track.operation_date,
+                        track.waybill,
+                        track.km_left,
+                        track.forecast_days,
+                        track.wagon_number,
+                        track.operation_road
+                    ])
                 if not rows:
                     containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
                     await bot.send_message(sub.user_id, f"📭 Нет данных по контейнерам {', '.join(containers_list)}")
@@ -72,5 +69,17 @@ async def send_notifications(bot, target_time: time):
                     logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id}")
                 except Exception as send_err:
                     logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
+
+                user_res = await session.execute(
+                    select(User).where(User.telegram_id == sub.user_id)
+                )
+                user = user_res.scalars().first()
+                if user and user.email_enabled and user.email:
+                    await send_email(
+                        to=user.email,
+                        subject="Отчёт по контейнерам",
+                        body="Во вложении файл с текущей информацией о контейнерах.",
+                        attachments=[file_path],
+                    )
     except Exception as e:
         logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
