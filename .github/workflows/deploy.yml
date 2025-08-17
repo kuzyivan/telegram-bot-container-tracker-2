@@ -33,7 +33,9 @@ jobs:
     - name: 📦 Rsync files to server
       run: |
         echo "📡 Отправка на $USER@$HOST"
-        rsync -avz --delete -e "ssh -o StrictHostKeyChecking=no" ./ $USER@$HOST:/root/AtermTrackBot
+        rsync -avz --delete \
+         --exclude '.env' \
+         -e "ssh -o StrictHostKeyChecking=no" ./ $USER@$HOST:/root/AtermTrackBot
 
     - name: 🔄 Restart systemd service
       run: |
