@@ -29,7 +29,6 @@ jobs:
       uses: webfactory/ssh-agent@v0.9.0
       with:
         ssh-private-key: ${{ secrets.KEY }}
-
     - name: 📦 Rsync files to server
       run: |
         echo "📡 Отправка на $USER@$HOST"
@@ -38,7 +37,10 @@ jobs:
           --exclude='.env' \
           --exclude='.ssh/' \
           --exclude='*.log' \
-          -e "ssh -o StrictHostKeyChecking=no" ./ $USER@$HOST:/root/AtermTrackBot
+          --exclude='loki-config.yaml' \
+          --exclude='promtail-config.yaml' \
+          -e "ssh -o StrictHostKeyChecking=no" \
+          ./ $USER@$HOST:/root/AtermTrackBot
 
     - name: 🔄 Restart systemd service
       run: |
