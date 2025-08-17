@@ -2,8 +2,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from datetime import time
 from db import SessionLocal
-from models import TrackingSubscription, Tracking
+from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
+from utils.email_sender import send_email
 from mail_reader import check_mail
 from logger import get_logger
 
@@ -72,5 +73,17 @@ async def send_notifications(bot, target_time: time):
                     logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id}")
                 except Exception as send_err:
                     logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id}: {send_err}", exc_info=True)
+
+                user_res = await session.execute(
+                    select(User).where(User.telegram_id == sub.user_id)
+                )
+                user = user_res.scalars().first()
+                if user and user.email_enabled and user.email:
+                    await send_email(
+                        to=user.email,
+                        subject="Отчёт по контейнерам",
+                        body="Во вложении файл с текущей информацией о контейнерах.",
+                        attachments=[file_path],
+                    )
     except Exception as e:
         logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
