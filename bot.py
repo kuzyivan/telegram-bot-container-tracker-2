@@ -26,6 +26,9 @@ from handlers.tracking_handlers import (
 )
 from handlers.broadcast import broadcast_conversation_handler
 
+# 🔧 ДОБАВЛЕНО:
+from handlers.email_handlers import email_off_handler
+
 # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
 async def error_handler(update, context):
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
@@ -71,6 +74,9 @@ def main():
             fallbacks=[CommandHandler("cancel", cancel_email)],
         )
         application.add_handler(set_email_conv_handler)
+
+        # 🔧 ДОБАВЛЕНО: Хендлер /email_off
+        application.add_handler(CommandHandler("email_off", email_off_handler))
 
         # === POST-INIT: запуск задач ===
         async def post_init(application):
