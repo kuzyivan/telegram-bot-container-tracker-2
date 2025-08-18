@@ -39,7 +39,7 @@ async def get_tracked_containers_by_user(user_id):
     """
     async with SessionLocal() as session:
         result = await session.execute(
-            select(TrackingSubscriptions.containers).where(TrackingSubscriptions.user_id == user_id)
+            select(TrackingSubscription.containers).where(TrackingSubscription.user_id == user_id)
         )
         row = result.scalar_one_or_none()
         return row if row else []
@@ -50,7 +50,7 @@ async def remove_user_tracking(user_id):
     """
     async with SessionLocal() as session:
         await session.execute(
-            delete(TrackingSubscriptions).where(TrackingSubscriptions.user_id == user_id)
+            delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
         )
         await session.commit()
 
