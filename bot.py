@@ -61,8 +61,7 @@ async def set_bot_commands(application):
 def main():
     logger.info("🚦 Старт бота!")
     try:
-   
-        # --- ConversationHandler для команды /set_email ---
+               # --- ConversationHandler для команды /set_email ---
         SET_EMAIL = range(1)
         set_email_conv_handler = ConversationHandler(
             entry_points=[CommandHandler("set_email", set_email_command)],
