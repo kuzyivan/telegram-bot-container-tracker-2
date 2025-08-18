@@ -61,13 +61,7 @@ async def set_bot_commands(application):
 def main():
     logger.info("🚦 Старт бота!")
     try:
-        keep_alive()
-        if TOKEN is None:
-            logger.critical("TOKEN must not be None. Проверь config.py")
-            raise ValueError("TOKEN must not be None. Please set the TOKEN in your config.")
-
-        application = Application.builder().token(TOKEN).build()
-
+ 
         # --- ConversationHandler для команды /set_email ---
         SET_EMAIL = range(1)
         set_email_conv_handler = ConversationHandler(
