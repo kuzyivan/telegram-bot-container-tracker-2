@@ -119,7 +119,6 @@ async def main():
     except Exception as e:
         logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+import asyncio
+asyncio.run(main())
     
