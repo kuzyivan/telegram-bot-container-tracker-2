@@ -13,8 +13,7 @@ from db import (
     SessionLocal,
     get_all_user_ids,
     get_tracked_containers_by_user,
-    remove_user_tracking,
-    get_user
+    remove_user_tracking
 )
 from sqlalchemy import select
 from logger import get_logger
