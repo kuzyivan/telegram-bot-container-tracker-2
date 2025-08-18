@@ -9,11 +9,10 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from dotenv import load_dotenv
 load_dotenv()
 
-from config import TOKEN, ADMIN_CHAT_ID 
+from config import TOKEN, ADMIN_CHAT_ID
 from mail_reader import start_mail_checking
 from scheduler import start_scheduler
 
-# from utils.keep_alive import keep_alive
 from handlers.user_handlers import (
     start, handle_sticker, handle_message, show_menu,
     menu_button_handler, reply_keyboard_handler, dislocation_inline_callback_handler,
@@ -32,41 +31,43 @@ from handlers.broadcast import broadcast_conversation_handler
 async def error_handler(update, context):
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
 
-# === КОМАНДЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ И АДМИНА ===
+# === УСТАНОВКА КОМАНД ===
 async def set_bot_commands(application):
-    user_commands = [
-        BotCommand("start", "Главное меню"),
-        BotCommand("menu", "Главное меню"),
-        BotCommand("canceltracking", "Отменить все слежения"),
-        BotCommand("set_email", "Указать e-mail для отчётов"),
-        BotCommand("email_off", "Отключить рассылку на e-mail"),
-    ]
-    await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
-    logger.info("Установлены команды для обычных пользователей.")
-
-    admin_commands = user_commands + [
-        BotCommand("stats", "Статистика (админ)"),
-        BotCommand("exportstats", "Выгрузка (админ)"),
-        BotCommand("testnotify", "Тестовая рассылка (админ)"),
-        BotCommand("tracking", "Выгрузка подписок (админ)"),
-        BotCommand("broadcast", "Рассылка (админ)"),
-    ]
-    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
-    logger.info(f"Установлены расширенные команды для админа (ID: {ADMIN_CHAT_ID})")
-
-# === ТОЧКА ЗАПУСКА БОТА ===
-async def main():
-    logger.info("🚦 Старт бота!")
     try:
-        # keep_alive()  # закомментировано, если используется внешний Uptime сервис
+        user_commands = [
+            BotCommand("start", "Главное меню"),
+            BotCommand("menu", "Главное меню"),
+            BotCommand("canceltracking", "Отменить все слежения"),
+            BotCommand("set_email", "Указать e-mail для отчётов"),
+            BotCommand("email_off", "Отключить рассылку на e-mail"),
+        ]
+        await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+        logger.info("✅ Команды для обычных пользователей установлены")
 
-        if TOKEN is None:
-            logger.critical("TOKEN must not be None. Проверь config.py")
-            raise ValueError("TOKEN must not be None. Please set the TOKEN in your config.")
+        admin_commands = user_commands + [
+            BotCommand("stats", "Статистика (админ)"),
+            BotCommand("exportstats", "Выгрузка (админ)"),
+            BotCommand("testnotify", "Тестовая рассылка (админ)"),
+            BotCommand("tracking", "Выгрузка подписок (админ)"),
+            BotCommand("broadcast", "Рассылка (админ)"),
+        ]
+        await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
+        logger.info(f"✅ Расширенные команды для админа (ID: {ADMIN_CHAT_ID}) установлены")
+    except Exception as e:
+        logger.exception("❌ Ошибка при установке команд: %s", e)
 
+# === ТОЧКА ЗАПУСКА ===
+async def main():
+    logger.info("🚀 Запуск Telegram-бота...")
+
+    try:
+        if not TOKEN:
+            raise ValueError("❌ Переменная TOKEN отсутствует. Проверь config.py")
+
+        logger.info("✅ TOKEN загружен. Создаём Application...")
         application = Application.builder().token(TOKEN).build()
 
-        # --- ConversationHandler для команды /set_email ---
+        # --- ConversationHandler для /set_email ---
         SET_EMAIL = range(1)
         set_email_conv_handler = ConversationHandler(
             entry_points=[CommandHandler("set_email", set_email_command)],
@@ -75,18 +76,25 @@ async def main():
         )
         application.add_handler(set_email_conv_handler)
 
+        # --- post_init ---
         async def post_init(application):
-            logger.info("Инициализация: запуск проверки почты и планировщика...")
-            await start_mail_checking()
-            start_scheduler(application.bot)
-            await set_bot_commands(application)
-            logger.info("Инициализация завершена.")
+            try:
+                logger.info("⚙️ post_init: Запускаем start_mail_checking и планировщик...")
+                await start_mail_checking()
+                logger.info("📧 Проверка почты запущена.")
+                start_scheduler(application.bot)
+                logger.info("📆 Планировщик задач запущен.")
+                await set_bot_commands(application)
+                logger.info("⚙️ post_init завершён.")
+            except Exception as e:
+                logger.exception("❌ Ошибка в post_init: %s", e)
 
         application.post_init = post_init
 
-        # === ХЕНДЛЕРЫ ===
+        # --- Регистрируем хендлеры ---
+        logger.info("📦 Регистрируем хендлеры...")
         application.add_handler(broadcast_conversation_handler)
-        application.add_handler(tracking_conversation_handler())  # ConversationHandler всегда выше обычных
+        application.add_handler(tracking_conversation_handler())
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
         application.add_handler(CommandHandler("menu", show_menu))
@@ -102,19 +110,18 @@ async def main():
             reply_keyboard_handler
         ))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))  # Всегда последним!
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-        # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
+        # --- Глобальный обработчик ошибок ---
         application.add_error_handler(error_handler)
 
-        logger.info("Все хендлеры зарегистрированы, бот готов к работе!")
+        logger.info("✅ Все хендлеры зарегистрированы. Запускаем polling...")
 
         await application.run_polling()
-        logger.info("Работа бота завершена корректно.")
+        logger.info("✅ Бот завершил работу корректно.")
 
     except Exception as e:
         logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
 
-# === ЗАПУСК ПО УМОЛЧАНИЮ ===
 if __name__ == "__main__":
     asyncio.run(main())
