@@ -3,7 +3,8 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    filters, ConversationHandler
 )
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
 from dotenv import load_dotenv
@@ -19,7 +20,6 @@ from handlers.user_handlers import (
     set_email_command, process_email, cancel_email
 )
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
-from db import SessionLocal
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
     cancel,
@@ -27,11 +27,11 @@ from handlers.tracking_handlers import (
 )
 from handlers.broadcast import broadcast_conversation_handler
 
-# === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
+# === ОБРАБОТЧИК ОШИБОК ===
 async def error_handler(update, context):
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
 
-# === УСТАНОВКА КОМАНД ===
+# === КОМАНДЫ БОТА ===
 async def set_bot_commands(application):
     try:
         user_commands = [
@@ -42,7 +42,7 @@ async def set_bot_commands(application):
             BotCommand("email_off", "Отключить рассылку на e-mail"),
         ]
         await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
-        logger.info("✅ Команды для обычных пользователей установлены")
+        logger.info("✅ Команды для пользователей установлены")
 
         admin_commands = user_commands + [
             BotCommand("stats", "Статистика (админ)"),
@@ -52,22 +52,22 @@ async def set_bot_commands(application):
             BotCommand("broadcast", "Рассылка (админ)"),
         ]
         await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
-        logger.info(f"✅ Расширенные команды для админа (ID: {ADMIN_CHAT_ID}) установлены")
+        logger.info(f"✅ Расширенные команды для админа (chat_id: {ADMIN_CHAT_ID}) установлены")
     except Exception as e:
         logger.exception("❌ Ошибка при установке команд: %s", e)
 
-# === ТОЧКА ЗАПУСКА ===
+# === ГЛАВНАЯ ТОЧКА ЗАПУСКА ===
 async def main():
-    logger.info("🚀 Запуск Telegram-бота...")
+    logger.info("🚀 Инициализация Telegram-бота...")
 
     try:
         if not TOKEN:
-            raise ValueError("❌ Переменная TOKEN отсутствует. Проверь config.py")
+            raise ValueError("❌ Переменная TOKEN не задана. Проверь config.py")
 
-        logger.info("✅ TOKEN загружен. Создаём Application...")
         application = Application.builder().token(TOKEN).build()
+        logger.info("✅ Application создан")
 
-        # --- ConversationHandler для /set_email ---
+        # === Хендлер для ввода email ===
         SET_EMAIL = range(1)
         set_email_conv_handler = ConversationHandler(
             entry_points=[CommandHandler("set_email", set_email_command)],
@@ -76,23 +76,26 @@ async def main():
         )
         application.add_handler(set_email_conv_handler)
 
-        # --- post_init ---
+        # === Инициализация задач после старта ===
         async def post_init(application):
             try:
-                logger.info("⚙️ post_init: Запускаем start_mail_checking и планировщик...")
+                logger.info("📬 Запуск проверки почты...")
                 await start_mail_checking()
-                logger.info("📧 Проверка почты запущена.")
+                logger.info("📬 Проверка почты активна.")
+
+                logger.info("⏱️ Запуск планировщика...")
                 start_scheduler(application.bot)
-                logger.info("📆 Планировщик задач запущен.")
+                logger.info("⏱️ Планировщик активен.")
+
                 await set_bot_commands(application)
-                logger.info("⚙️ post_init завершён.")
+                logger.info("🔧 post_init завершён")
             except Exception as e:
                 logger.exception("❌ Ошибка в post_init: %s", e)
 
         application.post_init = post_init
 
-        # --- Регистрируем хендлеры ---
-        logger.info("📦 Регистрируем хендлеры...")
+        # === РЕГИСТРАЦИЯ ВСЕХ ХЕНДЛЕРОВ ===
+        logger.info("📦 Регистрация хендлеров...")
         application.add_handler(broadcast_conversation_handler)
         application.add_handler(tracking_conversation_handler())
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
@@ -105,20 +108,16 @@ async def main():
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
         application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
-        application.add_handler(MessageHandler(
-            filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
-            reply_keyboard_handler
-        ))
+        application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"), reply_keyboard_handler))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-        # --- Глобальный обработчик ошибок ---
+        # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
         application.add_error_handler(error_handler)
 
-        logger.info("✅ Все хендлеры зарегистрированы. Запускаем polling...")
-
+        logger.info("🤖 Бот готов к запуску. Запускаем polling...")
         await application.run_polling()
-        logger.info("✅ Бот завершил работу корректно.")
+        logger.info("🛑 Бот завершил работу корректно.")
 
     except Exception as e:
         logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
