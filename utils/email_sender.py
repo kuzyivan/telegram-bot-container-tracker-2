@@ -1,24 +1,26 @@
 import os
-import asyncio
 import smtplib
 from email.message import EmailMessage
 from logger import get_logger
 
 logger = get_logger(__name__)
 
+# SMTP-настройки из .env
 SMTP_HOST = os.getenv("SMTP_HOST")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 
+
 async def send_email(to, subject, body, attachments=None):
-    """Отправляет письмо с возможными вложениями.
+    """
+    Отправляет письмо с вложениями.
 
     Args:
-        to (str): адрес получателя.
-        subject (str): тема письма.
-        body (str): тело письма.
-        attachments (list[str], optional): пути к файлам для вложения.
+        to (str): email-адрес получателя
+        subject (str): тема письма
+        body (str): текст письма
+        attachments (list[str]): пути к Excel-файлам
     """
     message = EmailMessage()
     message["From"] = SMTP_USER
@@ -39,17 +41,17 @@ async def send_email(to, subject, body, attachments=None):
                 filename=filename,
             )
         except Exception as e:
-            logger.error("Ошибка при добавлении вложения %s: %s", path, e, exc_info=True)
+            logger.error(f"❌ Ошибка при добавлении вложения {path}: {e}", exc_info=True)
 
-    async def _send():
-        try:
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-                server.starttls()
-                if SMTP_USER and SMTP_PASS:
-                    server.login(SMTP_USER, SMTP_PASS)
-                server.send_message(message)
-            logger.info("📧 Успешно отправлено письмо на %s", to)
-        except Exception as e:
-            logger.error("❌ Ошибка при отправке письма на %s: %s", to, e, exc_info=True)
-
-    await asyncio.to_thread(_send)
+    # --- Основная отправка
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.set_debuglevel(1)  # Включаем отладку SMTP — всё выведется в stdout
+            server.starttls()
+            if SMTP_USER and SMTP_PASS:
+                server.login(SMTP_USER, SMTP_PASS)
+            server.send_message(message)
+        logger.info(f"📧 Успешно отправлено письмо на {to}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при отправке письма на {to}: {e}", exc_info=True)
+        raise
