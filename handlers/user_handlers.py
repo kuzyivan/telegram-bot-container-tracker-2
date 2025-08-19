@@ -41,7 +41,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Отправка приветствия
     await update.message.reply_text(
-        "Привет! Я бот для отслеживания контейнеров 🚢\n"
+        "Привет! Я бот для отслеживания контейнеров 🚆\n"
         "Выберите действие в меню:",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True),
     )
