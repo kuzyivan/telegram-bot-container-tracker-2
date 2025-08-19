@@ -6,24 +6,22 @@ from datetime import datetime, timedelta, time
 from sqlalchemy import text
 from sqlalchemy.future import select
 from db import SessionLocal
-from models import TrackingSubscription, Tracking
+from models import TrackingSubscription, Tracking, User
 from logger import get_logger
 
 from utils.send_tracking import create_excel_file, create_excel_multisheet, get_vladivostok_filename
+from utils.email_sender import send_email
 
 logger = get_logger(__name__)
 
-# /tracking — выгрузка всех подписок на слежение в Excel
+
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user is not None else None
     logger.info(f"[tracking] Запрос выгрузки всех подписок от пользователя {user_id}")
     if user_id != ADMIN_CHAT_ID:
         logger.warning(f"[tracking] Отказ в доступе пользователю {user_id}")
-        if update.message:
-            await update.message.reply_text("⛔ Доступ запрещён.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("⛔ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
@@ -31,11 +29,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result = await session.execute(text("SELECT * FROM tracking_subscriptions"))
             subs = result.fetchall()
             if not subs:
-                logger.info("[tracking] Нет активных слежений для выгрузки.")
-                if update.message:
-                    await update.message.reply_text("Нет активных слежений.")
-                elif update.effective_chat:
-                    await update.effective_chat.send_message("Нет активных слежений.")
+                await update.message.reply_text("Нет активных слежений.")
                 return
 
             columns = result.keys()
@@ -44,29 +38,20 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_path = create_excel_file(df.values.tolist(), list(df.columns))
             filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
             with open(file_path, "rb") as f:
-                if update.message:
-                    await update.message.reply_document(document=f, filename=filename)
-                elif update.effective_chat:
-                    await update.effective_chat.send_document(document=f, filename=filename)
+                await update.message.reply_document(document=f, filename=filename)
             logger.info(f"[tracking] Выгрузка подписок успешно отправлена администратору.")
     except Exception as e:
         logger.error(f"[tracking] Ошибка выгрузки подписок: {e}", exc_info=True)
-        if update.message:
-            await update.message.reply_text("❌ Ошибка при экспорте подписок.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("❌ Ошибка при экспорте подписок.")
+        await update.message.reply_text("❌ Ошибка при экспорте подписок.")
 
-# /stats — статистика запросов за последние сутки в текстовом виде
+
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user is not None else None
     logger.info(f"[stats] Запрос статистики за сутки от пользователя {user_id}")
     if user_id != ADMIN_CHAT_ID:
         logger.warning(f"[stats] Отказ в доступе пользователю {user_id}")
-        if update.message:
-            await update.message.reply_text("⛔ Доступ запрещён.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("⛔ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
@@ -84,11 +69,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rows = result.fetchall()
 
         if not rows:
-            logger.info("[stats] Нет статистики за последние сутки.")
-            if update.message:
-                await update.message.reply_text("Нет статистики за последние сутки.")
-            elif update.effective_chat:
-                await update.effective_chat.send_message("Нет статистики за последние сутки.")
+            await update.message.reply_text("Нет статистики за последние сутки.")
             return
 
         text_msg = "📊 Статистика за последние 24 часа:\n\n"
@@ -105,29 +86,20 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_msg += entry
         messages.append(text_msg)
         for msg in messages:
-            if update.message:
-                await update.message.reply_text(msg)
-            elif update.effective_chat:
-                await update.effective_chat.send_message(msg)
+            await update.message.reply_text(msg)
         logger.info("[stats] Статистика успешно отправлена администратору.")
     except Exception as e:
         logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
-        if update.message:
-            await update.message.reply_text("❌ Ошибка при получении статистики.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("❌ Ошибка при получении статистики.")
+        await update.message.reply_text("❌ Ошибка при получении статистики.")
 
-# /exportstats — Excel выгрузка всех запросов за всё время (кроме админа)
+
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user is not None else None
     logger.info(f"[exportstats] Запрос Excel-выгрузки всех запросов от пользователя {user_id}")
     if user_id != ADMIN_CHAT_ID:
         logger.warning(f"[exportstats] Отказ в доступе пользователю {user_id}")
-        if update.message:
-            await update.message.reply_text("⛔ Доступ запрещён.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("⛔ Доступ запрещён.")
+        await update.message.reply_text("⛔ Доступ запрещён.")
         return
 
     try:
@@ -137,11 +109,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rows = result.fetchall()
 
         if not rows:
-            logger.info("[exportstats] Нет данных для экспорта.")
-            if update.message:
-                await update.message.reply_text("Нет данных для экспорта.")
-            elif update.effective_chat:
-                await update.effective_chat.send_message("Нет данных для экспорта.")
+            await update.message.reply_text("Нет данных для экспорта.")
             return
 
         columns = list(result.keys())
@@ -149,20 +117,14 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_path = create_excel_file(df.values.tolist(), list(df.columns))
         filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
         with open(file_path, "rb") as f:
-            if update.message:
-                await update.message.reply_document(document=f, filename=filename)
-            elif update.effective_chat:
-                await update.effective_chat.send_document(document=f, filename=filename)
+            await update.message.reply_document(document=f, filename=filename)
         logger.info(f"[exportstats] Статистика в Excel успешно отправлена администратору.")
     except Exception as e:
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
-        if update.message:
-            await update.message.reply_text("❌ Ошибка при экспорте статистики.")
-        elif update.effective_chat:
-            await update.effective_chat.send_message("❌ Ошибка при экспорте статистики.")
+        await update.message.reply_text("❌ Ошибка при экспорте статистики.")
 
-# /testnotify — один Excel, все подписки, каждый пользователь отдельным листом
-async def test_notify(update, context):
+
+async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id if user is not None else None
     logger.info(f"[test_notify] Запрос тестовой мульти-рассылки от пользователя {user_id}")
@@ -210,14 +172,37 @@ async def test_notify(update, context):
 
             file_path = create_excel_multisheet(data_per_user, columns)
             filename = get_vladivostok_filename("Тестовая дислокация")
+
             with open(file_path, "rb") as f:
                 await update.message.reply_document(
                     document=f,
                     filename=filename,
                     caption="Тестовая дислокация по всем подписчикам (разделено по листам)"
                 )
+
             await update.message.reply_text("✅ Тестовая мульти-рассылка готова и отправлена одним файлом.")
             logger.info("[test_notify] Тестовая мульти-рассылка успешно отправлена.")
+
+            # --- Email рассылка тестового файла администратору ---
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id, User.email_enabled == True)
+            )
+            admin_user = user_result.scalar_one_or_none()
+
+            if admin_user and admin_user.email:
+                try:
+                    await send_email(
+                        to=admin_user.email,
+                        subject="Тестовая рассылка — Excel-файл с дислокацией",
+                        body="Здравствуйте! Это тестовая email-рассылка от Telegram-бота. Во вложении — файл с мультилистом по подписчикам.",
+                        attachments=[file_path]
+                    )
+                    logger.info(f"📧 Тестовое письмо отправлено на {admin_user.email}")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка при отправке тестового email: {e}", exc_info=True)
+            else:
+                logger.warning(f"📭 Email не активирован для администратора или не указан.")
+
     except Exception as e:
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
