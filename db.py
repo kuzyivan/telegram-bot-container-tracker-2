@@ -21,6 +21,7 @@ SessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 from models import TrackingSubscription, Tracking, User, Stats
+
 async def get_all_user_ids():
     """
     Возвращает список всех уникальных user_id из таблицы stats.
@@ -58,17 +59,27 @@ async def set_user_email(telegram_id, username, email):
     """
     Привязать или обновить email пользователя.
     Если пользователь существует — обновить. Иначе — создать.
+    Также автоматически включает email-рассылку.
     """
     async with SessionLocal() as session:
         result = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
         )
         user = result.scalar_one_or_none()
+
         if user:
             await session.execute(
-                update(User).where(User.telegram_id == telegram_id)
-                .values(username=username, email=email)
+                update(User)
+                .where(User.telegram_id == telegram_id)
+                .values(username=username, email=email, email_enabled=True)
             )
         else:
-            session.add(User(telegram_id=telegram_id, username=username, email=email))
+            new_user = User(
+                telegram_id=telegram_id,
+                username=username,
+                email=email,
+                email_enabled=True
+            )
+            session.add(new_user)
+
         await session.commit()
