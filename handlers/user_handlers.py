@@ -1,6 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import BadRequest
+from telegram.constants import ParseMode
 from utils.keyboards import (
     reply_keyboard,
     dislocation_inline_keyboard,
@@ -37,10 +38,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["📦 Дислокация", "🔔 Задать слежение"],
         ["❌ Отмена слежения"]
     ]
+
+    # Отправка приветствия
     await update.message.reply_text(
         "Привет! Я бот для отслеживания контейнеров 🚢\n"
         "Выберите действие в меню:",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True),
+    )
+
+    # Отправка стикера
+    await context.bot.send_sticker(
+        chat_id=update.effective_chat.id,
+        sticker="CAACAgIAAxkBAAJBOGiisUho8mpdezoAATaKIfwKypCNVgACb2wAAmvzmUhmDoR2oiG-5jYE"
     )
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,9 +85,7 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     text = update.message.text
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
-    # НЕ вызываем ask_containers вручную!
     elif text == "🔔 Задать слежение":
-        # ConversationHandler сам отработает, не нужен вызов функции!
         return
     elif text == "❌ Отмена слежения":
         from handlers.tracking_handlers import cancel_tracking_start
@@ -167,7 +174,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found_rows.append(list(row))
             logger.info(f"Контейнер найден: {container_number}")
 
-    # Несколько контейнеров — Excel файл
     if len(container_numbers) > 1 and found_rows:
         from utils.send_tracking import create_excel_file, get_vladivostok_filename
 
@@ -185,7 +191,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_menu(update, context)
         return
 
-    # Один контейнер — красиво оформить
     elif found_rows:
         row = found_rows[0]
         wagon_number = str(row[9]) if row[9] else "—"
@@ -214,7 +219,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"(расчет: {km_left} км / 600 км/сутки + 1 день)"
         )
 
-        await update.message.reply_text(msg, parse_mode="HTML")
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
         logger.info(f"Дислокация контейнера {row[0]} отправлена пользователю {user_id}")
         await show_menu(update, context)
     else:
