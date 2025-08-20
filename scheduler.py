@@ -1,3 +1,4 @@
+from pytz import timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from sqlalchemy import select as sync_select
@@ -8,10 +9,11 @@ from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
 from mail_reader import check_mail
 from logger import get_logger
+from pytz import timezone
 
 logger = get_logger(__name__)
 
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(timezone=timezone("Asia/Vladivostok"))
 
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
@@ -20,6 +22,11 @@ def start_scheduler(bot):
     logger.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
     logger.info("🟢 Планировщик запущен.")
+    from datetime import datetime
+    import pytz
+    local_time = datetime.now(pytz.timezone("Asia/Vladivostok"))
+    logger.info(f"🕒 Локальное время Владивостока: {local_time}")
+    logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
 
 async def send_notifications(bot, target_time: time):
     logger.info(f"🔔 Старт рассылки уведомлений для времени: {target_time}")
@@ -102,4 +109,3 @@ async def send_notifications(bot, target_time: time):
 
     except Exception as e:
         logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
-        
