@@ -92,8 +92,6 @@ async def send_notifications(bot, target_time: time):
                     try:
                         await send_email(
                             to=user.email,
-                            subject="Дислокация контейнеров",
-                            body=f"Здравствуйте, {user.username or ''}!\n\nВо вложении — файл с текущей дислокацией ваших контейнеров.",
                             attachments=[file_path]
                         )
                         logger.info(f"📧 Email с файлом отправлен на {user.email}")
