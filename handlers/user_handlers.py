@@ -6,8 +6,7 @@ from utils.keyboards import (
     reply_keyboard,
     dislocation_inline_keyboard,
     tracking_inline_keyboard,
-    main_menu_keyboard,
-    tracking_time_keyboard,
+    main_menu_keyboard
 )
 import re
 from models import Tracking, Stats
@@ -23,11 +22,9 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-# Стейты
+# Стейты для ConversationHandler
 SET_EMAIL = range(1)
-TRACK_INPUT, TRACK_NOTIFY_TIME, TRACK_CUSTOM_TIME = range(3)
 
-# Колонки для таблицы Excel
 COLUMNS = [
     'Номер контейнера', 'Станция отправления', 'Станция назначения',
     'Станция операции', 'Операция', 'Дата и время операции',
@@ -37,16 +34,28 @@ COLUMNS = [
 
 # --- Главное меню ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_keyboard = [
+        ["📦 Дислокация", "🔔 Задать слежение"],
+        ["❌ Отмена слежения"]
+    ]
+
+    # Отправка приветствия
     await update.message.reply_text(
         "Привет! Я бот для отслеживания контейнеров 🚆\n"
         "Выберите действие в меню:",
-        reply_markup=main_menu_keyboard()
+        reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True),
+    )
+
+    # Отправка стикера
+    await context.bot.send_sticker(
+        chat_id=update.effective_chat.id,
+        sticker="CAACAgIAAxkBAAJBOGiisUho8mpdezoAATaKIfwKypCNVgACb2wAAmvzmUhmDoR2oiG-5jYE"
     )
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# --- Email ---
+# --- Email Conversation ---
 async def set_email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Пожалуйста, отправьте ваш email для уведомлений, или /cancel для отмены.",
@@ -71,75 +80,41 @@ async def cancel_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
-# --- Хендлер reply-клавиатуры ---
+# --- Обработка reply-клавиатуры ---
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
     elif text == "🔔 Задать слежение":
-        await update.message.reply_text("Введите номер контейнера:")
-        return TRACK_INPUT
+        return
     elif text == "❌ Отмена слежения":
         from handlers.tracking_handlers import cancel_tracking_start
         return await cancel_tracking_start(update, context)
     else:
         await update.message.reply_text("Команда не распознана. Используйте кнопки меню.")
 
-# --- Обработка кнопок меню (inline кнопки "📦 Дислокация", "🔔 Слежение" и т.д.) ---
+# --- Inline кнопки ---
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if query.data == "start":
+        await start(query, context)
+    elif query.data == "dislocation":
+        await query.edit_message_text("Введите номер контейнера для поиска:")
+    elif query.data == "track_request":
+        await query.edit_message_text("Введите номер контейнера для слежения:")
 
-    data = query.data
-    if data == "start":
-        await show_menu(update, context)
-    elif data == "dislocation":
-        await reply_keyboard_handler(update, context, manual_text="📦 Дислокация")
-    elif data == "track_request":
-        await reply_keyboard_handler(update, context, manual_text="🔔 Задать слежение")
+async def dislocation_inline_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Введите номер контейнера для поиска:")
 
 # --- Стикеры ---
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
     logger.info(f"handle_sticker: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
-    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+    await update.message.reply_text(f"🆔 ID этого стикера:\n{sticker.file_id}", parse_mode='Markdown')
     await show_menu(update, context)
-
-# --- Слежение: шаг 1 ---
-async def ask_notify_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    container_number = update.message.text.strip().upper()
-    context.user_data['container_number'] = container_number
-    await update.message.reply_text(
-        "Выберите время оповещений:",
-        reply_markup=notify_time_keyboard()
-    )
-    return TRACK_NOTIFY_TIME
-
-# --- Слежение: шаг 2 ---
-async def handle_notify_time_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if text in ["09:00", "16:00"]:
-        context.user_data['notify_time'] = text
-        from handlers.tracking_handlers import confirm_tracking
-        return await confirm_tracking(update, context)
-    elif text == "⏰ Ввести своё время":
-        await update.message.reply_text("Введите время в формате ЧЧ:ММ (например, 13:45):")
-        return TRACK_CUSTOM_TIME
-    else:
-        await update.message.reply_text("⛔ Неверный выбор. Попробуйте ещё раз.", reply_markup=notify_time_keyboard())
-        return TRACK_NOTIFY_TIME
-
-# --- Слежение: шаг 3 ---
-async def handle_custom_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", text):
-        await update.message.reply_text("⛔ Неверный формат. Введите время в формате ЧЧ:ММ")
-        return TRACK_CUSTOM_TIME
-    context.user_data['notify_time'] = text
-    from handlers.tracking_handlers import confirm_tracking
-    return await confirm_tracking(update, context)
-
-# --- Остальное см. в исходнике ---
 
 # --- Главная рабочая функция поиска контейнеров ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
