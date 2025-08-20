@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 from sqlalchemy import select
 from db import SessionLocal
-from models.terminal_container import TerminalContainer
+from model.terminal_container import TerminalContainer
 from logger import get_logger
 
 logger = get_logger(__name__)
