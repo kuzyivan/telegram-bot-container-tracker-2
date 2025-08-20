@@ -8,6 +8,7 @@ from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
 from mail_reader import check_mail
+from services.mail_reader import fetch_terminal_excel_and_process
 from logger import get_logger
 from pytz import timezone
 
@@ -19,6 +20,8 @@ def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
     scheduler.add_job(check_mail, 'cron', minute=20)  # запуск каждый час в 20 минут 
+    scheduler.add_job(fetch_terminal_excel_and_process, 'cron', hour=8, minute=30)
+    logger.info("📅 Задача импорта Executive summary добавлена на 08:30 по Владивостоку.")
     logger.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
     logger.info("🟢 Планировщик запущен.")
