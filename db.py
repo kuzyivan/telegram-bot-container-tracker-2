@@ -21,7 +21,7 @@ SessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 from models import TrackingSubscription, Tracking, User, Stats
-from models.terminal_container import TerminalContainer
+from model.terminal_container import TerminalContainer
 
 async def get_all_user_ids():
     """
