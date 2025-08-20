@@ -21,31 +21,39 @@ def get_daily_excel_path():
     today = datetime.now().strftime("%d.%m.%Y")
     return Path(f"/root/AtermTrackBot/A-Terminal {today}.xlsx")
 
+def check_dislocation_and_import():
+    logger.info("🔄 Запущен общий планировщик проверки почты и импорта базы.")
+    check_mail()
+    now = datetime.now(timezone("Asia/Vladivostok"))
+    if now.hour == 8 and now.minute == 30:
+        logger.info("📥 Время для импорта Executive summary — выполняем импорт.")
+        import_loaded_and_dispatch_from_excel(str(get_daily_excel_path()))
+    else:
+        logger.info("📭 Только проверка почты (не время импорта базы).")
+
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_mail, 'cron', minute=20)
-    scheduler.add_job(import_loaded_and_dispatch_from_excel, 'cron', hour=8, minute=30, args=[str(get_daily_excel_path())])
+    scheduler.add_job(check_dislocation_and_import, 'cron', minute='*/20')
 
-    logger.info("\ud83d\uddd5\ufe0f Задача импорта Executive summary добавлена на 08:30 по Владивостоку.")
-    logger.info("\ud83d\udd52 Планировщик: задачи добавлены.")
+    logger.info("🗓️ Общая задача проверки дислокации и импорта базы добавлена (каждые 20 минут).")
     scheduler.start()
-    logger.info("\ud83d\udfe2 Планировщик запущен.")
+    logger.info("🟢 Планировщик запущен.")
 
     local_time = datetime.now(timezone("Asia/Vladivostok"))
-    logger.info(f"\ud83d\udd52 Локальное время Владивостока: {local_time}")
-    logger.info(f"\ud83d\udd52 Время по UTC: {datetime.utcnow()}")
+    logger.info(f"🕒 Локальное время Владивостока: {local_time}")
+    logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
 
 
 async def send_notifications(bot, target_time: time):
-    logger.info(f"\ud83d\udd14 Старт рассылки уведомлений для времени: {target_time}")
+    logger.info(f"🔔 Старт рассылки уведомлений для времени: {target_time}")
     try:
         async with SessionLocal() as session:
             result = await session.execute(
                 select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
             )
             subscriptions = result.scalars().all()
-            logger.info(f"\u041d\u0430\u0439\u0434\u0435\u043d\u043e \u043f\u043e\u0434\u043f\u0438\u0441\u043e\u043a \u0434\u043b\u044f \u0443\u0432\u0435\u0434\u043e\u043c\u043b\u0435\u043d\u0438\u044f: {len(subscriptions)}")
+            logger.info(f"Найдено подписок для уведомления: {len(subscriptions)}")
 
             columns = [
                 'Номер контейнера', 'Станция отправления', 'Станция назначения',
@@ -78,7 +86,7 @@ async def send_notifications(bot, target_time: time):
 
                 if not rows:
                     containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
-                    await bot.send_message(sub.user_id, f"\ud83d\udcdd Нет данных по контейнерам {', '.join(containers_list)}")
+                    await bot.send_message(sub.user_id, f"📝 Нет данных по контейнерам {', '.join(containers_list)}")
                     logger.info(f"Нет данных для пользователя {sub.user_id} ({containers_list})")
                     continue
 
@@ -92,9 +100,9 @@ async def send_notifications(bot, target_time: time):
                             document=f,
                             filename=filename
                         )
-                    logger.info(f"\u2705 Отправлен файл {filename} пользователю {sub.user_id} в Telegram")
+                    logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id} в Telegram")
                 except Exception as send_err:
-                    logger.error(f"\u274c Ошибка при отправке файла пользователю {sub.user_id} в Telegram: {send_err}", exc_info=True)
+                    logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id} в Telegram: {send_err}", exc_info=True)
 
                 user_result = await session.execute(
                     sync_select(User).where(User.telegram_id == sub.user_id, User.email_enabled == True)
@@ -107,11 +115,11 @@ async def send_notifications(bot, target_time: time):
                             to=user.email,
                             attachments=[file_path]
                         )
-                        logger.info(f"\ud83d\udce7 Email с файлом отправлен на {user.email}")
+                        logger.info(f"📧 Email с файлом отправлен на {user.email}")
                     except Exception as email_err:
-                        logger.error(f"\u274c Ошибка при отправке email на {user.email}: {email_err}", exc_info=True)
+                        logger.error(f"❌ Ошибка при отправке email на {user.email}: {email_err}", exc_info=True)
                 else:
-                    logger.info(f"\ud83d\udcdd У пользователя {sub.user_id} нет активного email для рассылки.")
+                    logger.info(f"📝 У пользователя {sub.user_id} нет активного email для рассылки.")
 
     except Exception as e:
-        logger.critical(f"\u274c Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
+        logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
