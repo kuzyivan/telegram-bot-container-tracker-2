@@ -17,7 +17,7 @@ DOWNLOAD_FOLDER = 'downloads'
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 async def check_mail():
-    logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 15 минут)...")
+    logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 20 минут)...")
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
         return
