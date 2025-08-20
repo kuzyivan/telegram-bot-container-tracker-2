@@ -8,7 +8,7 @@ from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
 from mail_reader import check_mail
-from services.mail_reader import fetch_terminal_excel_and_process
+from services.container_importer import fetch_terminal_excel_and_process
 from logger import get_logger
 from pytz import timezone
 
