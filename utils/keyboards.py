@@ -1,41 +1,43 @@
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove
-)
+from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-# Главное меню (reply-клавиатура)
-reply_keyboard = ReplyKeyboardMarkup(
-    [
-        ["📦 Дислокация", "🔔 Задать слежение"],
-        ["❌ Отмена слежения"]
-    ],
-    resize_keyboard=True
-)
+# Главное меню
+main_menu_keyboard = ReplyKeyboardMarkup([
+    ["📦 Отслеживание", "📄 Мои подписки"],
+    ["🚆 Мои поезда", "📥 Получить базу"]
+], resize_keyboard=True)
 
-# Inline клавиатура главного меню
-main_menu_keyboard = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📦 Дислокация", callback_data="dislocation")],
-    [InlineKeyboardButton("🔔 Задать слежение", callback_data="track_request")],
-])
+# Клавиатура выбора времени уведомлений
+notify_time_keyboard = ReplyKeyboardMarkup([
+    ["🕘 09:00", "🕓 16:00"],
+    ["⏰ Указать время вручную"],
+    ["🔙 Назад"]
+], resize_keyboard=True, one_time_keyboard=True)
 
-# Inline клавиатура подтверждения удаления отслеживания
-tracking_inline_keyboard = InlineKeyboardMarkup([
-    [InlineKeyboardButton("Удалить все", callback_data="cancel_tracking_all")],
-    [InlineKeyboardButton("Оставить как есть", callback_data="cancel_tracking_cancel")]
-])
+# Клавиатура подтверждения контейнеров
+confirm_keyboard = ReplyKeyboardMarkup([
+    ["✅ Да", "❌ Нет"]
+], resize_keyboard=True, one_time_keyboard=True)
 
-# Клавиатура для выбора времени уведомлений
-tracking_time_keyboard = InlineKeyboardMarkup([
-    [
-        InlineKeyboardButton("09:00", callback_data="time_09_00"),
-        InlineKeyboardButton("16:00", callback_data="time_16_00"),
-    ],
-    [InlineKeyboardButton("Ввести своё время", callback_data="time_custom")]
-])
+# Клавиатура отмены действия
+cancel_keyboard = ReplyKeyboardMarkup([
+    ["🔙 Назад"]
+], resize_keyboard=True, one_time_keyboard=True)
 
-# Inline клавиатура после выбора контейнера
+# Клавиатура после выбора станции
 dislocation_inline_keyboard = InlineKeyboardMarkup([
-    [InlineKeyboardButton("📦 Посмотреть дислокацию", callback_data="dislocation_inline")]
+    [
+        InlineKeyboardButton("📄 Скачать список КТК", callback_data="download_ktk_list"),
+        InlineKeyboardButton("📍 Актуальная дислокация", callback_data="get_dislocation_now")
+    ]
+])
+
+# Клавиатура после выбора контейнеров
+tracking_inline_keyboard = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("📍 Отслеживать в 09:00", callback_data="track_9"),
+        InlineKeyboardButton("📍 Отслеживать в 16:00", callback_data="track_16")
+    ],
+    [
+        InlineKeyboardButton("⏰ Выбрать своё время", callback_data="track_custom")
+    ]
 ])
