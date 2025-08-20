@@ -8,7 +8,8 @@ from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
 from mail_reader import check_mail
-from services.container_importer import fetch_terminal_excel_and_process
+from services.container_importer import import_loaded_and_dispatch_from_excel
+from pathlib import Path
 from logger import get_logger
 from pytz import timezone
 
@@ -20,7 +21,8 @@ def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
     scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
     scheduler.add_job(check_mail, 'cron', minute=20)  # запуск каждый час в 20 минут 
-    scheduler.add_job(fetch_terminal_excel_and_process, 'cron', hour=8, minute=30)
+    excel_path = Path("/root/AtermTrackBot/data/executive_summary.xlsx")  # Укажи актуальный путь, если другой
+    scheduler.add_job(import_loaded_and_dispatch_from_excel, 'cron', hour=8, minute=30, args=[str(excel_path)])
     logger.info("📅 Задача импорта Executive summary добавлена на 08:30 по Владивостоку.")
     logger.info("🕓 Планировщик: задачи добавлены.")
     scheduler.start()
