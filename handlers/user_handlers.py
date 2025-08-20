@@ -85,6 +85,13 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     else:
         await update.message.reply_text("Команда не распознана. Используйте кнопки меню.")
 
+# --- Стикеры ---
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sticker = update.message.sticker
+    logger.info(f"handle_sticker: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
+    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode='Markdown')
+    await show_menu(update, context)
+
 # --- Слежение: шаг 1 ---
 async def ask_notify_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     container_number = update.message.text.strip().upper()
