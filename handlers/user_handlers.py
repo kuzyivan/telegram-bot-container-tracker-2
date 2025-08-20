@@ -85,6 +85,19 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     else:
         await update.message.reply_text("Команда не распознана. Используйте кнопки меню.")
 
+# --- Обработка кнопок меню (inline кнопки "📦 Дислокация", "🔔 Слежение" и т.д.) ---
+async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if data == "start":
+        await show_menu(update, context)
+    elif data == "dislocation":
+        await reply_keyboard_handler(update, context, manual_text="📦 Дислокация")
+    elif data == "track_request":
+        await reply_keyboard_handler(update, context, manual_text="🔔 Задать слежение")
+
 # --- Стикеры ---
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sticker = update.message.sticker
