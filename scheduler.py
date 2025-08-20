@@ -14,22 +14,35 @@ from services.container_importer import import_loaded_and_dispatch_from_excel
 from logger import get_logger
 
 logger = get_logger(__name__)
-
 scheduler = AsyncIOScheduler(timezone=timezone("Asia/Vladivostok"))
+
 
 def get_daily_excel_path():
     today = datetime.now().strftime("%d.%m.%Y")
     return Path(f"/root/AtermTrackBot/A-Terminal {today}.xlsx")
 
+
 def check_dislocation_and_import():
     logger.info("🔄 Запущен общий планировщик проверки почты и импорта базы.")
-    check_mail()
+
+    try:
+        check_mail()
+        logger.info("📬 Почта проверена.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке почты: {e}", exc_info=True)
+
     now = datetime.now(timezone("Asia/Vladivostok"))
     if now.hour == 8 and now.minute == 30:
-        logger.info("📥 Время для импорта Executive summary — выполняем импорт.")
-        import_loaded_and_dispatch_from_excel(str(get_daily_excel_path()))
+        file_path = str(get_daily_excel_path())
+        logger.info(f"📥 Время 08:30 — запускаем импорт базы из файла: {file_path}")
+        try:
+            import_loaded_and_dispatch_from_excel(file_path)
+            logger.info("✅ Импорт терминальной базы успешно завершён.")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при импорте базы из {file_path}: {e}", exc_info=True)
     else:
-        logger.info("📭 Только проверка почты (не время импорта базы).")
+        logger.info(f"⏰ Сейчас {now.strftime('%H:%M')} — не 08:30, импорт не выполнялся.")
+
 
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
