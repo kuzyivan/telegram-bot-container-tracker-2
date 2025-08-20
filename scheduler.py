@@ -19,7 +19,7 @@ scheduler = AsyncIOScheduler(timezone=timezone("Asia/Vladivostok"))
 
 def get_daily_excel_path():
     today = datetime.now().strftime("%d.%m.%Y")
-    return Path(f"/root/AtermTrackBot/data/A-Terminal {today}.xlsx")
+    return Path(f"/root/AtermTrackBot/A-Terminal {today}.xlsx")
 
 def start_scheduler(bot):
     scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
