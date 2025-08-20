@@ -41,3 +41,7 @@ tracking_inline_keyboard = InlineKeyboardMarkup([
         InlineKeyboardButton("⏰ Выбрать своё время", callback_data="track_custom")
     ]
 ])
+# Клавиатура подтверждения отмены отслеживания
+cancel_tracking_confirm_keyboard = ReplyKeyboardMarkup([
+    ["✅ Подтвердить отмену", "❌ Отмена"]
+], resize_keyboard=True, one_time_keyboard=True)
