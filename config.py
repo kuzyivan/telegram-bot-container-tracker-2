@@ -8,7 +8,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Telegram bot token (support both TOKEN and TELEGRAM_TOKEN)
-TOKEN = os.getenv("TOKEN") or os.getenv("TELEGRAM_TOKEN")
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 # Admin chat ID (optional, safe cast to int if provided)
 _admin_chat_id = os.getenv("ADMIN_CHAT_ID")
