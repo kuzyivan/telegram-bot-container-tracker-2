@@ -4,92 +4,83 @@ from __future__ import annotations
 from logging.config import fileConfig
 from typing import cast
 import os
+import sys
 
 from alembic import context
-from sqlalchemy import pool
-from sqlalchemy import create_engine
+from sqlalchemy import pool, create_engine
 
-# 1) Загружаем переменные окружения из .env (если используешь python-dotenv)
+# --- 0) Приводим sys.path к корню проекта, чтобы импорты работали стабильно ---
+#  .../AtermTrackBot/alembic/env.py  -> корень: один уровень вверх
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# --- 1) Загружаем .env (если установлен python-dotenv) ---
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(dotenv_path=os.path.join(PROJECT_ROOT, ".env"))
 except Exception:
-    # не критично, если нет python-dotenv — предполагаем, что переменные уже заданы в окружении
     pass
 
-# 2) Берём URL из ALEMBIC_DATABASE_URL или DATABASE_URL
+# --- 2) URL БД: ALEMBIC_DATABASE_URL (sync) или DATABASE_URL (async) ---
 database_url = os.getenv("ALEMBIC_DATABASE_URL") or os.getenv("DATABASE_URL")
 if not database_url:
     raise RuntimeError(
-        "\n❌ DATABASE_URL/ALEMBIC_DATABASE_URL не задан(ы) в окружении.\n"
+        "\n❌ DATABASE_URL/ALEMBIC_DATABASE_URL не задан(ы).\n"
         "Пример:\n"
-        "  export DATABASE_URL='postgresql+asyncpg://user:pass@host:5432/dbname'\n"
-        "или специально для миграций (синхронный драйвер):\n"
-        "  export ALEMBIC_DATABASE_URL='postgresql+psycopg2://user:pass@host:5432/dbname'\n"
+        "  DATABASE_URL='postgresql+asyncpg://user:pass@host:5432/dbname'\n"
+        "  ALEMBIC_DATABASE_URL='postgresql+psycopg2://user:pass@host:5432/dbname'\n"
     )
 database_url = cast(str, database_url)
 
-# 3) Alembic работает СИНХРОННО, поэтому переводим async URL → psycopg2
+# Alembic работает синхронно → переводим asyncpg → psycopg2 при необходимости
 if database_url.startswith("postgresql+asyncpg"):
     alembic_url = database_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
-    print("⚡️ Alembic: драйвер asyncpg → psycopg2 (для миграций)")
+    print("⚡️ Alembic: драйвер asyncpg → psycopg2")
 else:
     alembic_url = database_url
 
-# 4) Базовая конфигурация Alembic
+# --- 3) Базовая конфигурация Alembic ---
 config = context.config
-# прокидываем URL в конфиг Alembic
 config.set_main_option("sqlalchemy.url", alembic_url)
 
-# 5) Логирование Alembic (alembic.ini)
+# --- 4) Логирование Alembic из alembic.ini ---
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 6) Импортируем Base и ВСЕ модели, чтобы они попали в metadata
-#    ВАЖНО: импортируй всё, где объявлены таблицы
-from models import Base  # ваш общий Base (declarative_base)
-# Явно импортируем TerminalContainer, чтобы Alembic её увидел:
-from model.terminal_container import TerminalContainer  # noqa: F401
+# --- 5) Импортируем Base и модели, чтобы они попали в metadata ---
+# Важно: db.py должен быть "чистым" (без импортов моделей), иначе будут циклы
+from db import Base  # declarative_base()
 
-# Если есть другие модели в отдельных модулях — импортируй их здесь аналогично:
-# from models import Tracking, User, TrackingSubscription, Stats  # noqa: F401
+# Явно импортируем модели (только объявления таблиц, без "тяжёлой" логики на уровне модулей)
+from model.terminal_container import TerminalContainer  # noqa: F401
+from models import Tracking, User, TrackingSubscription, Stats  # noqa: F401
 
 target_metadata = Base.metadata
 
-# ————————————————————————————————————————————————————————————————
-# Функции оффлайн/онлайн миграций
-# ————————————————————————————————————————————————————————————————
+# --- 6) Режим "offline": генерируем SQL без подключения ---
 def run_migrations_offline() -> None:
-    """
-    Запуск миграций в 'offline' режиме.
-    Только генерим SQL, без реального подключения к БД.
-    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,         # учитывать изменения типов колонок
-        compare_server_default=True,  # и дефолтов (при желании можно убрать)
+        compare_type=True,
+        compare_server_default=True,
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
-
+# --- 7) Режим "online": подключаемся и выполняем миграции ---
 def run_migrations_online() -> None:
-    """
-    Запуск миграций в 'online' режиме.
-    Создаём синхронный движок (psycopg2) и применяем миграции.
-    """
     connectable = create_engine(
         alembic_url,
         poolclass=pool.NullPool,
-        future=True,  # новый стиль SQLAlchemy
+        future=True,
     )
 
-    # Красиво печатаем «куда» подключаемся, без логина/пароля
+    # Покажем, куда подключаемся (без логина/пароля)
     try:
         safe_dsn = alembic_url.split("://", 1)[-1]
         if "@" in safe_dsn:
@@ -102,17 +93,13 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            compare_type=True,           # учитывать изменения типов
-            compare_server_default=True, # учитывать изменения server_default
+            compare_type=True,
+            compare_server_default=True,
         )
-
         with context.begin_transaction():
             context.run_migrations()
 
-
-# ————————————————————————————————————————————————————————————————
-# Точка входа
-# ————————————————————————————————————————————————————————————————
+# --- 8) Точка входа ---
 if context.is_offline_mode():
     run_migrations_offline()
 else:
