@@ -1,21 +1,17 @@
 from dotenv import load_dotenv
+from pathlib import Path
 import os
 
-# Load environment variables from .env file
-load_dotenv()
+# Явно грузим .env рядом с config.py
+load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
 
-# Database connection URL
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Telegram bot token (support both TOKEN and TELEGRAM_TOKEN)
-TOKEN = os.getenv("TELEGRAM_TOKEN")
+# Поддерживаем оба ключа на всякий случай
+TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("TOKEN")
 
-# Admin chat ID (optional, safe cast to int if provided)
 _admin_chat_id = os.getenv("ADMIN_CHAT_ID")
-ADMIN_CHAT_ID = int(_admin_chat_id) if _admin_chat_id else None
+ADMIN_CHAT_ID = int(_admin_chat_id) if (_admin_chat_id and _admin_chat_id.isdigit()) else None
 
-# Render (or VDS) host settings
 RENDER_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
-
-# Port (default to 10000 if not set)
-PORT = int(os.getenv("PORT", 10000))
+PORT = int(os.getenv("PORT", "10000"))
