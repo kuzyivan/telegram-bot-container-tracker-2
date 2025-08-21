@@ -1,3 +1,4 @@
+# bot.py
 from logger import get_logger
 logger = get_logger(__name__)
 
@@ -12,32 +13,27 @@ from config import TOKEN, ADMIN_CHAT_ID
 from mail_reader import start_mail_checking
 from scheduler import start_scheduler
 
-# --- разнесённые хендлеры ---
-# email
-from handlers.email_handlers import set_email_command, process_email, cancel_email, SET_EMAIL
-# меню, кнопки, стикеры
-from handlers.menu_handlers import (
-    start, show_menu, reply_keyboard_handler,
-    menu_button_handler, dislocation_inline_callback_handler, handle_sticker
-)
-# поиск/вывод дислокации
+# Email handlers (уже вынесены)
+from handlers.email_handlers import set_email_command, process_email, cancel_email
+
+# Новые модули после разбиения
+from handlers.misc_handlers import start, show_menu, handle_sticker
+from handlers.menu_handlers import reply_keyboard_handler, menu_button_handler, dislocation_inline_callback_handler
 from handlers.dislocation_handlers import handle_message
-# админка
-from handlers.admin_handlers import stats, exportstats, tracking, test_notify
-# трекинг контейнеров (оставили как есть)
+
+# Старый tracking_handlers оставляем как есть
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
     cancel,
     cancel_tracking_confirm
 )
-# рассылка
-from handlers.broadcast import broadcast_conversation_handler
 
+from handlers.admin_handlers import stats, exportstats, tracking, test_notify
+from handlers.broadcast import broadcast_conversation_handler
 
 # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
 async def error_handler(update, context):
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
-
 
 # === УСТАНОВКА КОМАНД ===
 async def set_bot_commands(application):
@@ -61,7 +57,6 @@ async def set_bot_commands(application):
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
 
-
 # === ОСНОВНАЯ ФУНКЦИЯ ===
 def main():
     logger.info("🚦 Старт бота!")
@@ -69,6 +64,7 @@ def main():
         application = Application.builder().token(TOKEN).build()
 
         # === ConversationHandler для /set_email ===
+        SET_EMAIL = range(1)
         set_email_conv_handler = ConversationHandler(
             entry_points=[CommandHandler("set_email", set_email_command)],
             states={SET_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_email)]},
@@ -80,12 +76,10 @@ def main():
         application.add_handler(broadcast_conversation_handler)
         application.add_handler(tracking_conversation_handler())
 
-        # Callback-кнопки
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
         application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
 
-        # Команды
         application.add_handler(CommandHandler("menu", show_menu))
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("canceltracking", cancel))
@@ -94,16 +88,13 @@ def main():
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
 
-        # Reply-кнопки главного меню
         application.add_handler(MessageHandler(
             filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
             reply_keyboard_handler
         ))
-
-        # Стикеры
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
 
-        # Любой прочий текст — поиск дислокации
+        # ВАЖНО: обработчик текстов после всех команд/клавиатур — это поиск дислокации
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
         # === Обработчик ошибок ===
@@ -121,11 +112,11 @@ def main():
 
         logger.info("🤖 Бот готов к запуску. Запускаем polling...")
         application.run_polling()  # Без await!
+
         logger.info("✅ Бот завершил работу.")
 
     except Exception as e:
         logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
-
 
 if __name__ == "__main__":
     main()
