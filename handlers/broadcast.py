@@ -9,7 +9,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 from config import ADMIN_CHAT_ID
-from db import get_all_user_ids
+from repo import get_all_user_ids
 
 BROADCAST_TEXT, BROADCAST_CONFIRM = range(2)
 

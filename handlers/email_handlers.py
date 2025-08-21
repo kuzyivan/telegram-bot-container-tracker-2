@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 
-from db import set_user_email
+from repo import set_user_email
 from logger import get_logger
 
 logger = get_logger(__name__)
