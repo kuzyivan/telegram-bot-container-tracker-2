@@ -1,9 +1,9 @@
-# scheduler.py
 from __future__ import annotations
 
 import asyncio
 import inspect
 from datetime import datetime, time
+from pathlib import Path
 from typing import Any, Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -15,8 +15,8 @@ from db import SessionLocal
 from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
-from mail_reader import check_mail, fetch_terminal_excel_and_process
-from services.container_importer import import_loaded_and_dispatch_from_excel  # может пригодиться для ручных запусков
+from mail_reader import check_mail
+from services.container_importer import import_loaded_and_dispatch_from_excel
 from logger import get_logger
 
 # =========================
@@ -27,23 +27,30 @@ TZ = timezone("Asia/Vladivostok")
 
 # Параметры по умолчанию для всех джобов:
 JOB_DEFAULTS = {
-    "coalesce": True,          # схлопывать накопившиеся пропуски в один запуск
-    "max_instances": 1,        # не параллелить один и тот же джоб
-    "misfire_grace_time": 300  # 5 минут на «опоздания»
+    "coalesce": True,         # схлопывать накопившиеся пропуски в один запуск
+    "max_instances": 1,       # не параллелить один и тот же джоб
+    "misfire_grace_time": 300 # 5 минут на «опоздания»
 }
 
-# Единые ID задач
+# Единые ID задач, чтобы легко заменять/переопределять
 JOB_ID_MAIL_EVERY_20 = "mail_check_every_20"
 JOB_ID_IMPORT_08_30  = "terminal_import_08_30"
-JOB_ID_NOTIFY_FOR_09 = "notify_for_09"
-JOB_ID_NOTIFY_FOR_16 = "notify_for_16"
+JOB_ID_NOTIFY_FOR_09  = "notify_for_09"
+JOB_ID_NOTIFY_FOR_16  = "notify_for_16"
 
-# Глобальный планировщик
+# Глобальный планировщик (один на приложение)
 scheduler = AsyncIOScheduler(timezone=TZ, job_defaults=JOB_DEFAULTS)
+
 
 # =========================
 # Вспомогательные функции
 # =========================
+def get_daily_excel_path() -> Path:
+    """Имя файла за текущую (локальную для Владивостока) дату."""
+    today = datetime.now(TZ).strftime("%d.%m.%Y")
+    return Path(f"/root/AtermTrackBot/A-Terminal {today}.xlsx")
+
+
 async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
     """
     Универсальный вызов: если func — coroutine function, await it;
@@ -54,11 +61,12 @@ async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
+
 # =========================
 # Джобы (jobs)
 # =========================
 async def job_check_mail():
-    """Проверка почты (старая логика дислокации). Запуск каждые 20 минут."""
+    """Проверка почты (обновление дислокации и т.п.). Запуск каждые 20 минут."""
     logger.info("📬 [job_check_mail] Старт плановой проверки почты.")
     try:
         await _maybe_await(check_mail)
@@ -66,22 +74,24 @@ async def job_check_mail():
     except Exception as e:
         logger.error(f"❌ [job_check_mail] Ошибка: {e}", exc_info=True)
 
+
 async def job_daily_terminal_import():
     """
-    Импорт ежедневной терминальной базы. Запуск в 08:30 по Владивостоку.
-    Берём файл из сегодняшнего письма (mail_reader сам скачает и передаст путь).
+    Импорт ежедневной терминальной базы. Запуск строго в 08:30 по Владивостоку.
     """
-    logger.info("📥 [job_daily_terminal_import] 08:30 — импорт Executive summary (через почтовый импорт).")
+    file_path = str(get_daily_excel_path())
+    logger.info(f"📥 [job_daily_terminal_import] 08:30 — импорт из файла: {file_path}")
     try:
-        await _maybe_await(fetch_terminal_excel_and_process)
+        await _maybe_await(import_loaded_and_dispatch_from_excel, file_path)
         logger.info("✅ [job_daily_terminal_import] Импорт успешно завершён.")
     except Exception as e:
-        logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта: {e}", exc_info=True)
+        logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта ({file_path}): {e}", exc_info=True)
+
 
 async def send_notifications(bot, target_time: time):
     """
     Рассылка уведомлений пользователям, подписанным на конкретное время.
-    target_time — значение из TrackingSubscription.notify_time (09:00 / 16:00).
+    target_time — время из TrackingSubscription.notify_time (09:00 / 16:00 / произвольное).
     """
     logger.info(f"🔔 [send_notifications] Старт рассылки для времени: {target_time}")
     try:
@@ -130,14 +140,18 @@ async def send_notifications(bot, target_time: time):
                     continue
 
                 file_path = create_excel_file(rows, columns)
-                filename = get_vladivосток_filename()
+                filename = get_vladivостok_filename()
 
                 try:
                     with open(file_path, "rb") as f:
-                        await bot.send_document(chat_id=sub.user_id, document=f, filename=filename)
+                        await bot.send_document(
+                            chat_id=sub.user_id,
+                            document=f,
+                            filename=filename
+                        )
                     logger.info(f"✅ [send_notifications] Отправлен файл {filename} пользователю {sub.user_id} (Telegram)")
                 except Exception as send_err:
-                    logger.error(f"❌ [send_notifications] Ошибка при отправке файла в Telegram пользователю {sub.user_id}: {send_err}", exc_info=True)
+                    logger.error(f"❌ [send_notifications] Ошибка отправки файла в Telegram пользователю {sub.user_id}: {send_err}", exc_info=True)
 
                 # Доп. рассылка на email (если включена)
                 user_result = await session.execute(
@@ -147,7 +161,10 @@ async def send_notifications(bot, target_time: time):
 
                 if user and user.email:
                     try:
-                        await send_email(to=user.email, attachments=[file_path])
+                        await send_email(
+                            to=user.email,
+                            attachments=[file_path]
+                        )
                         logger.info(f"📧 [send_notifications] Email с файлом отправлен на {user.email}")
                     except Exception as email_err:
                         logger.error(f"❌ [send_notifications] Ошибка при отправке email на {user.email}: {email_err}", exc_info=True)
@@ -156,6 +173,7 @@ async def send_notifications(bot, target_time: time):
     except Exception as e:
         logger.critical(f"❌ [send_notifications] Критическая ошибка: {e}", exc_info=True)
 
+
 # =========================
 # Публичная функция запуска
 # =========================
@@ -163,27 +181,27 @@ def start_scheduler(bot):
     """
     Регистрируем и запускаем все джобы планировщика.
     """
-    # 1) Уведомления
+    # 1) Уведомления (как и было)
     scheduler.add_job(
         send_notifications,
         trigger='cron',
-        hour=9, minute=0,
+        hour=23, minute=0,
         args=[bot, time(9, 0)],
         id=JOB_ID_NOTIFY_FOR_09,
         replace_existing=True,
-        jitter=10,
+        jitter=10,  # чуть размажем старт, чтоб избежать «шипов»
     )
     scheduler.add_job(
         send_notifications,
         trigger='cron',
-        hour=16, minute=0,
+        hour=6, minute=0,
         args=[bot, time(16, 0)],
         id=JOB_ID_NOTIFY_FOR_16,
         replace_existing=True,
         jitter=10,
     )
 
-    # 2) Старая проверка почты каждые 20 минут
+    # 2) Раздельная проверка почты каждые 20 минут
     scheduler.add_job(
         job_check_mail,
         trigger='cron',
@@ -193,7 +211,7 @@ def start_scheduler(bot):
         jitter=10,
     )
 
-    # 3) Импорт терминальной базы в 08:30 (через почтовый импорт Executive summary)
+    # 3) Раздельный импорт терминальной базы строго в 08:30
     scheduler.add_job(
         job_daily_terminal_import,
         trigger='cron',
@@ -204,6 +222,8 @@ def start_scheduler(bot):
     )
 
     scheduler.start()
-    logger.info("🟢 Планировщик запущен. Задачи: почта */20, импорт 08:30, рассылки 9:00/16:00.")
-    logger.info(f"🕒 Локальное время Владивостока: {datetime.now(TZ)}")
+    logger.info("🟢 Планировщик запущен. Задачи: почта */20, импорт 08:30, рассылки 23:00/06:00.")
+
+    local_time = datetime.now(TZ)
+    logger.info(f"🕒 Локальное время Владивостока: {local_time}")
     logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
