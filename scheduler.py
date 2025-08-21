@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+import asyncio
+import inspect
+from datetime import datetime, time
+from pathlib import Path
+from typing import Any, Callable
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
 from sqlalchemy import select as sync_select
-from datetime import time, datetime
-from pathlib import Path
 from pytz import timezone
 
 from db import SessionLocal
@@ -13,60 +19,88 @@ from mail_reader import check_mail
 from services.container_importer import import_loaded_and_dispatch_from_excel
 from logger import get_logger
 
+# =========================
+# Константы и общие настройки
+# =========================
 logger = get_logger(__name__)
-scheduler = AsyncIOScheduler(timezone=timezone("Asia/Vladivostok"))
+TZ = timezone("Asia/Vladivostok")
+
+# Параметры по умолчанию для всех джобов:
+JOB_DEFAULTS = {
+    "coalesce": True,         # схлопывать накопившиеся пропуски в один запуск
+    "max_instances": 1,       # не параллелить один и тот же джоб
+    "misfire_grace_time": 300 # 5 минут на «опоздания»
+}
+
+# Единые ID задач, чтобы легко заменять/переопределять
+JOB_ID_MAIL_EVERY_20 = "mail_check_every_20"
+JOB_ID_IMPORT_08_30  = "terminal_import_08_30"
+JOB_ID_NOTIFY_FOR_09  = "notify_for_09"
+JOB_ID_NOTIFY_FOR_16  = "notify_for_16"
+
+# Глобальный планировщик (один на приложение)
+scheduler = AsyncIOScheduler(timezone=TZ, job_defaults=JOB_DEFAULTS)
 
 
-def get_daily_excel_path():
-    today = datetime.now().strftime("%d.%m.%Y")
+# =========================
+# Вспомогательные функции
+# =========================
+def get_daily_excel_path() -> Path:
+    """Имя файла за текущую (локальную для Владивостока) дату."""
+    today = datetime.now(TZ).strftime("%d.%m.%Y")
     return Path(f"/root/AtermTrackBot/A-Terminal {today}.xlsx")
 
 
-def check_dislocation_and_import():
-    logger.info("🔄 Запущен общий планировщик проверки почты и импорта базы.")
+async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
+    """
+    Универсальный вызов: если func — coroutine function, await it;
+    если sync — уводим в executor, чтобы не блокировать event loop.
+    """
+    if inspect.iscoroutinefunction(func):
+        return await func(*args, **kwargs)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
+
+# =========================
+# Джобы (jobs)
+# =========================
+async def job_check_mail():
+    """Проверка почты (обновление дислокации и т.п.). Запуск каждые 20 минут."""
+    logger.info("📬 [job_check_mail] Старт плановой проверки почты.")
     try:
-        check_mail()
-        logger.info("📬 Почта проверена.")
+        await _maybe_await(check_mail)
+        logger.info("✅ [job_check_mail] Проверка почты завершена.")
     except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e}", exc_info=True)
-
-    now = datetime.now(timezone("Asia/Vladivostok"))
-    if now.hour == 8 and now.minute == 30:
-        file_path = str(get_daily_excel_path())
-        logger.info(f"📥 Время 08:30 — запускаем импорт базы из файла: {file_path}")
-        try:
-            import_loaded_and_dispatch_from_excel(file_path)
-            logger.info("✅ Импорт терминальной базы успешно завершён.")
-        except Exception as e:
-            logger.error(f"❌ Ошибка при импорте базы из {file_path}: {e}", exc_info=True)
-    else:
-        logger.info(f"⏰ Сейчас {now.strftime('%H:%M')} — не 08:30, импорт не выполнялся.")
+        logger.error(f"❌ [job_check_mail] Ошибка: {e}", exc_info=True)
 
 
-def start_scheduler(bot):
-    scheduler.add_job(send_notifications, 'cron', hour=23, minute=0, args=[bot, time(9, 0)])
-    scheduler.add_job(send_notifications, 'cron', hour=6, minute=0, args=[bot, time(16, 0)])
-    scheduler.add_job(check_dislocation_and_import, 'cron', minute='*/20')
-
-    logger.info("🗓️ Общая задача проверки дислокации и импорта базы добавлена (каждые 20 минут).")
-    scheduler.start()
-    logger.info("🟢 Планировщик запущен.")
-
-    local_time = datetime.now(timezone("Asia/Vladivostok"))
-    logger.info(f"🕒 Локальное время Владивостока: {local_time}")
-    logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
+async def job_daily_terminal_import():
+    """
+    Импорт ежедневной терминальной базы. Запуск строго в 08:30 по Владивостоку.
+    """
+    file_path = str(get_daily_excel_path())
+    logger.info(f"📥 [job_daily_terminal_import] 08:30 — импорт из файла: {file_path}")
+    try:
+        await _maybe_await(import_loaded_and_dispatch_from_excel, file_path)
+        logger.info("✅ [job_daily_terminal_import] Импорт успешно завершён.")
+    except Exception as e:
+        logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта ({file_path}): {e}", exc_info=True)
 
 
 async def send_notifications(bot, target_time: time):
-    logger.info(f"🔔 Старт рассылки уведомлений для времени: {target_time}")
+    """
+    Рассылка уведомлений пользователям, подписанным на конкретное время.
+    target_time — время из TrackingSubscription.notify_time (09:00 / 16:00 / произвольное).
+    """
+    logger.info(f"🔔 [send_notifications] Старт рассылки для времени: {target_time}")
     try:
         async with SessionLocal() as session:
             result = await session.execute(
                 select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
             )
             subscriptions = result.scalars().all()
-            logger.info(f"Найдено подписок для уведомления: {len(subscriptions)}")
+            logger.info(f"[send_notifications] Найдено подписок: {len(subscriptions)}")
 
             columns = [
                 'Номер контейнера', 'Станция отправления', 'Станция назначения',
@@ -79,7 +113,9 @@ async def send_notifications(bot, target_time: time):
                 rows = []
                 for container in sub.containers:
                     res = await session.execute(
-                        select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
+                        select(Tracking)
+                        .filter(Tracking.container_number == container)
+                        .order_by(Tracking.operation_date.desc())
                     )
                     track = res.scalars().first()
                     if track:
@@ -100,11 +136,11 @@ async def send_notifications(bot, target_time: time):
                 if not rows:
                     containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
                     await bot.send_message(sub.user_id, f"📝 Нет данных по контейнерам {', '.join(containers_list)}")
-                    logger.info(f"Нет данных для пользователя {sub.user_id} ({containers_list})")
+                    logger.info(f"[send_notifications] Нет данных для пользователя {sub.user_id} ({containers_list})")
                     continue
 
                 file_path = create_excel_file(rows, columns)
-                filename = get_vladivostok_filename()
+                filename = get_vladivостok_filename()
 
                 try:
                     with open(file_path, "rb") as f:
@@ -113,10 +149,11 @@ async def send_notifications(bot, target_time: time):
                             document=f,
                             filename=filename
                         )
-                    logger.info(f"✅ Отправлен файл {filename} пользователю {sub.user_id} в Telegram")
+                    logger.info(f"✅ [send_notifications] Отправлен файл {filename} пользователю {sub.user_id} (Telegram)")
                 except Exception as send_err:
-                    logger.error(f"❌ Ошибка при отправке файла пользователю {sub.user_id} в Telegram: {send_err}", exc_info=True)
+                    logger.error(f"❌ [send_notifications] Ошибка отправки файла в Telegram пользователю {sub.user_id}: {send_err}", exc_info=True)
 
+                # Доп. рассылка на email (если включена)
                 user_result = await session.execute(
                     sync_select(User).where(User.telegram_id == sub.user_id, User.email_enabled == True)
                 )
@@ -128,11 +165,65 @@ async def send_notifications(bot, target_time: time):
                             to=user.email,
                             attachments=[file_path]
                         )
-                        logger.info(f"📧 Email с файлом отправлен на {user.email}")
+                        logger.info(f"📧 [send_notifications] Email с файлом отправлен на {user.email}")
                     except Exception as email_err:
-                        logger.error(f"❌ Ошибка при отправке email на {user.email}: {email_err}", exc_info=True)
+                        logger.error(f"❌ [send_notifications] Ошибка при отправке email на {user.email}: {email_err}", exc_info=True)
                 else:
-                    logger.info(f"📝 У пользователя {sub.user_id} нет активного email для рассылки.")
-
+                    logger.info(f"[send_notifications] У пользователя {sub.user_id} нет активного email для рассылки.")
     except Exception as e:
-        logger.critical(f"❌ Критическая ошибка при рассылке уведомлений: {e}", exc_info=True)
+        logger.critical(f"❌ [send_notifications] Критическая ошибка: {e}", exc_info=True)
+
+
+# =========================
+# Публичная функция запуска
+# =========================
+def start_scheduler(bot):
+    """
+    Регистрируем и запускаем все джобы планировщика.
+    """
+    # 1) Уведомления (как и было)
+    scheduler.add_job(
+        send_notifications,
+        trigger='cron',
+        hour=23, minute=0,
+        args=[bot, time(9, 0)],
+        id=JOB_ID_NOTIFY_FOR_09,
+        replace_existing=True,
+        jitter=10,  # чуть размажем старт, чтоб избежать «шипов»
+    )
+    scheduler.add_job(
+        send_notifications,
+        trigger='cron',
+        hour=6, minute=0,
+        args=[bot, time(16, 0)],
+        id=JOB_ID_NOTIFY_FOR_16,
+        replace_existing=True,
+        jitter=10,
+    )
+
+    # 2) Раздельная проверка почты каждые 20 минут
+    scheduler.add_job(
+        job_check_mail,
+        trigger='cron',
+        minute='*/20',
+        id=JOB_ID_MAIL_EVERY_20,
+        replace_existing=True,
+        jitter=10,
+    )
+
+    # 3) Раздельный импорт терминальной базы строго в 08:30
+    scheduler.add_job(
+        job_daily_terminal_import,
+        trigger='cron',
+        hour=8, minute=30,
+        id=JOB_ID_IMPORT_08_30,
+        replace_existing=True,
+        jitter=10,
+    )
+
+    scheduler.start()
+    logger.info("🟢 Планировщик запущен. Задачи: почта */20, импорт 08:30, рассылки 23:00/06:00.")
+
+    local_time = datetime.now(TZ)
+    logger.info(f"🕒 Локальное время Владивостока: {local_time}")
+    logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
