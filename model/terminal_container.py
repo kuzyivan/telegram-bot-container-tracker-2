@@ -8,6 +8,7 @@ class TerminalContainer(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     container_number = Column(String, index=True, unique=True, nullable=False)
+    train = Column(String, index=True, nullable=True)  # номер поезда
     terminal = Column(String)
     zone = Column(String)
     inn = Column(String)
