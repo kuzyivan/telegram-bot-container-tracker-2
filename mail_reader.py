@@ -9,6 +9,8 @@ from models import Tracking
 from logger import get_logger
 logger = get_logger(__name__)
 
+from services.container_importer import import_loaded_and_dispatch_from_excel
+
 EMAIL = os.getenv('EMAIL')
 PASSWORD = os.getenv('PASSWORD')
 IMAP_SERVER = os.getenv('IMAP_SERVER', 'imap.yandex.ru')
@@ -29,7 +31,20 @@ async def check_mail():
         if result:
             filepath = result
             logger.info(f"📥 Скачан самый свежий файл: {filepath}")
-            await process_file(filepath)
+
+            fname = os.path.basename(filepath).lower()
+            # Если это ежедневный отчёт терминала (Executive summary / A-Terminal *.xlsx),
+            # отправляем в импорт терминальной базы и не трогаем логику дислокации.
+            if fname.startswith("a-terminal ") or "executive" in fname:
+                logger.info("📦 Обнаружен файл терминальной базы. Запускаю импорт в terminal_containers...")
+                try:
+                    await import_loaded_and_dispatch_from_excel(filepath)
+                    logger.info("✅ Импорт терминальной базы завершён успешно.")
+                except Exception as e:
+                    logger.error(f"❌ Ошибка импорта терминальной базы из {filepath}: {e}", exc_info=True)
+            else:
+                # Иначе — старый парсер дислокации
+                await process_file(filepath)
         else:
             logger.info("⚠ Нет подходящих Excel-вложений в почте, обновление базы не требуется.")
     except Exception as e:
