@@ -180,7 +180,7 @@ def start_scheduler(bot):
     scheduler.add_job(
         send_notifications,
         trigger='cron',
-        hour=23, minute=0,
+        hour=9, minute=0,
         args=[bot, time(9, 0)],
         id=JOB_ID_NOTIFY_FOR_09,
         replace_existing=True,
@@ -189,7 +189,7 @@ def start_scheduler(bot):
     scheduler.add_job(
         send_notifications,
         trigger='cron',
-        hour=6, minute=0,
+        hour=16, minute=0,
         args=[bot, time(16, 0)],
         id=JOB_ID_NOTIFY_FOR_16,
         replace_existing=True,

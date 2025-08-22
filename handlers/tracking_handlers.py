@@ -9,7 +9,21 @@ import datetime
 from utils.keyboards import cancel_tracking_confirm_keyboard
 from logger import get_logger
 
+# train lookup (queries layer preferred, fallback to db)
+try:
+    from queries.containers import get_latest_train_by_container  # preferred location
+except Exception:
+    from db import get_latest_train_by_container  # fallback if queries layer not yet added
+
 logger = get_logger(__name__)
+
+def _fmt_num(x):
+    try:
+        if isinstance(x, float) and x.is_integer():
+            return str(int(x))
+        return str(x)
+    except Exception:
+        return str(x)
 
 # Состояния для ConversationHandler
 TRACK_CONTAINERS, SET_TIME = range(2)
@@ -180,3 +194,62 @@ def tracking_conversation_handler():
         },
         fallbacks=[MessageHandler(filters.COMMAND, cancel)],
     )
+
+# === Дополнено: универсальная отправка ответа по дислокации контейнера с номером поезда ===
+async def send_container_dislocation_response(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    container_number: str,
+    route_from: str,
+    route_to: str,
+    station_now: str,
+    last_operation_text: str,
+    wagon_text: str,
+    distance_km: float | int,
+    eta_days: float | int,
+) -> None:
+    """
+    Формирует и отправляет сообщение по образцу, добавляя строку с номером поезда,
+    если он найден в terminal_containers.train (берется по самой свежей записи).
+
+    Вызывайте эту функцию из вашего хэндлера, где уже получены все данные по контейнеру.
+    """
+    try:
+        train = await get_latest_train_by_container(container_number)
+    except Exception as e:
+        logger.error(f"[send_container_dislocation_response] Ошибка получения train для {container_number}: {e}", exc_info=True)
+        train = None
+
+    parts: list[str] = []
+    parts.append(f"📦 Контейнер: {container_number}")
+
+    if train:
+        parts.append(f"🚂 Поезд: {train}")
+
+    parts.append("\n🛤 Маршрут:")
+    parts.append(f"{route_from} 🚂 → {route_to}")
+
+    parts.append(f"\n📍 Текущая станция: {station_now}")
+    parts.append("📅 Последняя операция:")
+    parts.append(last_operation_text)
+
+    parts.append(f"\n🚆 Вагон: {wagon_text}")
+    parts.append(f"📏 Осталось ехать: {_fmt_num(distance_km)} км")
+
+    parts.append("\n⏳ Оценка времени в пути:")
+    parts.append(f"~{_fmt_num(eta_days)} суток (расчёт: {_fmt_num(distance_km)} км / 600 км/сутки + 1 день)")
+
+    text = "\n".join(parts)
+
+    # отправляем корректно в зависимости от типа апдейта
+    if update.message is not None:
+        await update.message.reply_text(text)
+    elif update.callback_query is not None and update.callback_query.message is not None:
+        await update.callback_query.message.reply_text(text)
+    else:
+        # если нет явного message — пробуем через chat_id
+        if update.effective_chat is not None:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        else:
+            logger.warning("[send_container_dislocation_response] Нет chat для отправки сообщения")

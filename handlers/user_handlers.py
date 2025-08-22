@@ -20,6 +20,12 @@ from db import (
 from sqlalchemy import select
 from logger import get_logger
 
+# train lookup (queries layer preferred, fallback to db)
+try:
+    from queries.containers import get_latest_train_by_container  # preferred
+except Exception:
+    from db import get_latest_train_by_container  # fallback
+
 logger = get_logger(__name__)
 
 # Стейты для ConversationHandler
@@ -193,6 +199,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif found_rows:
         row = found_rows[0]
+
+        # Получаем номер поезда из terminal_containers по самой свежей записи
+        try:
+            train = await get_latest_train_by_container(row[0])
+        except Exception as e:
+            logger.error(f"Ошибка получения train для {row[0]}: {e}", exc_info=True)
+            train = None
+
         wagon_number = str(row[9]) if row[9] else "—"
         wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
 
@@ -205,8 +219,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         operation_station = f"{row[3]} 🛤️ ({row[10]})" if row[10] else row[3]
 
+        # шапка сообщения с возможной строкой поезда
+        header = (
+            f"📦 <b>Контейнер</b>: <code>{row[0]}</code>\n"
+        )
+        if train:
+            header += f"🚂 <b>Поезд</b>: <code>{train}</code>\n"
+        header += "\n"
+
         msg = (
-            f"📦 <b>Контейнер</b>: <code>{row[0]}</code>\n\n"
+            f"{header}"
             f"🛤 <b>Маршрут</b>:\n"
             f"<b>{row[1]}</b> 🚂 → <b>{row[2]}</b>\n\n"
             f"📍 <b>Текущая станция</b>: {operation_station}\n"
