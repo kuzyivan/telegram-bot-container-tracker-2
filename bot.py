@@ -5,7 +5,6 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, Up
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
-from telegram.constants import ParseMode
 from dotenv import load_dotenv
 load_dotenv()  # опционально; при запуске через systemd берётся EnvironmentFile
 
@@ -33,6 +32,8 @@ from handlers.tracking_handlers import (
 )
 # рассылка
 from handlers.broadcast import broadcast_conversation_handler
+# ПОЕЗДА: загрузка Excel с номером поезда из имени файла
+from handlers.train_handlers import upload_train_help, handle_train_excel
 
 
 # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
@@ -59,6 +60,8 @@ async def set_bot_commands(application):
         BotCommand("canceltracking", "Отменить все слежения"),
         BotCommand("set_email", "Указать e-mail для отчётов"),
         BotCommand("email_off", "Отключить рассылку на e-mail"),
+        # Подсказка по загрузке поездов (для всех, обработает всё равно только админ)
+        BotCommand("upload_train", "Загрузить Excel с поездами"),
     ]
     await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     logger.info("✅ Команды для пользователей установлены.")
@@ -105,6 +108,18 @@ def main():
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
+
+        # Подсказка по загрузке поездов (сообщение с инструкцией)
+        application.add_handler(CommandHandler("upload_train", upload_train_help))
+
+        # Приём Excel-файлов с поездами от админа.
+        # Берём любой документ, тип/расширение проверяем внутри handle_train_excel.
+        application.add_handler(
+            MessageHandler(
+                filters.Document.ALL,
+                handle_train_excel
+            )
+        )
 
         # Reply-кнопки главного меню
         application.add_handler(MessageHandler(
