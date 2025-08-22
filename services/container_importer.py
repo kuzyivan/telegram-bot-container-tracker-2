@@ -10,7 +10,7 @@ import pandas as pd
 from sqlalchemy import select
 from logger import get_logger
 
-from models import TerminalContainer
+from model.terminal_container import TerminalContainer
 from db import SessionLocal  # async session factory
 
 logger = get_logger(__name__)
