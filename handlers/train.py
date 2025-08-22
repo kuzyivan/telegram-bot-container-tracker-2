@@ -107,7 +107,10 @@ async def _respond_train_report(update: Update, train_no: str):
                 f"Дата/время: {op_date or '—'}",
             ]
             if wagon:
-                lines.append(f"Номер вагона: {wagon}")
+                wagon_str = str(wagon)
+                if wagon_str.endswith(".0"):
+                    wagon_str = wagon_str[:-2]
+                lines.append(f"Номер вагона: {wagon_str}")
             if road:
                 lines.append(f"Дорога: {road}")
 
