@@ -7,6 +7,7 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 try:
+    # Базовый класс декларативных моделей
     Base = declarative_base()
 
     class TrackingSubscription(Base):
@@ -19,7 +20,7 @@ try:
         notify_time = Column(Time, nullable=False)
 
     class Stats(Base):
-        __tablename__ = 'stats'
+        __tablename__ = "stats"
 
         id = Column(Integer, primary_key=True)
         container_number = Column(String)
@@ -28,7 +29,7 @@ try:
         timestamp = Column(DateTime, default=func.now())
 
     class Tracking(Base):
-        __tablename__ = 'tracking'
+        __tablename__ = "tracking"
 
         id = Column(Integer, primary_key=True)
         container_number = Column(String)
@@ -45,12 +46,28 @@ try:
 
     class User(Base):
         __tablename__ = "users"
+
         id = Column(Integer, primary_key=True)
         telegram_id = Column(BigInteger, unique=True, nullable=False)
         username = Column(String, nullable=True)
         email = Column(String, nullable=True)
         email_enabled = Column(Boolean, default=False)
-        # далее можно расширять profile fields    
+        # далее можно расширять profile fields
+
+    # ───────────────────────────────────────────────────────────────────────────
+    # ВАЖНО: пробрасываем модель терминала внутрь 'models'
+    # Файл: model/terminal_container.py должен импортировать ТОЛЬКО Base: `from models import Base`
+    # Это НЕ создаёт проблемного циклического импорта, т.к. Base уже создан выше.
+    from model.terminal_container import TerminalContainer  # noqa: F401
+
+    __all__ = [
+        "Base",
+        "TrackingSubscription",
+        "Stats",
+        "Tracking",
+        "User",
+        "TerminalContainer",
+    ]
 
     logger.info("Модели БД успешно определены и готовы к использованию.")
 
