@@ -34,6 +34,7 @@ from handlers.tracking_handlers import (
 from handlers.broadcast import broadcast_conversation_handler
 # ПОЕЗДА: загрузка Excel с номером поезда из имени файла
 from handlers.train_handlers import upload_train_help, handle_train_excel
+from handlers.train import setup_handlers as setup_train_handlers
 
 
 # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
@@ -72,6 +73,7 @@ async def set_bot_commands(application):
         BotCommand("testnotify", "Тестовая рассылка (админ)"),
         BotCommand("tracking", "Выгрузка подписок (админ)"),
         BotCommand("broadcast", "Рассылка (админ)"),
+        BotCommand("train", "Отчёт по поезду (админ)"),
     ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
@@ -108,6 +110,8 @@ def main():
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
+        setup_train_handlers(application)
+        logger.info("✅ /train зарегистрирован (handlers.train)")
 
         # Подсказка по загрузке поездов (сообщение с инструкцией)
         application.add_handler(CommandHandler("upload_train", upload_train_help))

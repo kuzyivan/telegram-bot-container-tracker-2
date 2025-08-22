@@ -9,7 +9,13 @@ from queries.train_queries import get_train_summary, get_train_latest_status
 logger = get_logger(__name__)
 
 async def train_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or update.effective_user.id != ADMIN_CHAT_ID:
+    user = update.effective_user
+    logger.info("[/train] received from id=%s username=%s args=%s",
+                getattr(user, "id", None), getattr(user, "username", None), context.args)
+
+    # Только админ
+    if not user or user.id != ADMIN_CHAT_ID:
+        logger.warning("[/train] access denied for id=%s", getattr(user, "id", None))
         return
 
     args = context.args or []
@@ -18,16 +24,18 @@ async def train_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     train_no = " ".join(args).strip()
+    logger.info("[/train] train_no=%s", train_no)
 
     try:
         summary_rows = await get_train_summary(train_no)
         if not summary_rows:
             await update.message.reply_html(f"Поезд «<b>{train_no}</b>» не найден в базе.")
+            logger.info("[/train] no rows for train=%s", train_no)
             return
 
         latest = await get_train_latest_status(train_no)
+        logger.debug("[/train] latest_status=%s", latest)
 
-        # --- Формируем текст ---
         lines = [f"🚆 Поезд: <b>{train_no}</b>", "───", "<b>Сводка по клиентам (кол-во контейнеров):</b>"]
         for client, cnt in summary_rows:
             lines.append(f"• {client or 'Без клиента'} — <b>{cnt}</b>")
@@ -48,10 +56,17 @@ async def train_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lines.append(f"Дорога: {road}")
 
         await update.message.reply_html("\n".join(lines), disable_web_page_preview=True)
+        logger.info("[/train] reply sent for train=%s", train_no)
 
     except Exception as e:
-        logger.exception("Ошибка /train %s", e)
-        await update.message.reply_text("Не удалось получить данные по поезду. Подробности в логах.")
+        logger.exception("Ошибка в /train для train=%s: %s", train_no, e)
+        # максимально безопасный ответ, чтобы не молчать
+        try:
+            await update.message.reply_text("Не удалось получить данные по поезду. Подробности в логах.")
+        except Exception:
+            pass
+
 
 def setup_handlers(app):
     app.add_handler(CommandHandler("train", train_cmd))
+    logger.info("✅ handlers.train.setup_handlers: /train зарегистрирован")
