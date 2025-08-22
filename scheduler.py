@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 from datetime import datetime, time
-from pathlib import Path
 from typing import Any, Callable
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -15,8 +14,7 @@ from db import SessionLocal
 from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
-from mail_reader import check_mail
-from services.container_importer import import_loaded_and_dispatch_from_excel
+from mail_reader import check_mail, fetch_terminal_excel_and_process
 from logger import get_logger
 
 # =========================
@@ -25,14 +23,14 @@ from logger import get_logger
 logger = get_logger(__name__)
 TZ = timezone("Asia/Vladivostok")
 
-# Параметры по умолчанию для всех джобов:
+# Параметры по умолчанию для всех джобов
 JOB_DEFAULTS = {
-    "coalesce": True,         # схлопывать накопившиеся пропуски в один запуск
-    "max_instances": 1,       # не параллелить один и тот же джоб
-    "misfire_grace_time": 300 # 5 минут на «опоздания»
+    "coalesce": True,          # схлопывать накопившиеся пропуски в один запуск
+    "max_instances": 1,        # не параллелить один и тот же джоб
+    "misfire_grace_time": 300, # 5 минут на «опоздания»
 }
 
-# Единые ID задач, чтобы легко заменять/переопределять
+# Единые ID задач
 JOB_ID_MAIL_EVERY_20 = "mail_check_every_20"
 JOB_ID_IMPORT_08_30  = "terminal_import_08_30"
 JOB_ID_NOTIFY_FOR_09  = "notify_for_09"
@@ -45,12 +43,6 @@ scheduler = AsyncIOScheduler(timezone=TZ, job_defaults=JOB_DEFAULTS)
 # =========================
 # Вспомогательные функции
 # =========================
-def get_daily_excel_path() -> Path:
-    """Имя файла за текущую (локальную для Владивостока) дату."""
-    today = datetime.now(TZ).strftime("%d.%m.%Y")
-    return Path(f"/root/AtermTrackBot/A-Terminal {today}.xlsx")
-
-
 async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
     """
     Универсальный вызов: если func — coroutine function, await it;
@@ -66,7 +58,7 @@ async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
 # Джобы (jobs)
 # =========================
 async def job_check_mail():
-    """Проверка почты (обновление дислокации и т.п.). Запуск каждые 20 минут."""
+    """Проверка почты (tracking + попытка Executive summary)."""
     logger.info("📬 [job_check_mail] Старт плановой проверки почты.")
     try:
         await _maybe_await(check_mail)
@@ -78,14 +70,15 @@ async def job_check_mail():
 async def job_daily_terminal_import():
     """
     Импорт ежедневной терминальной базы. Запуск строго в 08:30 по Владивостоку.
+    Скачивает сегодняшнее Executive summary в /root/AtermTrackBot/download_container
+    и импортирует листы Loaded*/Dispatch* в terminal_containers.
     """
-    file_path = str(get_daily_excel_path())
-    logger.info(f"📥 [job_daily_terminal_import] 08:30 — импорт из файла: {file_path}")
+    logger.info("📥 [job_daily_terminal_import] 08:30 — запуск импорта Executive summary")
     try:
-        await _maybe_await(import_loaded_and_dispatch_from_excel, file_path)
+        await _maybe_await(fetch_terminal_excel_and_process)
         logger.info("✅ [job_daily_terminal_import] Импорт успешно завершён.")
     except Exception as e:
-        logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта ({file_path}): {e}", exc_info=True)
+        logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта: {e}", exc_info=True)
 
 
 async def send_notifications(bot, target_time: time):
@@ -139,9 +132,11 @@ async def send_notifications(bot, target_time: time):
                     logger.info(f"[send_notifications] Нет данных для пользователя {sub.user_id} ({containers_list})")
                     continue
 
+                # Создание Excel-файла с итогами
                 file_path = create_excel_file(rows, columns)
-                filename = get_vladivостok_filename()
+                filename = get_vladivostok_filename()
 
+                # Отправка в Telegram
                 try:
                     with open(file_path, "rb") as f:
                         await bot.send_document(
@@ -181,7 +176,7 @@ def start_scheduler(bot):
     """
     Регистрируем и запускаем все джобы планировщика.
     """
-    # 1) Уведомления (как и было)
+    # 1) Рассылки
     scheduler.add_job(
         send_notifications,
         trigger='cron',
@@ -189,7 +184,7 @@ def start_scheduler(bot):
         args=[bot, time(9, 0)],
         id=JOB_ID_NOTIFY_FOR_09,
         replace_existing=True,
-        jitter=10,  # чуть размажем старт, чтоб избежать «шипов»
+        jitter=10,
     )
     scheduler.add_job(
         send_notifications,
@@ -201,7 +196,7 @@ def start_scheduler(bot):
         jitter=10,
     )
 
-    # 2) Раздельная проверка почты каждые 20 минут
+    # 2) Проверка почты каждые 20 минут (tracking + попытка Executive summary)
     scheduler.add_job(
         job_check_mail,
         trigger='cron',
@@ -211,7 +206,7 @@ def start_scheduler(bot):
         jitter=10,
     )
 
-    # 3) Раздельный импорт терминальной базы строго в 08:30
+    # 3) Импорт Executive summary строго в 08:30
     scheduler.add_job(
         job_daily_terminal_import,
         trigger='cron',
