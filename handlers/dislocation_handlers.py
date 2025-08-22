@@ -11,7 +11,7 @@ from models import Tracking, Stats
 # train lookup (queries layer preferred, fallback to db)
 try:
     from queries.containers import get_latest_train_by_container  # preferred
-except Exception:
+except ImportError:
     from db import get_latest_train_by_container  # fallback
 
 logger = get_logger(__name__)
@@ -143,6 +143,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 wagon_number      = row[9]
                 operation_road    = row[10]
 
+                # форматируем номер вагона как строку без хвоста .0 для Excel
+                wagon_number_str = _fmt_num(wagon_number)
+
                 rows_for_excel.append([
                     container,                # Номер контейнера
                     train or "",              # Поезд
@@ -154,7 +157,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     waybill,                  # Номер накладной
                     km_left,                  # Расстояние оставшееся
                     forecast_days,            # Прогноз прибытия (дней)
-                    wagon_number,             # Номер вагона
+                    wagon_number_str,         # Номер вагона (без ".0")
                     operation_road,           # Дорога операции
                 ])
 
