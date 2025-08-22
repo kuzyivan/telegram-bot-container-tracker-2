@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from datetime import datetime, time
-from typing import Any, Callable
+from typing import Any, Callable, Optional, Mapping
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.future import select
@@ -15,6 +15,7 @@ from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.email_sender import send_email
 from mail_reader import check_mail, fetch_terminal_excel_and_process
+from utils.notify import notify_admin
 from logger import get_logger
 
 # =========================
@@ -54,6 +55,60 @@ async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
 
+def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mapping] = None) -> str:
+    """Формирует «красивое» сообщение админу по результатам 08:30-импорта.
+    Если stats — dict со сводкой из обработчика, подтянем знакомые ключи,
+    чтобы текст выглядел как в логах (цифры добавлено/обновлено и т.д.).
+    """
+    header = "✅ <b>Обновление базы терминала завершено</b>\n"
+    base = f"<b>Время (Владивосток):</b> {started_dt.strftime('%d.%m %H:%M')}\n"
+
+    if not stats or not isinstance(stats, Mapping):
+        return header + base
+
+    pretty = []
+
+    # Общая техническая информация
+    for key, title in [
+        ("file_name", "Файл"),
+        ("sheets_processed", "Листов обработано"),
+        ("duration_sec", "Длительность, сек"),
+    ]:
+        if key in stats:
+            pretty.append(f"<b>{title}:</b> {stats[key]}")
+
+    # Итоги по строкам/контейнерам
+    for key, title in [
+        ("total_rows", "Строк обработано"),
+        ("total_added", "Добавлено всего"),
+        ("total_updated", "Обновлено всего"),
+        ("total_skipped", "Пропущено всего"),
+        ("duplicates_skipped", "Дубликатов пропущено"),
+    ]:
+        if key in stats:
+            pretty.append(f"<b>{title}:</b> {stats[key]}")
+
+    # Детализация по листам Loaded*/Dispatch* (если возвращается обработчиком)
+    for key, title in [
+        ("loaded_added", "Loaded: добавлено"),
+        ("loaded_updated", "Loaded: обновлено"),
+        ("loaded_skipped", "Loaded: пропущено"),
+        ("dispatch_added", "Dispatch: добавлено"),
+        ("dispatch_updated", "Dispatch: обновлено"),
+        ("dispatch_skipped", "Dispatch: пропущено"),
+    ]:
+        if key in stats:
+            pretty.append(f"<b>{title}:</b> {stats[key]}")
+
+    # Произвольный текст отчёта, если есть
+    for key in ("report", "summary", "message"):
+        if key in stats and stats[key]:
+            pretty.append(str(stats[key]))
+
+    body = "\n".join(pretty)
+    return header + base + (body + "\n" if body else "")
+
+
 # =========================
 # Джобы (jobs)
 # =========================
@@ -72,13 +127,34 @@ async def job_daily_terminal_import():
     Импорт ежедневной терминальной базы. Запуск строго в 08:30 по Владивостоку.
     Скачивает сегодняшнее Executive summary в /root/AtermTrackBot/download_container
     и импортирует листы Loaded*/Dispatch* в terminal_containers.
+    По завершении — уведомляет администратора с цифрами «как в логе».
     """
     logger.info("📥 [job_daily_terminal_import] 08:30 — запуск импорта Executive summary")
+    started = datetime.now(TZ)
     try:
-        await _maybe_await(fetch_terminal_excel_and_process)
+        stats = await _maybe_await(fetch_terminal_excel_and_process)
         logger.info("✅ [job_daily_terminal_import] Импорт успешно завершён.")
+
+        # Отправка уведомления админу (без звука)
+        try:
+            text = _format_terminal_import_message(started_dt=started, stats=stats)
+            await notify_admin(text, silent=True)
+            logger.info("[job_daily_terminal_import] Администратор уведомлён об успешном обновлении.")
+        except Exception as notify_err:
+            logger.error(f"❗ [job_daily_terminal_import] Не удалось уведомить админа: {notify_err}", exc_info=True)
+
     except Exception as e:
         logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта: {e}", exc_info=True)
+        # Уведомление об ошибке — со звуком
+        try:
+            await notify_admin(
+                f"❌ <b>Ошибка обновления базы терминала</b>\n"
+                f"<b>Время (Владивосток):</b> {started.strftime('%d.%m %H:%M')}\n"
+                f"<code>{e}</code>",
+                silent=False,
+            )
+        except Exception as notify_err:
+            logger.error(f"❗ [job_daily_terminal_import] Не удалось уведомить админа об ошибке: {notify_err}", exc_info=True)
 
 
 async def send_notifications(bot, target_time: time):
@@ -172,6 +248,7 @@ async def send_notifications(bot, target_time: time):
 # =========================
 # Публичная функция запуска
 # =========================
+
 def start_scheduler(bot):
     """
     Регистрируем и запускаем все джобы планировщика.
@@ -217,7 +294,7 @@ def start_scheduler(bot):
     )
 
     scheduler.start()
-    logger.info("🟢 Планировщик запущен. Задачи: почта */20, импорт 08:30, рассылки 23:00/06:00.")
+    logger.info("🟢 Планировщик запущен. Задачи: почта */20, импорт 08:30, рассылки 09:00/16:00.")
 
     local_time = datetime.now(TZ)
     logger.info(f"🕒 Локальное время Владивостока: {local_time}")
