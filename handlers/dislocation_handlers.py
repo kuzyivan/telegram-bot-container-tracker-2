@@ -8,7 +8,36 @@ from logger import get_logger
 from db import SessionLocal
 from models import Tracking, Stats
 
+# train lookup (queries layer preferred, fallback to db)
+try:
+    from queries.containers import get_latest_train_by_container  # preferred
+except Exception:
+    from db import get_latest_train_by_container  # fallback
+
 logger = get_logger(__name__)
+
+
+def _fmt_num(x):
+    """Форматирование чисел: убирает .0 даже если вход — строка."""
+    try:
+        f = float(x)
+        if f.is_integer():
+            return str(int(f))
+        return str(f)
+    except Exception:
+        return str(x)
+
+
+def detect_wagon_type(wagon_number: str) -> str:
+    """Определение типа вагона по диапазону: 60–69 → полувагон, остальное → платформа."""
+    try:
+        num = int(wagon_number[:2])
+    except Exception:
+        return "платформа"
+    if 60 <= num <= 69:
+        return "полувагон"
+    return "платформа"
+
 
 # Колонки для выгрузки в Excel (используются при множественных контейнерах)
 COLUMNS = [
@@ -106,31 +135,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === Один контейнер найден ===
     if found_rows:
         row = found_rows[0]
+
+        # Получаем номер поезда из terminal_containers по самой свежей записи
+        try:
+            train = await get_latest_train_by_container(row[0])
+        except Exception as e:
+            logger.error(f"[dislocation] Ошибка получения train для {row[0]}: {e}", exc_info=True)
+            train = None
+
         wagon_number = str(row[9]) if row[9] else "—"
-        wagon_type = "полувагон" if wagon_number.startswith("6") else "платформа"
+        wagon_type = detect_wagon_type(wagon_number)
 
         try:
             km_left_val = float(row[7])
             forecast_days_calc = round(km_left_val / 600 + 1, 1)
-            km_left_display = str(km_left_val)
+            km_left_display = km_left_val
         except Exception:
             km_left_display = "—"
             forecast_days_calc = "—"
 
         operation_station = f"{row[3]} 🛤️ ({row[10]})" if row[10] else row[3]
 
+        # Шапка с контейнером и (если найден) номером поезда
+        header = f"📦 <b>Контейнер</b>: <code>{row[0]}</code>\n"
+        if train:
+            header += f"🚂 <b>Поезд</b>: <code>{train}</code>\n"
+        header += "\n"
+
         msg = (
-            f"📦 <b>Контейнер</b>: <code>{row[0]}</code>\n\n"
+            f"{header}"
             f"🛤 <b>Маршрут</b>:\n"
             f"<b>{row[1]}</b> 🚂 → <b>{row[2]}</b>\n\n"
             f"📍 <b>Текущая станция</b>: {operation_station}\n"
             f"📅 <b>Последняя операция</b>:\n"
             f"{row[5]} — <i>{row[4]}</i>\n\n"
-            f"🚆 <b>Вагон</b>: <code>{wagon_number}</code> ({wagon_type})\n"
-            f"📏 <b>Осталось ехать</b>: <b>{km_left_display}</b> км\n\n"
+            f"🚆 <b>Вагон</b>: <code>{_fmt_num(wagon_number)}</code> ({wagon_type})\n"
+            f"📏 <b>Осталось ехать</b>: <b>{_fmt_num(km_left_display)}</b> км\n\n"
             f"⏳ <b>Оценка времени в пути</b>:\n"
-            f"~<b>{forecast_days_calc}</b> суток "
-            f"(расчёт: {km_left_display} км / 600 км/сутки + 1 день)"
+            f"~<b>{_fmt_num(forecast_days_calc)}</b> суток "
+            f"(расчёт: {_fmt_num(km_left_display)} км / 600 км/сутки + 1 день)"
         )
 
         await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
