@@ -1,7 +1,10 @@
+# db.py
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import declarative_base
 from sqlalchemy import select, delete, update
 from config import DATABASE_URL
+
+from models import Base, TrackingSubscription, Tracking, User, Stats  # ← Берём общий Base здесь
+# НИКАКИХ импортов из model.terminal_container здесь!
 
 if DATABASE_URL is None:
     raise ValueError("DATABASE_URL must be set and not None")
@@ -9,36 +12,23 @@ if DATABASE_URL is None:
 engine = create_async_engine(
     DATABASE_URL,
     future=True,
-    pool_recycle=300,    # Обновлять соединения каждые 5 минут
-    pool_pre_ping=True,  # Перед каждым использованием — пингуем
+    pool_recycle=300,
+    pool_pre_ping=True,
 )
+
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
 )
 
-Base = declarative_base()
-
-from models import TrackingSubscription, Tracking, User, Stats
-from model.terminal_container import TerminalContainer
-
+# ---- вспомогательные функции ниже без импортов моделей сверху ----
 async def get_all_user_ids():
-    """
-    Возвращает список всех уникальных user_id из таблицы stats.
-    Используется для рассылки.
-    """
     async with SessionLocal() as session:
         result = await session.execute(select(Stats.user_id).distinct())
-        user_ids = [row[0] for row in result.fetchall() if row[0] is not None]
-        return user_ids
-
-# ====== Добавлено для handlers/user_handlers ======
+        return [row[0] for row in result.fetchall() if row[0] is not None]
 
 async def get_tracked_containers_by_user(user_id):
-    """
-    Получить все отслеживаемые контейнеры пользователя.
-    """
     async with SessionLocal() as session:
         result = await session.execute(
             select(TrackingSubscription.containers).where(TrackingSubscription.user_id == user_id)
@@ -47,9 +37,6 @@ async def get_tracked_containers_by_user(user_id):
         return row if row else []
 
 async def remove_user_tracking(user_id):
-    """
-    Удалить все подписки пользователя (отписка от всех контейнеров).
-    """
     async with SessionLocal() as session:
         await session.execute(
             delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
@@ -57,11 +44,6 @@ async def remove_user_tracking(user_id):
         await session.commit()
 
 async def set_user_email(telegram_id, username, email):
-    """
-    Привязать или обновить email пользователя.
-    Если пользователь существует — обновить. Иначе — создать.
-    Также автоматически включает email-рассылку.
-    """
     async with SessionLocal() as session:
         result = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
