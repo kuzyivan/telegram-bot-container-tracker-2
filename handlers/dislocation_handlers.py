@@ -144,17 +144,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 operation_road    = row[10]
 
                 rows_for_excel.append([
-                    container,
-                    train or "",               # Поезд
-                    from_station,
-                    to_station,
-                    current_station,
-                    operation,
-                    operation_date,
-                    km_left,
-                    forecast_days,
-                    wagon_number,
-                    operation_road,
+                    container,                # Номер контейнера
+                    train or "",              # Поезд
+                    from_station,             # Станция отправления
+                    to_station,               # Станция назначения
+                    current_station,          # Станция операции
+                    operation,                # Операция
+                    operation_date,           # Дата и время операции
+                    waybill,                  # Номер накладной
+                    km_left,                  # Расстояние оставшееся
+                    forecast_days,            # Прогноз прибытия (дней)
+                    wagon_number,             # Номер вагона
+                    operation_road,           # Дорога операции
                 ])
 
             from utils.send_tracking import create_excel_file, get_vladivostok_filename  # локальный импорт
