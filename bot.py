@@ -1,12 +1,13 @@
 from logger import get_logger
 logger = get_logger(__name__)
 
+from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
-from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+from telegram.constants import ParseMode
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv()  # опционально; при запуске через systemd берётся EnvironmentFile
 
 from config import TOKEN, ADMIN_CHAT_ID
 from mail_reader import start_mail_checking
@@ -24,7 +25,7 @@ from handlers.menu_handlers import (
 from handlers.dislocation_handlers import handle_message
 # админка
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
-# трекинг контейнеров (оставили как есть)
+# трекинг контейнеров
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
     cancel,
@@ -37,6 +38,17 @@ from handlers.broadcast import broadcast_conversation_handler
 # === ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ===
 async def error_handler(update, context):
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
+
+
+# === ЛОВЕЦ ЛЮБЫХ АПДЕЙТОВ ДЛЯ ДЕБАГА ===
+async def debug_all_updates(update: Update, context):
+    try:
+        uid = update.effective_user.id if update.effective_user else "—"
+        uname = update.effective_user.username if update.effective_user else "—"
+        txt = getattr(getattr(update, "message", None), "text", None)
+        logger.info(f"[DEBUG UPDATE] from {uid} (@{uname}) type={type(update).__name__} text={txt}")
+    except Exception:
+        logger.exception("[DEBUG UPDATE] failed to log update")
 
 
 # === УСТАНОВКА КОМАНД ===
@@ -106,12 +118,24 @@ def main():
         # Любой прочий текст — поиск дислокации
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+        # Самый последний — отладочный ловец любых апдейтов
+        application.add_handler(MessageHandler(filters.ALL, debug_all_updates))
+
         # === Обработчик ошибок ===
         application.add_error_handler(error_handler)
 
         # === post_init с задачами ===
         async def post_init(app):
             logger.info("⚙️ Запускаем фоновую проверку почты и планировщик...")
+
+            # Пинг админу + getMe для явной проверки токена/доставки
+            try:
+                await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал и слушает апдейты (polling).")
+                me = await app.bot.get_me()
+                logger.info(f"getMe: @{me.username} (id={me.id})")
+            except Exception as e:
+                logger.error(f"Не смог отправить стартовое сообщение админу: {e}", exc_info=True)
+
             await start_mail_checking()
             start_scheduler(app.bot)
             await set_bot_commands(app)
@@ -120,7 +144,12 @@ def main():
         application.post_init = post_init
 
         logger.info("🤖 Бот готов к запуску. Запускаем polling...")
-        application.run_polling()  # Без await!
+        application.run_polling(
+            allowed_updates=None,       # брать все типы апдейтов
+            drop_pending_updates=False, # не отбрасывать накопленные новые апдейты
+            stop_signals=None,          # корректно завершится по SIGTERM от systemd
+            close_loop=False
+        )
         logger.info("✅ Бот завершил работу.")
 
     except Exception as e:
