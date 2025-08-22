@@ -41,7 +41,8 @@ def detect_wagon_type(wagon_number: str) -> str:
 
 # Колонки для выгрузки в Excel (используются при множественных контейнерах)
 COLUMNS = [
-    'Номер контейнера', 'Станция отправления', 'Станция назначения',
+    'Номер контейнера', 'Поезд',
+    'Станция отправления', 'Станция назначения',
     'Станция операции', 'Операция', 'Дата и время операции',
     'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
     'Номер вагона', 'Дорога операции'
@@ -119,8 +120,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # === Если пользователь прислал несколько контейнеров ===
     if len(container_numbers) > 1 and found_rows:
         try:
-            from utils.send_tracking import create_excel_file, get_vladivostok_filename  # локальный импорт, чтобы избежать циклов
-            file_path = create_excel_file(found_rows, COLUMNS)
+            # Строим строки для Excel с дополнительной колонкой "Поезд"
+            rows_for_excel = []
+            for row in found_rows:
+                container = row[0]
+                # подгружаем поезд для каждой строки
+                try:
+                    train = await get_latest_train_by_container(container)
+                except Exception as e:
+                    logger.error(f"[dislocation][excel] Ошибка получения train для {container}: {e}", exc_info=True)
+                    train = None
+
+                # раскладываем значения из row (как выбирали из Tracking)
+                from_station      = row[1]
+                to_station        = row[2]
+                current_station   = row[3]
+                operation         = row[4]
+                operation_date    = row[5]
+                waybill           = row[6]
+                km_left           = row[7]
+                forecast_days     = row[8]
+                wagon_number      = row[9]
+                operation_road    = row[10]
+
+                rows_for_excel.append([
+                    container,
+                    train or "",               # Поезд
+                    from_station,
+                    to_station,
+                    current_station,
+                    operation,
+                    operation_date,
+                    km_left,
+                    forecast_days,
+                    wagon_number,
+                    operation_road,
+                ])
+
+            from utils.send_tracking import create_excel_file, get_vladivostok_filename  # локальный импорт
+            file_path = create_excel_file(rows_for_excel, COLUMNS)
             filename = get_vladivostok_filename()
             with open(file_path, "rb") as f:
                 await update.message.reply_document(document=f, filename=filename)

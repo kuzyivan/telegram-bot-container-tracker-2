@@ -4,13 +4,13 @@ from db import SessionLocal
 
 async def get_latest_train_by_container(container_number: str) -> str | None:
     """
-    Возвращает номер поезда (train) для контейнера по самой свежей записи
-    из terminal_containers. Поддерживает названия колонок `container` и `container_number`.
+    Возвращает номер поезда (train) по самой свежей записи из terminal_containers
+    для указанного контейнера. Ищем строго по container_number.
     """
     query = text("""
         SELECT train
         FROM terminal_containers
-        WHERE (container = :c OR container_number = :c)
+        WHERE container_number = :c
           AND train IS NOT NULL AND train <> ''
         ORDER BY created_at DESC
         LIMIT 1
