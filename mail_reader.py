@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,9 @@ from models import Tracking
 from services.container_importer import import_loaded_and_dispatch_from_excel
 
 logger = get_logger(__name__)
+
+# Глобальная блокировка, чтобы исключить одновременные запуски проверки почты (ручной + планировщик)
+_mail_check_lock = asyncio.Lock()
 
 # ───────────────────────────────────────────────────────────────────────────────
 # Настройки почты и каталогов
@@ -46,39 +50,51 @@ def _download_today_terminal_attachment() -> str | None:
     """
     Ищет в INBOX сегодняшнее письмо от aterminal@effex.ru с темой
     'Executive summary DD.MM.YYYY', сохраняет .xlsx в TERMINAL_FOLDER.
-    Если точного совпадения нет, берёт самое свежее письмо от этого отправителя,
-    у которого тема начинается с 'Executive summary'.
+    Если точного совпадения нет, пытается вчерашнее; если и его нет — берёт
+    самое свежее письмо от этого отправителя, у которого тема начинается
+    с 'Executive summary'.
     Возвращает путь к сохранённому файлу или None.
     """
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL/PASSWORD не заданы — не могу загрузить Executive summary.")
         return None
 
-    subject_today = f"Executive summary {_today_vvo_str()}"
-    logger.info(f"📬 Ищу письмо: from=aterminal@effex.ru, subject='{subject_today}'")
+    today_str = _today_vvo_str()
+    from datetime import timedelta
+    yday_str = (datetime.now(ZoneInfo("Asia/Vladivostok")) - timedelta(days=1)).strftime("%d.%m.%Y")
+
+    subjects = [
+        f"Executive summary {today_str}",
+        f"Executive summary {yday_str}",
+    ]
+    logger.info(f"📬 Ищу письмо: from=aterminal@effex.ru, subject in {subjects} (сначала точное совпадение)")
 
     with MailBox(IMAP_SERVER).login(EMAIL, PASSWORD, initial_folder="INBOX") as m:
-        # 1) сначала точное совпадение темы
-        msgs = list(
-            m.fetch(AND(from_="aterminal@effex.ru", subject=subject_today), reverse=True)
-        )
+        # 1) точные совпадения: сегодня → вчера
+        for subj in subjects:
+            msgs = list(m.fetch(AND(from_="aterminal@effex.ru", subject=subj), reverse=True))
+            if msgs:
+                msg = msgs[0]
+                logger.info(f"✉️ Найдено письмо: '{msg.subject}' от {msg.date}")
+                for att in msg.attachments or []:
+                    if att.filename and att.filename.lower().endswith(".xlsx"):
+                        save_path = os.path.join(TERMINAL_FOLDER, att.filename)
+                        with open(save_path, "wb") as f:
+                            f.write(att.payload)
+                        logger.info(f"📥 Executive summary сохранён: {save_path}")
+                        return save_path
+                logger.warning("⚠️ Во вложении письма нет .xlsx.")
+                return None
 
-        # 2) если нет — самое свежее, где тема начинается с "Executive summary"
+        # 2) Фолбэк: самое свежее письмо, где тема начинается с "Executive summary"
+        candidates = list(m.fetch(AND(from_="aterminal@effex.ru"), reverse=True))
+        msgs = [x for x in candidates if (x.subject or "").strip().lower().startswith("executive summary")]
         if not msgs:
-            candidates = list(m.fetch(AND(from_="aterminal@effex.ru"), reverse=True))
-            msgs = [
-                x
-                for x in candidates
-                if (x.subject or "").strip().lower().startswith("executive summary")
-            ]
-
-        if not msgs:
-            logger.info("📭 Письмо Executive summary не найдено.")
+            logger.info("📭 Письмо Executive summary не найдено (ни сегодня, ни вчера, ни по префиксу).")
             return None
 
         msg = msgs[0]
-        logger.info(f"✉️ Найдено письмо: '{msg.subject}' от {msg.date}")
-
+        logger.info(f"✉️ Найдено письмо по префиксу: '{msg.subject}' от {msg.date}")
         for att in msg.attachments or []:
             if att.filename and att.filename.lower().endswith(".xlsx"):
                 save_path = os.path.join(TERMINAL_FOLDER, att.filename)
@@ -255,42 +271,50 @@ async def check_mail():
       1) пытаемся скачать и импортировать Executive summary (terminal_containers);
       2) обновляем дислокацию (tracking) из самого свежего .xlsx,
          если это не Executive summary.
+    Используется глобальная блокировка, чтобы исключить параллельные запуски
+    (ручной запуск + планировщик).
     """
     logger.info("📬 [Scheduler] Запущена проверка почты по расписанию (каждые 20 минут)...")
     if not EMAIL or not PASSWORD:
         logger.error("❌ EMAIL или PASSWORD не заданы в переменных окружения.")
         return
 
-    try:
-        import asyncio
+    # если уже идёт проверка — аккуратно выходим
+    if _mail_check_lock.locked():
+        logger.info("🔒 Проверка почты уже выполняется — пропускаю запуск.")
+        return
 
-        loop = asyncio.get_running_loop()
-
-        # Шаг 1. Executive summary → terminal_containers
+    async with _mail_check_lock:
         try:
-            terminal_path = await loop.run_in_executor(None, _download_today_terminal_attachment)
-            if terminal_path:
-                logger.info("📦 Обнаружен файл терминальной базы. Запускаю импорт в terminal_containers...")
-                await import_loaded_and_dispatch_from_excel(terminal_path)
-                logger.info("✅ Импорт терминальной базы завершён успешно.")
-        except Exception as e:
-            logger.error(f"❌ Ошибка импорта Executive summary: {e}", exc_info=True)
+            loop = asyncio.get_running_loop()
 
-        # Шаг 2. Дислокация → tracking (самый свежий .xlsx)
-        result = await loop.run_in_executor(None, fetch_latest_excel)
-        if result:
-            filepath = result
-            fname = os.path.basename(filepath).lower()
-            # не кормим старому парсеру терминальные отчёты
-            if fname.startswith("a-terminal ") or "executive" in fname:
-                logger.info(f"ℹ️ Свежий .xlsx — Executive summary ({fname}). Для tracking не используем.")
+            # Шаг 1. Executive summary → terminal_containers
+            try:
+                terminal_path = await loop.run_in_executor(None, _download_today_terminal_attachment)
+                if terminal_path:
+                    logger.info("📦 Обнаружен файл терминальной базы. Запускаю импорт в terminal_containers...")
+                    await import_loaded_and_dispatch_from_excel(terminal_path)
+                    logger.info("✅ Импорт терминальной базы завершён успешно.")
+                else:
+                    logger.info("ℹ️ Файл Executive summary не найден — пропускаю импорт терминальной базы.")
+            except Exception as e:
+                logger.error(f"❌ Ошибка импорта Executive summary: {e}", exc_info=True)
+
+            # Шаг 2. Дислокация → tracking (самый свежий .xlsx)
+            result = await loop.run_in_executor(None, fetch_latest_excel)
+            if result:
+                filepath = result
+                fname = os.path.basename(filepath).lower()
+                # не кормим старому парсеру терминальные отчёты
+                if fname.startswith("a-terminal ") or "executive" in fname:
+                    logger.info(f"ℹ️ Свежий .xlsx — Executive summary ({fname}). Для tracking не используем.")
+                else:
+                    logger.info(f"📥 Скачан файл дислокации: {filepath}")
+                    await process_file(filepath)
             else:
-                logger.info(f"📥 Скачан файл дислокации: {filepath}")
-                await process_file(filepath)
-        else:
-            logger.info("⚠ Нет подходящих Excel-вложений для обновления tracking.")
-    except Exception as e:
-        logger.error(f"❌ Ошибка при проверке почты: {e}")
+                logger.info("⚠ Нет подходящих Excel-вложений для обновления tracking.")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при проверке почты: {e}")
 
 
 async def start_mail_checking():
