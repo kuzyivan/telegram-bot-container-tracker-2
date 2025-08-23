@@ -12,6 +12,9 @@ from logger import get_logger
 from utils.send_tracking import create_excel_file, create_excel_multisheet, get_vladivostok_filename
 from utils.email_sender import send_email
 
+import asyncio
+from telegram.error import TimedOut, NetworkError
+
 logger = get_logger(__name__)
 
 
@@ -37,9 +40,23 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             df = pd.DataFrame(data)
             file_path = create_excel_file(df.values.tolist(), list(df.columns))
             filename = get_vladivostok_filename().replace("Дислокация", "tracking_subs")
-            with open(file_path, "rb") as f:
-                await update.message.reply_document(document=f, filename=filename)
-            logger.info(f"[tracking] Выгрузка подписок успешно отправлена администратору.")
+            attempts = 3
+            for i in range(attempts):
+                try:
+                    with open(file_path, "rb") as f:
+                        await update.message.reply_document(
+                            document=f,
+                            filename=filename,
+                            read_timeout=90.0,
+                            write_timeout=90.0,
+                        )
+                    logger.info(f"[tracking] Выгрузка подписок успешно отправлена администратору.")
+                    break
+                except (TimedOut, NetworkError) as e:
+                    logger.warning(f"[tracking] Таймаут при отправке документа админу (попытка {i+1}/{attempts}): {e}")
+                    if i == attempts - 1:
+                        raise
+                    await asyncio.sleep(2 ** i)
     except Exception as e:
         logger.error(f"[tracking] Ошибка выгрузки подписок: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при экспорте подписок.")
@@ -116,9 +133,23 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = pd.DataFrame(rows, columns=columns)
         file_path = create_excel_file(df.values.tolist(), list(df.columns))
         filename = get_vladivostok_filename().replace("Дислокация", "Статистика")
-        with open(file_path, "rb") as f:
-            await update.message.reply_document(document=f, filename=filename)
-        logger.info(f"[exportstats] Статистика в Excel успешно отправлена администратору.")
+        attempts = 3
+        for i in range(attempts):
+            try:
+                with open(file_path, "rb") as f:
+                    await update.message.reply_document(
+                        document=f,
+                        filename=filename,
+                        read_timeout=90.0,
+                        write_timeout=90.0,
+                    )
+                logger.info(f"[exportstats] Статистика в Excel успешно отправлена администратору.")
+                break
+            except (TimedOut, NetworkError) as e:
+                logger.warning(f"[exportstats] Таймаут при отправке документа админу (попытка {i+1}/{attempts}): {e}")
+                if i == attempts - 1:
+                    raise
+                await asyncio.sleep(2 ** i)
     except Exception as e:
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при экспорте статистики.")
@@ -173,14 +204,29 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_path = create_excel_multisheet(data_per_user, columns)
             filename = get_vladivostok_filename("Тестовая дислокация")
 
-            with open(file_path, "rb") as f:
-                await update.message.reply_document(
-                    document=f,
-                    filename=filename,
-                    caption="Тестовая дислокация по всем подписчикам (разделено по листам)"
-                )
+            attempts = 3
+            for i in range(attempts):
+                try:
+                    with open(file_path, "rb") as f:
+                        await update.message.reply_document(
+                            document=f,
+                            filename=filename,
+                            caption="Тестовая дислокация по всем подписчикам (разделено по листам)",
+                            read_timeout=90.0,
+                            write_timeout=90.0,
+                        )
+                    break
+                except (TimedOut, NetworkError) as e:
+                    logger.warning(f"[test_notify] Таймаут при отправке тестового файла (попытка {i+1}/{attempts}): {e}")
+                    if i == attempts - 1:
+                        raise
+                    await asyncio.sleep(2 ** i)
 
-            await update.message.reply_text("✅ Тестовая мульти-рассылка готова и отправлена одним файлом.")
+            await update.message.reply_text(
+                "✅ Тестовая мульти-рассылка готова и отправлена одним файлом.",
+                read_timeout=30.0,
+                write_timeout=30.0,
+            )
             logger.info("[test_notify] Тестовая мульти-рассылка успешно отправлена.")
 
             # --- Email рассылка тестового файла администратору ---
@@ -205,4 +251,8 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
-        await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
+        await update.message.reply_text(
+            "❌ Ошибка при тестовой рассылке.",
+            read_timeout=30.0,
+            write_timeout=30.0,
+        )

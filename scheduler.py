@@ -10,6 +10,8 @@ from sqlalchemy.future import select
 from sqlalchemy import select as sync_select
 from pytz import timezone
 
+from telegram.error import TimedOut, NetworkError
+
 from db import SessionLocal
 from models import TrackingSubscription, Tracking, User
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
@@ -212,17 +214,37 @@ async def send_notifications(bot, target_time: time):
                 file_path = create_excel_file(rows, columns)
                 filename = get_vladivostok_filename()
 
-                # Отправка в Telegram
-                try:
-                    with open(file_path, "rb") as f:
-                        await bot.send_document(
-                            chat_id=sub.user_id,
-                            document=f,
-                            filename=filename
+                # Отправка в Telegram (с ретраями и явными таймаутами)
+                attempts = 3
+                for i in range(attempts):
+                    try:
+                        with open(file_path, "rb") as f:
+                            await bot.send_document(
+                                chat_id=sub.user_id,
+                                document=f,
+                                filename=filename,
+                                read_timeout=90.0,
+                                write_timeout=90.0,
+                            )
+                        logger.info(f"✅ [send_notifications] Отправлен файл {filename} пользователю {sub.user_id} (Telegram)")
+                        break
+                    except (TimedOut, NetworkError) as send_err:
+                        logger.warning(
+                            f"[send_notifications] Таймаут отправки пользователю {sub.user_id} (попытка {i+1}/{attempts}): {send_err}"
                         )
-                    logger.info(f"✅ [send_notifications] Отправлен файл {filename} пользователю {sub.user_id} (Telegram)")
-                except Exception as send_err:
-                    logger.error(f"❌ [send_notifications] Ошибка отправки файла в Telegram пользователю {sub.user_id}: {send_err}", exc_info=True)
+                        if i == attempts - 1:
+                            logger.error(
+                                f"❌ [send_notifications] Не удалось отправить файл пользователю {sub.user_id} после ретраев.",
+                                exc_info=True,
+                            )
+                        else:
+                            await asyncio.sleep(2 ** i)
+                    except Exception as send_err:
+                        logger.error(
+                            f"❌ [send_notifications] Ошибка отправки файла в Telegram пользователю {sub.user_id}: {send_err}",
+                            exc_info=True,
+                        )
+                        break
 
                 # Доп. рассылка на email (если включена)
                 user_result = await session.execute(

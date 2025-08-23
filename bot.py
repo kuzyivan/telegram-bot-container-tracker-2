@@ -5,6 +5,7 @@ from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, Up
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
+from telegram.request import HTTPXRequest
 from dotenv import load_dotenv
 load_dotenv()  # опционально; при запуске через systemd берётся EnvironmentFile
 
@@ -83,7 +84,15 @@ async def set_bot_commands(application):
 def main():
     logger.info("🚦 Старт бота!")
     try:
-        application = Application.builder().token(TOKEN).build()
+        # Configure HTTPX client with generous timeouts & larger pool
+        request = HTTPXRequest(
+            connect_timeout=20.0,
+            read_timeout=60.0,
+            write_timeout=60.0,
+            pool_timeout=20.0,
+            connection_pool_size=50,
+        )
+        application = Application.builder().token(TOKEN).request(request).build()
 
         # === ConversationHandler для /set_email ===
         set_email_conv_handler = ConversationHandler(
