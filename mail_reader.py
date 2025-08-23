@@ -10,6 +10,26 @@ import pandas as pd
 from imap_tools import AND, MailBox
 from sqlalchemy import text
 
+class SmartTx:
+    """Безопасный менеджер контекста транзакций.
+    Если на сессии уже есть активная транзакция, использует SAVEPOINT (begin_nested),
+    иначе открывает обычную транзакцию (begin).
+    """
+    def __init__(self, session):
+        self.session = session
+        self._ctx = None
+
+    async def __aenter__(self):
+        # Если транзакция уже идёт (например, автозапущена), создаём savepoint
+        if self.session.in_transaction():
+            self._ctx = self.session.begin_nested()
+        else:
+            self._ctx = self.session.begin()
+        return await self._ctx.__aenter__()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return await self._ctx.__aexit__(exc_type, exc, tb)
+
 from db import SessionLocal
 from logger import get_logger
 from models import Tracking
@@ -222,9 +242,10 @@ async def process_file(filepath: str):
         ]
 
         async with SessionLocal() as session:
-            # Берём конкретное соединение и выполняем всё в одной транзакции
-            conn = await session.connection()
-            async with session.begin():
+            # Выполняем всё в одной безопасной транзакции (SAVEPOINT при вложении)
+            async with SmartTx(session):
+                # Берём соединение уже внутри транзакции
+                conn = await session.connection()
                 # Полная замена снимка таблицы tracking на содержимое файла
                 await conn.exec_driver_sql("TRUNCATE tracking")
 
