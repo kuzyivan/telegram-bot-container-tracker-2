@@ -187,42 +187,50 @@ async def process_file(filepath: str):
             )
             records.append(record)
 
+        # Подготовим данные для пакетной вставки (executemany)
+        rows = [
+            {
+                "container_number": r.container_number,
+                "from_station": r.from_station,
+                "to_station": r.to_station,
+                "current_station": r.current_station,
+                "operation": r.operation,
+                "operation_date": r.operation_date,
+                "waybill": r.waybill,
+                "km_left": r.km_left,
+                "forecast_days": r.forecast_days,
+                "wagon_number": r.wagon_number,
+                "operation_road": r.operation_road,
+            }
+            for r in records
+        ]
+
         async with SessionLocal() as session:
-            # временная таблица для безопасного обновления
-            await session.execute(
-                text("CREATE TEMP TABLE IF NOT EXISTS tracking_tmp (LIKE tracking INCLUDING ALL)")
-            )
-            await session.execute(text("TRUNCATE tracking_tmp"))
+            # Берём конкретное соединение и выполняем всё в одной транзакции
+            conn = await session.connection()
+            async with session.begin():
+                # Полная замена снимка таблицы tracking на содержимое файла
+                await conn.exec_driver_sql("TRUNCATE tracking")
 
-            for record in records:
-                await session.execute(
-                    text(
-                        "INSERT INTO tracking_tmp "
-                        "(container_number, from_station, to_station, current_station, operation, "
-                        "operation_date, waybill, km_left, forecast_days, wagon_number, operation_road) "
-                        "VALUES (:container_number, :from_station, :to_station, :current_station, :operation, "
-                        ":operation_date, :waybill, :km_left, :forecast_days, :wagon_number, :operation_road)"
-                    ),
-                    {
-                        "container_number": record.container_number,
-                        "from_station": record.from_station,
-                        "to_station": record.to_station,
-                        "current_station": record.current_station,
-                        "operation": record.operation,
-                        "operation_date": record.operation_date,
-                        "waybill": record.waybill,
-                        "km_left": record.km_left,
-                        "forecast_days": record.forecast_days,
-                        "wagon_number": record.wagon_number,
-                        "operation_road": record.operation_road,
-                    },
-                )
-
-            await session.commit()
-            await session.execute(text("TRUNCATE tracking"))
-            await session.execute(text("INSERT INTO tracking SELECT * FROM tracking_tmp"))
-            await session.execute(text("DROP TABLE IF EXISTS tracking_tmp"))
-            await session.commit()
+                if rows:
+                    # Пакетная вставка напрямую в tracking (без времянки)
+                    await conn.execute(
+                        text(
+                            """
+                            INSERT INTO tracking (
+                                container_number, from_station, to_station, current_station,
+                                operation, operation_date, waybill, km_left, forecast_days,
+                                wagon_number, operation_road
+                            )
+                            VALUES (
+                                :container_number, :from_station, :to_station, :current_station,
+                                :operation, :operation_date, :waybill, :km_left, :forecast_days,
+                                :wagon_number, :operation_road
+                            )
+                            """
+                        ),
+                        rows,
+                    )
 
         last_date = df["Дата и время операции"].dropna().max() if "Дата и время операции" in df.columns else None
         logger.info(f"✅ База tracking обновлена из файла {os.path.basename(filepath)}")
