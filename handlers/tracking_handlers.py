@@ -1,6 +1,6 @@
 # handlers/tracking_handlers.py
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import (
     ContextTypes, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, CommandHandler
 )
@@ -15,20 +15,22 @@ from queries.containers import get_latest_train_by_container
 logger = get_logger(__name__)
 
 def _fmt_num(x):
+    """Форматирование чисел: убирает .0."""
     try:
         if isinstance(x, float) and x.is_integer():
             return str(int(x))
         return str(x)
-    except Exception:
+    except (ValueError, TypeError):
         return str(x)
 
 TRACK_CONTAINERS, SET_TIME = range(2)
 
 async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начинает диалог по установке слежения, запрашивая номера контейнеров."""
     user = update.effective_user
     logger.info(f"Пользователь {getattr(user, 'id', 'Unknown')} начал постановку на слежение.")
 
-    text = "Введите список контейнеров для слежения (через запятую):"
+    text = "Введите список контейнеров для слежения (через запятую или пробел):"
     if update.callback_query:
         await update.callback_query.answer()
         if update.effective_chat:
@@ -38,6 +40,7 @@ async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return TRACK_CONTAINERS
 
 async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получает номера контейнеров, сохраняет их и запрашивает время."""
     if not update.message or not update.message.text:
         return TRACK_CONTAINERS
 
@@ -49,7 +52,6 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if context.user_data is None:
         context.user_data = {}
     context.user_data['containers'] = containers
-    # ИЗМЕНЕНИЕ: Сохраняем ID сообщения пользователя с номерами контейнеров для последующего удаления
     context.user_data['container_message_id'] = update.message.message_id
 
     keyboard = [
@@ -63,6 +65,7 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return SET_TIME
 
 async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохраняет подписку в БД и удаляет сообщения с "эффектом Таноса"."""
     query = update.callback_query
     if not query or not query.data:
         return ConversationHandler.END
@@ -72,44 +75,34 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     time_obj = datetime.time(hour=9) if time_choice == "09" else datetime.time(hour=16)
 
     if context.user_data is None:
-        logger.warning("user_data in context is None, aborting set_tracking_time.")
+        logger.warning("user_data в контексте отсутствует, прерываю установку слежения.")
         return ConversationHandler.END
     containers = context.user_data.get('containers', [])
     
     user = update.effective_user
     if not user:
-        logger.warning("No effective_user in update, aborting set_tracking_time.")
+        logger.warning("Отсутствует effective_user в update, прерываю установку слежения.")
         return ConversationHandler.END
 
     logger.info(f"Пользователь {user.id} ({user.username}) ставит контейнеры {containers} на {time_obj.strftime('%H:%M')}")
 
     try:
         async with SessionLocal() as session:
-            sub = TrackingSubscription(
-                user_id=user.id,
-                username=user.username,
-                containers=containers,
-                notify_time=time_obj
-            )
+            sub = TrackingSubscription(user_id=user.id, username=user.username, containers=containers, notify_time=time_obj)
             session.add(sub)
             await session.commit()
         logger.info(f"Подписка успешно сохранена для пользователя {user.id} на {time_obj.strftime('%H:%M')}")
 
-        # --- ИЗМЕНЕНИЕ: Логика "Эффекта Таноса" ---
-        confirmation_text = f"✅ Слежение для контейнеров: {', '.join(containers)} установлено на {time_obj.strftime('%H:%M')}"
+        confirmation_text = f"✅ Слежение для: {', '.join(containers)} установлено на {time_obj.strftime('%H:%M')}"
         if query.message:
             await query.edit_message_text(text=confirmation_text)
 
-        # Ждем 5 секунд, чтобы пользователь успел прочитать
         await asyncio.sleep(5)
 
-        # Удаляем сообщения для очистки чата
         try:
-            # Удаляем сообщение бота с подтверждением
             if query.message:
                 await query.delete_message()
             
-            # Удаляем исходное сообщение пользователя с номерами контейнеров
             user_message_id = context.user_data.get('container_message_id')
             if user_message_id and update.effective_chat:
                 await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=user_message_id)
@@ -124,13 +117,13 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает отмену внутри диалога."""
     if update.message:
-        await update.message.reply_text("❌ Отмена слежения")
+        await update.message.reply_text("❌ Установка слежения отменена.")
     return ConversationHandler.END
 
-# ... (остальной код файла остается без изменений) ...
-
 async def cancel_tracking_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начинает диалог отмены всех слежений."""
     text = "Вы уверены, что хотите отменить все ваши слежения?"
     keyboard = cancel_tracking_confirm_keyboard
 
@@ -142,6 +135,7 @@ async def cancel_tracking_start(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(text, reply_markup=keyboard)
 
 async def cancel_tracking_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждает или отменяет удаление всех подписок пользователя."""
     if not update.callback_query:
         return ConversationHandler.END
         
@@ -150,9 +144,7 @@ async def cancel_tracking_confirm(update: Update, context: ContextTypes.DEFAULT_
     
     try:
         async with SessionLocal() as session:
-            await session.execute(
-                delete(TrackingSubscription).where(TrackingSubscription.user_id == query.from_user.id)
-            )
+            await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == query.from_user.id))
             await session.commit()
         await query.edit_message_text("❌ Все ваши слежения отменены.")
         logger.info(f"Все слежения пользователя {query.from_user.id} удалены.")
@@ -163,15 +155,14 @@ async def cancel_tracking_confirm(update: Update, context: ContextTypes.DEFAULT_
     return ConversationHandler.END
 
 async def cancel_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает команду /canceltracking."""
     if not update.message or not update.message.from_user:
         return
     
     user_id = update.message.from_user.id
     try:
         async with SessionLocal() as session:
-            await session.execute(
-                delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
-            )
+            await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id))
             await session.commit()
         await update.message.reply_text("❌ Все ваши слежения отменены.")
         logger.info(f"Все слежения пользователя {user_id} удалены.")
@@ -181,6 +172,7 @@ async def cancel_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ошибка при отмене слежений.")
 
 def tracking_conversation_handler():
+    """Собирает все обработчики слежения в один ConversationHandler."""
     return ConversationHandler(
         entry_points=[
             CallbackQueryHandler(ask_containers, pattern="^track_request$"),
@@ -201,6 +193,7 @@ async def send_container_dislocation_response(
     last_operation_text: str, wagon_text: str, distance_km: float | int,
     eta_days: float | int,
 ) -> None:
+    """Формирует и отправляет карточку с информацией о дислокации контейнера."""
     try:
         train = await get_latest_train_by_container(container_number)
     except Exception as e:
@@ -221,7 +214,11 @@ async def send_container_dislocation_response(
 
     if update.message:
         await update.message.reply_text(text)
-    elif update.callback_query and update.callback_query.message:
-        await update.callback_query.message.reply_text(text)
+    elif update.callback_query:
+        message = update.callback_query.message
+        # Проверяем, что message существует и является доступным сообщением
+        if message and isinstance(message, Message):
+            await message.reply_text(text)
     elif update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+
