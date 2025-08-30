@@ -139,18 +139,28 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 5. Старт отмены слежения (кнопка)
 async def cancel_tracking_start(update, context):
-    user_id = update.effective_user.id if update.effective_user else "Unknown"
-    logger.info(f"[cancel_tracking_start] Запрошена отмена слежения пользователем {user_id}")
+    user = update.effective_user
+    logger.info(f"[cancel_tracking_start] Запрошена отмена слежения пользователем {getattr(user, 'id', 'Unknown')}")
     text = "Вы уверены, что хотите отменить все ваши слежения?"
+
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.reply_text(text, reply_markup=cancel_tracking_confirm_keyboard)
+        msg = update.callback_query.message
+        if msg:
+            await msg.reply_text(text, reply_markup=cancel_tracking_confirm_keyboard)
+        else:
+            if update.effective_chat:
+                await context.bot.send_message(update.effective_chat.id, text, reply_markup=cancel_tracking_confirm_keyboard)
     else:
-        await update.message.reply_text(text, reply_markup=cancel_tracking_confirm_keyboard)
+        if update.message:
+            await update.message.reply_text(text, reply_markup=cancel_tracking_confirm_keyboard)
+        elif update.effective_chat:
+            await context.bot.send_message(update.effective_chat.id, text, reply_markup=cancel_tracking_confirm_keyboard)
 
 # 6. Callback обработка подтверждения/отмены
 async def cancel_tracking_confirm(update, context):
     query = update.callback_query
+    await query.answer()
     user_id = query.from_user.id
 
     if query.data == "cancel_tracking_yes":
@@ -162,14 +172,13 @@ async def cancel_tracking_confirm(update, context):
                 await session.commit()
             await query.edit_message_text("❌ Все ваши слежения отменены.")
             logger.info(f"[cancel_tracking_confirm] Все слежения пользователя {user_id} удалены.")
-            return ConversationHandler.END
         except Exception as e:
             logger.error(f"[cancel_tracking_confirm] Ошибка при отмене слежений пользователя {user_id}: {e}", exc_info=True)
             await query.edit_message_text("❌ Ошибка при отмене слежений.")
-            return ConversationHandler.END
     elif query.data == "cancel_tracking_no":
         logger.info(f"[cancel_tracking_confirm] Пользователь {user_id} отменил отмену слежений.")
         await query.edit_message_text("Отмена слежения не выполнена.")
+
     return ConversationHandler.END
 
 # Старый вариант для команды /canceltracking
@@ -181,11 +190,17 @@ async def cancel_tracking(update, context):
                 delete(TrackingSubscription).where(TrackingSubscription.user_id == user_id)
             )
             await session.commit()
-        await update.message.reply_text("❌ Все ваши слежения отменены.")
+        if update.message:
+            await update.message.reply_text("❌ Все ваши слежения отменены.")
+        elif update.effective_chat:
+            await context.bot.send_message(update.effective_chat.id, "❌ Все ваши слежения отменены.")
         logger.info(f"[cancel_tracking] Все слежения пользователя {user_id} удалены.")
     except Exception as e:
         logger.error(f"[cancel_tracking] Ошибка при удалении слежений пользователя {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ Ошибка при отмене слежений.")
+        if update.message:
+            await update.message.reply_text("❌ Ошибка при отмене слежений.")
+        elif update.effective_chat:
+            await context.bot.send_message(update.effective_chat.id, "❌ Ошибка при отмене слежений.")
 
 # ConversationHandler для главного меню
 def tracking_conversation_handler():
