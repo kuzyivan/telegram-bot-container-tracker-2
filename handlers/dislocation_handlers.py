@@ -7,7 +7,7 @@ import re
 from logger import get_logger
 from db import SessionLocal
 from models import Stats
-# ИЗМЕНЕНИЕ: Импортируем обе нужные нам функции из слоя запросов
+# Импортируем обе нужные нам функции из слоя запросов
 from queries.containers import get_latest_train_by_container, get_latest_tracking_data
 
 logger = get_logger(__name__)
@@ -63,10 +63,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with SessionLocal() as session:
         for container_number in container_numbers:
-            # ИЗМЕНЕНИЕ: Вместо прямого запроса вызываем готовую функцию из queries
+            # Вызываем функцию, которая возвращает список объектов Row
             rows = await get_latest_tracking_data(container_number)
 
-            # Логика статистики остается здесь, так как она относится к действию пользователя
+            # Логика статистики
             stats_record = Stats(
                 container_number=container_number,
                 user_id=user_id,
@@ -79,7 +79,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 not_found.append(container_number)
                 continue
             
-            # rows[0] - это объект Row, который мы и будем использовать
+            # В список found_rows добавляем сам объект Row
             found_rows.append(rows[0])
 
     # --- Логика обработки найденных данных ---
@@ -88,7 +88,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             rows_for_excel = []
             for row in found_rows:
-                # Объект Tracking находится внутри Row по индексу [0]
+                # ИСПРАВЛЕНИЕ: Сначала извлекаем объект Tracking из Row по индексу [0]
                 tracking_obj = row[0]
                 train = await get_latest_train_by_container(tracking_obj.container_number) or ""
                 rows_for_excel.append([
@@ -112,7 +112,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if found_rows:
-        # Объект Tracking находится внутри Row по индексу [0]
+        # ИСПРАВЛЕНИЕ: Сначала извлекаем объект Tracking из Row по индексу [0]
         tracking_obj = found_rows[0][0]
         
         train = await get_latest_train_by_container(tracking_obj.container_number)

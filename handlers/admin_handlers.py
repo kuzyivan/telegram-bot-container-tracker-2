@@ -2,6 +2,8 @@
 import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
+# ИЗМЕНЕНИЕ: Импортируем помощника для экранирования Markdown
+from telegram.helpers import escape_markdown
 
 from config import ADMIN_CHAT_ID
 from logger import get_logger
@@ -68,16 +70,21 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Нет статистики за последние сутки.")
             return
 
-        text_msg = "📊 **Статистика за последние 24 часа:**\n\n"
+        text_parts = ["📊 *Статистика за последние 24 часа:*\n"]
         for row in rows:
+            # ИЗМЕНЕНИЕ: Экранируем данные, которые могут содержать спецсимволы
+            safe_username = escape_markdown(str(row.username), version=2)
+            safe_containers = escape_markdown(str(row.containers), version=2)
+            
             entry = (
-                f"👤 **{row.username}** (ID: `{row.user_id}`)\n"
-                f"Запросов: **{row.request_count}**\n"
-                f"Контейнеры: `{row.containers}`\n\n"
+                f"👤 *{safe_username}* \\(ID: `{row.user_id}`\\)\n"
+                f"Запросов: *{row.request_count}*\n"
+                f"Контейнеры: `{safe_containers}`\n"
             )
-            text_msg += entry
+            text_parts.append(entry)
         
-        await update.message.reply_text(text_msg, parse_mode='Markdown')
+        full_message = "\n".join(text_parts)
+        await update.message.reply_text(full_message, parse_mode='MarkdownV2')
         logger.info("[stats] Статистика успешно отправлена.")
     except Exception as e:
         logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
@@ -102,7 +109,6 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         with open(file_path, "rb") as f:
             await update.message.reply_document(document=f, filename=filename)
-
     except Exception as e:
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
         if update.message:
@@ -131,11 +137,9 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Тестовая мульти-рассылка готова.")
 
         admin_user = await get_admin_user_for_email(ADMIN_CHAT_ID)
-        # ИСПРАВЛЕНИЕ: Используем явную проверку 'is not None'
         if admin_user and admin_user.email is not None:
             await send_email(to=admin_user.email, attachments=[file_path])
             logger.info(f"📧 Тестовое письмо отправлено на {admin_user.email}")
-
     except Exception as e:
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         if update.message:
