@@ -27,7 +27,6 @@ async def get_latest_train_by_container(container_number: str) -> str | None:
 
 async def get_latest_tracking_data(container_number: str) -> Sequence[Row]:
     """
-    НОВАЯ ФУНКЦИЯ
     Находит все последние записи о дислокации для указанного контейнера
     из таблицы 'Tracking'.
     """
@@ -39,4 +38,5 @@ async def get_latest_tracking_data(container_number: str) -> Sequence[Row]:
                 Tracking.operation_date.desc()
             )
         )
+        # fetchall() возвращает список объектов Row
         return result.fetchall()

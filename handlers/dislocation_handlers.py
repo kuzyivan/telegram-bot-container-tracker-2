@@ -2,19 +2,19 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from sqlalchemy import select
 import re
 
 from logger import get_logger
 from db import SessionLocal
-from models import Tracking, Stats
-from queries.containers import get_latest_train_by_container
+from models import Stats
+# ИЗМЕНЕНИЕ: Импортируем обе нужные нам функции из слоя запросов
+from queries.containers import get_latest_train_by_container, get_latest_tracking_data
 
 logger = get_logger(__name__)
 
 
 def _fmt_num(x):
-    """Форматирование чисел: убирает .0 даже если вход — строка."""
+    """Форматирование чисел: убирает .0."""
     try:
         f = float(x)
         if f.is_integer():
@@ -25,7 +25,7 @@ def _fmt_num(x):
 
 
 def detect_wagon_type(wagon_number: str) -> str:
-    """Определение типа вагона по диапазону: 60–69 → полувагон, остальное → платформа."""
+    """Определение типа вагона по диапазону."""
     try:
         num = int(str(wagon_number)[:2])
     except (ValueError, TypeError):
@@ -36,19 +36,18 @@ def detect_wagon_type(wagon_number: str) -> str:
 
 
 COLUMNS = [
-    'Номер контейнера', 'Поезд',
-    'Станция отправления', 'Станция назначения',
-    'Станция операции', 'Операция', 'Дата и время операции',
-    'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-    'Номер вагона', 'Дорога операции'
+    'Номер контейнера', 'Поезд', 'Станция отправления', 'Станция назначения',
+    'Станция операции', 'Операция', 'Дата и время операции', 'Номер накладной',
+    'Расстояние оставшееся', 'Прогноз прибытия (дней)', 'Номер вагона', 'Дорога операции'
 ]
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Главная рабочая функция поиска контейнеров.
+    Теперь она не содержит прямых SQL-запросов.
     """
     if not update.message or not update.message.text or not update.message.from_user:
-        logger.warning(f"[dislocation] получено обновление без необходимой информации")
+        logger.warning("[dislocation] получено обновление без необходимой информации")
         if update.message:
             await update.message.reply_text("⛔ Пожалуйста, отправьте текстовый номер контейнера.")
         return
@@ -64,16 +63,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     async with SessionLocal() as session:
         for container_number in container_numbers:
-            result = await session.execute(
-                select(Tracking).where(
-                    Tracking.container_number == container_number
-                ).order_by(
-                    Tracking.operation_date.desc()
-                )
-            )
-            # result.fetchall() возвращает список объектов Row
-            rows = result.fetchall()
+            # ИЗМЕНЕНИЕ: Вместо прямого запроса вызываем готовую функцию из queries
+            rows = await get_latest_tracking_data(container_number)
 
+            # Логика статистики остается здесь, так как она относится к действию пользователя
             stats_record = Stats(
                 container_number=container_number,
                 user_id=user_id,
@@ -86,14 +79,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 not_found.append(container_number)
                 continue
             
-            # Добавляем в список сам объект Row
+            # rows[0] - это объект Row, который мы и будем использовать
             found_rows.append(rows[0])
+
+    # --- Логика обработки найденных данных ---
 
     if len(container_numbers) > 1 and found_rows:
         try:
             rows_for_excel = []
             for row in found_rows:
-                # ИСПРАВЛЕНИЕ: Обращаемся к объекту Tracking внутри Row по индексу [0]
+                # Объект Tracking находится внутри Row по индексу [0]
                 tracking_obj = row[0]
                 train = await get_latest_train_by_container(tracking_obj.container_number) or ""
                 rows_for_excel.append([
@@ -117,7 +112,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if found_rows:
-        # ИСПРАВЛЕНИЕ: Обращаемся к объекту Tracking внутри Row по индексу [0]
+        # Объект Tracking находится внутри Row по индексу [0]
         tracking_obj = found_rows[0][0]
         
         train = await get_latest_train_by_container(tracking_obj.container_number)
@@ -150,3 +145,4 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text("Ничего не найдено по введённым номерам.")
+
