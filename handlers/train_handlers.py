@@ -26,6 +26,10 @@ DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # /upload_train — подсказка по загрузке
 async def upload_train_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ИСПРАВЛЕНИЕ 1: Добавляем проверку, что update.message существует
+    if not update.message:
+        return
+
     if not update.effective_user or update.effective_user.id != ADMIN_CHAT_ID:
         return
     await update.message.reply_text(
@@ -39,7 +43,6 @@ async def upload_train_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_train_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user or user.id != ADMIN_CHAT_ID:
-        # игнорируем не-админа
         return
 
     if not update.message or not update.message.document:
@@ -48,37 +51,33 @@ async def handle_train_excel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     doc = update.message.document
     filename = (doc.file_name or "train.xlsx").strip()
 
-    # допускаем только .xlsx
     if not filename.lower().endswith(".xlsx"):
         await update.message.reply_text("⛔ Пришлите Excel-файл .xlsx")
         return
 
-    # скачиваем файл на диск
     file = await context.bot.get_file(doc.file_id)
     dest = DOWNLOAD_DIR / filename
     await file.download_to_drive(custom_path=str(dest))
     logger.info(f"📥 Получен файл от админа: {dest}")
 
-    # вызываем импортёр поездов
     try:
-        result: Any = await import_train_from_excel(dest)
-        # Поддерживаем обе сигнатуры: (updated, train_code) ИЛИ (updated, total, train_code)
+        # ИСПРАВЛЕНИЕ 2: Явно преобразуем объект Path в строку с помощью str()
+        result: Any = await import_train_from_excel(str(dest))
+
         updated: int = 0
         total: int | None = None
         train_code: str = "—"
 
         if isinstance(result, tuple):
             if len(result) == 3:
-                updated, total, train_code = result  # type: ignore[misc]
+                updated, total, train_code = result
             elif len(result) == 2:
-                updated, train_code = result  # type: ignore[misc]
+                updated, train_code = result
             else:
-                # непредвиденная форма
                 logger.warning(f"import_train_from_excel() вернул необычный результат: {result}")
         else:
             logger.warning(f"import_train_from_excel() вернул не-кортеж: {type(result)}")
 
-        # Формируем ответ
         if total is not None:
             text = (
                 f"✅ Поезд <b>{train_code}</b> обработан.\n"
@@ -97,13 +96,10 @@ async def handle_train_excel(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 # Регистрация хендлеров в приложении
-
 def register_train_handlers(app: Application) -> None:
     """Подключить хендлеры загрузки поездов к приложению PTB."""
-    # Команда-подсказка только для админа
     app.add_handler(CommandHandler("upload_train", upload_train_help))
 
-    # Приём Excel-документов (xlsx) от админа
     app.add_handler(
         MessageHandler(
             filters.Chat(ADMIN_CHAT_ID)
@@ -113,8 +109,7 @@ def register_train_handlers(app: Application) -> None:
             handle_train_excel,
         )
     )
-
-    # Про запас — если Telegram не прислал MIME-тип, проверим по расширению
+    
     app.add_handler(
         MessageHandler(
             filters.Chat(ADMIN_CHAT_ID)

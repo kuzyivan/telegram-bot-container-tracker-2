@@ -1,6 +1,9 @@
+# queries/train_queries.py
 from __future__ import annotations
 from typing import List, Tuple, Optional
 from sqlalchemy import select, func, desc, literal
+# ИСПРАВЛЕНИЕ 1: Импортируем 'Row' из sqlalchemy
+from sqlalchemy.engine import Row
 
 from db import SessionLocal
 from models import TerminalContainer, Tracking
@@ -31,9 +34,10 @@ async def get_train_summary(train_no: str) -> List[Tuple[str, int]]:
         return [(r.client_name, int(r.cnt)) for r in rows]
 
 
-async def get_train_latest_status(train_no: str) -> Optional[Tuple[str, str, str, str, str, str]]:
+# ИСПРАВЛЕНИЕ 2: Меняем аннотацию возвращаемого типа с Tuple на Row
+async def get_train_latest_status(train_no: str) -> Optional[Row]:
     """
-    Возвращает кортеж:
+    Возвращает объект Row с данными:
     (container_number, operation, current_station, operation_date, wagon_number, operation_road)
     для ПОСЛЕДНЕЙ записи по любому контейнеру из поезда train_no.
     Если контейнеров нет — None.
@@ -53,12 +57,12 @@ async def get_train_latest_status(train_no: str) -> Optional[Tuple[str, str, str
                 Tracking.container_number,
                 Tracking.operation,
                 Tracking.current_station,
-                Tracking.operation_date,  # у тебя строка — выводим как есть
+                Tracking.operation_date,
                 Tracking.wagon_number,
                 Tracking.operation_road,
             )
             .where(Tracking.container_number == ctn)
-            .order_by(desc(Tracking.id))   # надёжно как "последняя вставка"
+            .order_by(desc(Tracking.id))
             .limit(1)
         )
         row = (await session.execute(q_latest)).first()

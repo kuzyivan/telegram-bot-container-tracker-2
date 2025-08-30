@@ -1,6 +1,7 @@
 # queries/notification_queries.py
 from datetime import time
-from typing import Sequence, List
+# ИСПРАВЛЕНИЕ 1: Импортируем 'Optional' для совместимости со старыми версиями Python
+from typing import Sequence, List, Optional
 
 from sqlalchemy import select, select as sync_select
 from sqlalchemy.engine.row import Row
@@ -43,18 +44,18 @@ async def get_tracking_data_for_containers(container_numbers: List[str]) -> List
                 .filter(Tracking.container_number == container)
                 .order_by(Tracking.operation_date.desc())
             )
-            track = res.first() # Берем только самую свежую запись
+            track = res.first()
             if track:
                 rows.append(track)
     return rows
 
-async def get_user_for_email(user_telegram_id: int) -> User | None:
+# ИСПРАВЛЕНИЕ 2: Заменяем 'User | None' на 'Optional[User]'
+async def get_user_for_email(user_telegram_id: int) -> Optional[User]:
     """
     Находит пользователя по его Telegram ID и проверяет, включены ли у него email-уведомления.
     Возвращает объект пользователя или None.
     """
     async with SessionLocal() as session:
-        # Используем sync_select, так как в оригинальном коде он использовался для этой таблицы
         result = await session.execute(
             sync_select(User).where(User.telegram_id == user_telegram_id, User.email_enabled == True)
         )

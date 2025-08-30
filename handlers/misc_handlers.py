@@ -1,3 +1,4 @@
+# handlers/misc_handlers.py
 from telegram import Update
 from telegram.ext import ContextTypes
 from db import get_tracked_containers_by_user, remove_user_tracking
@@ -8,6 +9,10 @@ logger = get_logger(__name__)
 
 # --- Показать отслеживаемые контейнеры пользователя ---
 async def show_my_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ИСПРАВЛЕНИЕ: Добавляем проверку, что message и from_user существуют
+    if not update.message or not update.message.from_user:
+        return
+
     user_id = update.message.from_user.id
     containers = await get_tracked_containers_by_user(user_id)
     if containers:
@@ -19,6 +24,10 @@ async def show_my_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Отмена всех подписок пользователя ---
 async def cancel_my_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ИСПРАВЛЕНИЕ: Добавляем проверку, что message и from_user существуют
+    if not update.message or not update.message.from_user:
+        return
+
     user_id = update.message.from_user.id
     await remove_user_tracking(user_id)
     await update.message.reply_text("Все подписки успешно отменены.")

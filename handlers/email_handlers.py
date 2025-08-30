@@ -1,3 +1,4 @@
+# handlers/email_handlers.py
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 
@@ -11,6 +12,10 @@ SET_EMAIL = range(1)
 
 # === Команда /set_email ===
 async def set_email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ИСПРАВЛЕНИЕ: Проверяем, что message существует
+    if not update.message:
+        return
+
     await update.message.reply_text(
         "Пожалуйста, отправьте ваш email для уведомлений, или /cancel для отмены.",
         reply_markup=ReplyKeyboardRemove()
@@ -19,6 +24,10 @@ async def set_email_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === Обработка введенного email ===
 async def process_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ИСПРАВЛЕНИЕ: Проверяем, что message, text и from_user существуют
+    if not update.message or not update.message.text or not update.message.from_user:
+        return ConversationHandler.END
+
     email = update.message.text
     telegram_id = update.message.from_user.id
     username = update.message.from_user.username or ""
@@ -33,6 +42,10 @@ async def process_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === Обработка отмены ===
 async def cancel_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ИСПРАВЛЕНИЕ: Проверяем, что message и user существуют
+    if not update.message or not update.effective_user:
+        return ConversationHandler.END
+
     await update.message.reply_text(
         "Ввод email отменён.",
         reply_markup=ReplyKeyboardRemove()
