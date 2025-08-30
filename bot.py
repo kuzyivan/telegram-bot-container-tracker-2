@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import TOKEN, ADMIN_CHAT_ID
-# ИСПРАВЛЕНИЕ 1: Импортируем 'check_mail' вместо 'start_mail_checking'
-from mail_reader import check_mail
 from scheduler import start_scheduler
+# Импортируем новый сервис для стартовой проверки
+from services.terminal_importer import check_and_process_terminal_report
 
-# --- разнесённые хендлеры ---
+# --- Импорты хендлеров ---
 from handlers.email_handlers import set_email_command, process_email, cancel_email, SET_EMAIL
 from handlers.menu_handlers import (
     start, show_menu, reply_keyboard_handler,
@@ -35,50 +35,53 @@ from handlers.train import setup_handlers as setup_train_handlers
 
 
 async def error_handler(update, context):
+    """Логирует все необработанные ошибки."""
     logger.error("❗️Произошла необработанная ошибка: %s", context.error, exc_info=True)
 
 
-async def debug_all_updates(update: Update, context):
+async def debug_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отладочный обработчик для логирования всех входящих апдейтов."""
     try:
-        uid = update.effective_user.id if update.effective_user else "—"
-        uname = update.effective_user.username if update.effective_user else "—"
+        user = update.effective_user
+        uid = user.id if user else "—"
+        uname = user.username if user else "—"
         txt = getattr(getattr(update, "message", None), "text", None)
-        logger.info(f"[DEBUG UPDATE] from {uid} (@{uname}) type={type(update).__name__} text={txt}")
+        logger.info(f"[DEBUG UPDATE] from {uid} (@{uname}) type={type(update).__name__} text='{txt}'")
     except Exception:
-        logger.exception("[DEBUG UPDATE] failed to log update")
+        logger.exception("[DEBUG UPDATE] не удалось залогировать апдейт")
 
 
-async def set_bot_commands(application):
+async def set_bot_commands(application: Application):
+    """Устанавливает команды в меню Telegram для обычных пользователей и администратора."""
     user_commands = [
         BotCommand("start", "Главное меню"),
-        BotCommand("menu", "Главное меню"),
+        BotCommand("menu", "Показать главное меню"),
         BotCommand("canceltracking", "Отменить все слежения"),
-        BotCommand("set_email", "Указать e-mail для отчётов"),
-        BotCommand("email_off", "Отключить рассылку на e-mail"),
-        BotCommand("upload_train", "Загрузить Excel с поездами"),
+        BotCommand("set_email", "Указать/изменить e-mail для отчётов"),
     ]
     await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     logger.info("✅ Команды для пользователей установлены.")
 
     admin_commands = user_commands + [
-        BotCommand("stats", "Статистика (админ)"),
-        BotCommand("exportstats", "Выгрузка (админ)"),
-        BotCommand("testnotify", "Тестовая рассылка (админ)"),
-        BotCommand("tracking", "Выгрузка подписок (админ)"),
-        BotCommand("broadcast", "Рассылка (админ)"),
+        BotCommand("stats", "Статистика за сутки (админ)"),
+        BotCommand("exportstats", "Выгрузить всю статистику (админ)"),
+        BotCommand("testnotify", "Тестовая рассылка по всем (админ)"),
+        BotCommand("tracking", "Выгрузить все подписки (админ)"),
+        BotCommand("broadcast", "Рассылка всем пользователям (админ)"),
         BotCommand("train", "Отчёт по поезду (админ)"),
+        BotCommand("upload_train", "Загрузить Excel поезда (админ)"),
     ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
 
 
 def main():
+    """Основная функция для запуска бота."""
     logger.info("🚦 Старт бота!")
     
-    # ИСПРАВЛЕНИЕ 2: Добавляем проверку наличия токена перед запуском
     if not TOKEN:
         logger.critical("🔥 Критическая ошибка: TELEGRAM_TOKEN не задан! Бот не может запуститься.")
-        return  # Прерываем выполнение, если токена нет
+        return
 
     try:
         request = HTTPXRequest(
@@ -90,69 +93,78 @@ def main():
         )
         application = Application.builder().token(TOKEN).request(request).build()
 
+        # --- Регистрация обработчиков ---
+        
+        # Диалоги (Conversation Handlers)
         set_email_conv_handler = ConversationHandler(
             entry_points=[CommandHandler("set_email", set_email_command)],
             states={SET_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_email)]},
             fallbacks=[CommandHandler("cancel", cancel_email)],
         )
         application.add_handler(set_email_conv_handler)
-        
         application.add_handler(broadcast_conversation_handler)
         application.add_handler(tracking_conversation_handler())
+        setup_train_handlers(application)
 
-        application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
-        application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_start, pattern=r"^cancel_tracking$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern=r"^cancel_tracking_(yes|no)$"))
-
-        application.add_handler(CommandHandler("menu", show_menu))
+        # Обработчики команд
         application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("menu", show_menu))
         application.add_handler(CommandHandler("canceltracking", cancel_my_tracking))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
-        setup_train_handlers(application)
-        logger.info("✅ /train зарегистрирован (handlers.train)")
-
         application.add_handler(CommandHandler("upload_train", upload_train_help))
-        application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
+        
+        # Обработчики Callback-кнопок
+        application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
+        application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
+        application.add_handler(CallbackQueryHandler(cancel_tracking_start, pattern=r"^cancel_tracking$"))
+        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern=r"^cancel_tracking_(yes|no)$"))
+
+        # Обработчики сообщений
         application.add_handler(MessageHandler(
             filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
             reply_keyboard_handler
         ))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
+        application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
+        
+        # Этот обработчик должен быть одним из последних, так как он ловит любой текст
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        # Отладочный обработчик (ловит вообще всё, что не было поймано ранее)
         application.add_handler(MessageHandler(filters.ALL, debug_all_updates))
 
+        # Глобальный обработчик ошибок
         application.add_error_handler(error_handler)
 
-        async def post_init(app):
-            logger.info("⚙️ Запускаем фоновую проверку почты и планировщик...")
-
+        async def post_init(app: Application):
+            """Выполняется после инициализации приложения, перед запуском polling."""
+            logger.info("⚙️ Запускаем задачи после инициализации...")
             try:
-                await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал и слушает апдейты (polling).")
+                await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал (с разделенными задачами).")
                 me = await app.bot.get_me()
-                logger.info(f"getMe: @{me.username} (id={me.id})")
+                logger.info(f"Успешный getMe: @{me.username} (id={me.id})")
             except Exception as e:
                 logger.error(f"Не смог отправить стартовое сообщение админу: {e}", exc_info=True)
 
-            # ИСПРАВЛЕНИЕ 1 (продолжение): Вызываем 'check_mail'
-            await check_mail()
+            # При старте запускаем импорт отчета терминала, чтобы получить актуальную базу,
+            # если бот был выключен во время планового запуска.
+            logger.info("Запускаю стартовую проверку отчета терминала...")
+            await check_and_process_terminal_report()
+            
+            # Запускаем планировщик
             start_scheduler(app.bot)
+            
+            # Устанавливаем команды в меню
             await set_bot_commands(app)
             logger.info("✅ post_init завершён.")
 
         application.post_init = post_init
-
-        logger.info("🤖 Бот готов к запуску. Запускаем polling...")
-        application.run_polling(
-            allowed_updates=None,
-            drop_pending_updates=False,
-            stop_signals=None,
-            close_loop=False
-        )
-        logger.info("✅ Бот завершил работу.")
+        
+        logger.info("🤖 Бот готов к запуску. Начинаю polling...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
 
     except Exception as e:
         logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
