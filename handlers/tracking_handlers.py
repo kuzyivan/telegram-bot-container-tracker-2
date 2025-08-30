@@ -29,14 +29,28 @@ async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог по установке слежения, запрашивая номера контейнеров."""
     user = update.effective_user
     logger.info(f"Пользователь {getattr(user, 'id', 'Unknown')} начал постановку на слежение.")
+    if context.user_data is None:
+        context.user_data = {}
 
     text = "Введите список контейнеров для слежения (через запятую или пробел):"
+    
+    # ИЗМЕНЕНИЕ: Запоминаем ID сообщения, с которого начался диалог
     if update.callback_query:
         await update.callback_query.answer()
+        # Сообщение с кнопкой "Задать слежение"
+        if update.callback_query.message:
+            context.user_data['start_message_id'] = update.callback_query.message.message_id
         if update.effective_chat:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            sent_message = await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            # Сообщение бота "Введите список..."
+            context.user_data['prompt_message_id'] = sent_message.message_id
     elif update.message:
-        await update.message.reply_text(text)
+        # Сообщение пользователя "Задать слежение"
+        context.user_data['start_message_id'] = update.message.message_id
+        sent_message = await update.message.reply_text(text)
+        # Сообщение бота "Введите список..."
+        context.user_data['prompt_message_id'] = sent_message.message_id
+        
     return TRACK_CONTAINERS
 
 async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -65,7 +79,7 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return SET_TIME
 
 async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сохраняет подписку в БД и удаляет сообщения с "эффектом Таноса"."""
+    """Сохраняет подписку в БД и удаляет ВСЕ сообщения диалога."""
     query = update.callback_query
     if not query or not query.data:
         return ConversationHandler.END
@@ -99,28 +113,50 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await asyncio.sleep(5)
 
+        # ИЗМЕНЕНИЕ: Удаляем все сообщения по их ID, сохраненным в context
         try:
-            if query.message:
-                await query.delete_message()
+            chat_id = update.effective_chat.id if update.effective_chat else None
+            if not chat_id: return
+
+            message_ids_to_delete = [
+                context.user_data.get('start_message_id'),
+                context.user_data.get('prompt_message_id'),
+                context.user_data.get('container_message_id'),
+                query.message.message_id if query.message else None,
+            ]
             
-            user_message_id = context.user_data.get('container_message_id')
-            if user_message_id and update.effective_chat:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=user_message_id)
+            for msg_id in message_ids_to_delete:
+                if msg_id:
+                    try:
+                        await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                    except Exception:
+                        pass # Игнорируем ошибки, если сообщение уже удалено
+            
         except Exception as e:
-            logger.warning(f"Не удалось удалить сообщения после установки слежения: {e}")
+            logger.warning(f"Не удалось полностью очистить чат после установки слежения: {e}")
 
     except Exception as e:
         logger.error(f"Ошибка при сохранении подписки пользователя {user.id}: {e}", exc_info=True)
         if query.message:
             await query.edit_message_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
             
+    finally:
+        # Очищаем user_data в любом случае
+        if context.user_data:
+            context.user_data.clear()
+
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает отмену внутри диалога."""
     if update.message:
         await update.message.reply_text("❌ Установка слежения отменена.")
+    # Очищаем user_data при отмене
+    if context.user_data:
+        context.user_data.clear()
     return ConversationHandler.END
+
+# ... (остальной код файла без изменений) ...
 
 async def cancel_tracking_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог отмены всех слежений."""
