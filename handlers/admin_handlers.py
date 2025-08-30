@@ -109,6 +109,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         with open(file_path, "rb") as f:
             await update.message.reply_document(document=f, filename=filename)
+
     except Exception as e:
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
         if update.message:
@@ -144,3 +145,4 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         if update.message:
             await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
+

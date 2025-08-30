@@ -1,4 +1,5 @@
 # handlers/tracking_handlers.py
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, CommandHandler
@@ -48,6 +49,8 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if context.user_data is None:
         context.user_data = {}
     context.user_data['containers'] = containers
+    # ИЗМЕНЕНИЕ: Сохраняем ID сообщения пользователя с номерами контейнеров для последующего удаления
+    context.user_data['container_message_id'] = update.message.message_id
 
     keyboard = [
         [InlineKeyboardButton("09:00", callback_data="time_09")],
@@ -60,11 +63,12 @@ async def receive_containers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return SET_TIME
 
 async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query or not update.callback_query.data:
+    query = update.callback_query
+    if not query or not query.data:
         return ConversationHandler.END
 
-    await update.callback_query.answer()
-    time_choice = update.callback_query.data.split("_")[1]
+    await query.answer()
+    time_choice = query.data.split("_")[1]
     time_obj = datetime.time(hour=9) if time_choice == "09" else datetime.time(hour=16)
 
     if context.user_data is None:
@@ -89,24 +93,42 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             session.add(sub)
             await session.commit()
-
         logger.info(f"Подписка успешно сохранена для пользователя {user.id} на {time_obj.strftime('%H:%M')}")
-        if update.effective_chat:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"✅ Контейнеры {', '.join(containers)} поставлены на слежение в {time_obj.strftime('%H:%M')}"
-            )
+
+        # --- ИЗМЕНЕНИЕ: Логика "Эффекта Таноса" ---
+        confirmation_text = f"✅ Слежение для контейнеров: {', '.join(containers)} установлено на {time_obj.strftime('%H:%M')}"
+        if query.message:
+            await query.edit_message_text(text=confirmation_text)
+
+        # Ждем 5 секунд, чтобы пользователь успел прочитать
+        await asyncio.sleep(5)
+
+        # Удаляем сообщения для очистки чата
+        try:
+            # Удаляем сообщение бота с подтверждением
+            if query.message:
+                await query.delete_message()
+            
+            # Удаляем исходное сообщение пользователя с номерами контейнеров
+            user_message_id = context.user_data.get('container_message_id')
+            if user_message_id and update.effective_chat:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=user_message_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщения после установки слежения: {e}")
+
     except Exception as e:
         logger.error(f"Ошибка при сохранении подписки пользователя {user.id}: {e}", exc_info=True)
-        # ИСПРАВЛЕНИЕ 1: Добавлена проверка на .message
-        if update.callback_query and update.callback_query.message:
-            await update.callback_query.message.reply_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
+        if query.message:
+            await query.edit_message_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
+            
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text("❌ Отмена слежения")
     return ConversationHandler.END
+
+# ... (остальной код файла остается без изменений) ...
 
 async def cancel_tracking_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "Вы уверены, что хотите отменить все ваши слежения?"
@@ -155,7 +177,6 @@ async def cancel_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Все слежения пользователя {user_id} удалены.")
     except Exception as e:
         logger.error(f"Ошибка при удалении слежений пользователя {user_id}: {e}", exc_info=True)
-        # ИСПРАВЛЕНИЕ 2: Добавлена проверка на .message
         if update.message:
             await update.message.reply_text("❌ Ошибка при отмене слежений.")
 
