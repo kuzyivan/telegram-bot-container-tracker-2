@@ -1,3 +1,4 @@
+# scheduler.py
 from __future__ import annotations
 
 import asyncio
@@ -6,19 +7,12 @@ from datetime import datetime, time
 from typing import Any, Callable, Optional, Mapping
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy.future import select
-from sqlalchemy import select as sync_select
 from pytz import timezone
 
-from telegram.error import TimedOut, NetworkError
-
-from db import SessionLocal
-from models import TrackingSubscription, Tracking, User
-from utils.send_tracking import create_excel_file, get_vladivostok_filename
-from utils.email_sender import send_email
 from mail_reader import check_mail, fetch_terminal_excel_and_process
 from utils.notify import notify_admin
 from logger import get_logger
+from services.notification_service import NotificationService
 
 # =========================
 # Константы и общие настройки
@@ -28,20 +22,19 @@ TZ = timezone("Asia/Vladivostok")
 
 # Параметры по умолчанию для всех джобов
 JOB_DEFAULTS = {
-    "coalesce": True,          # схлопывать накопившиеся пропуски в один запуск
-    "max_instances": 1,        # не параллелить один и тот же джоб
-    "misfire_grace_time": 300, # 5 минут на «опоздания»
+    "coalesce": True,
+    "max_instances": 1,
+    "misfire_grace_time": 300,
 }
 
 # Единые ID задач
 JOB_ID_MAIL_EVERY_20 = "mail_check_every_20"
-JOB_ID_IMPORT_08_30  = "terminal_import_08_30"
-JOB_ID_NOTIFY_FOR_09  = "notify_for_09"
-JOB_ID_NOTIFY_FOR_16  = "notify_for_16"
+JOB_ID_IMPORT_08_30 = "terminal_import_08_30"
+JOB_ID_NOTIFY_FOR_09 = "notify_for_09"
+JOB_ID_NOTIFY_FOR_16 = "notify_for_16"
 
 # Глобальный планировщик (один на приложение)
 scheduler = AsyncIOScheduler(timezone=TZ, job_defaults=JOB_DEFAULTS)
-
 
 # =========================
 # Вспомогательные функции
@@ -56,66 +49,28 @@ async def _maybe_await(func: Callable[..., Any], *args, **kwargs):
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
 
-
 def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mapping] = None) -> str:
-    """Формирует «красивое» сообщение админу по результатам 08:30-импорта.
-    Если stats — dict со сводкой из обработчика, подтянем знакомые ключи,
-    чтобы текст выглядел как в логах (цифры добавлено/обновлено и т.д.).
-    """
+    """Формирует сообщение админу по результатам импорта терминальной базы."""
     header = "✅ <b>Обновление базы терминала завершено</b>\n"
     base = f"<b>Время (Владивосток):</b> {started_dt.strftime('%d.%m %H:%M')}\n"
 
     if not stats or not isinstance(stats, Mapping):
         return header + base
-
-    pretty = []
-
-    # Общая техническая информация
-    for key, title in [
-        ("file_name", "Файл"),
-        ("sheets_processed", "Листов обработано"),
-        ("duration_sec", "Длительность, сек"),
-    ]:
-        if key in stats:
-            pretty.append(f"<b>{title}:</b> {stats[key]}")
-
-    # Итоги по строкам/контейнерам
-    for key, title in [
-        ("total_rows", "Строк обработано"),
-        ("total_added", "Добавлено всего"),
-        ("total_updated", "Обновлено всего"),
-        ("total_skipped", "Пропущено всего"),
-        ("duplicates_skipped", "Дубликатов пропущено"),
-    ]:
-        if key in stats:
-            pretty.append(f"<b>{title}:</b> {stats[key]}")
-
-    # Детализация по листам Loaded*/Dispatch* (если возвращается обработчиком)
-    for key, title in [
-        ("loaded_added", "Loaded: добавлено"),
-        ("loaded_updated", "Loaded: обновлено"),
-        ("loaded_skipped", "Loaded: пропущено"),
-        ("dispatch_added", "Dispatch: добавлено"),
-        ("dispatch_updated", "Dispatch: обновлено"),
-        ("dispatch_skipped", "Dispatch: пропущено"),
-    ]:
-        if key in stats:
-            pretty.append(f"<b>{title}:</b> {stats[key]}")
-
-    # Произвольный текст отчёта, если есть
-    for key in ("report", "summary", "message"):
-        if key in stats and stats[key]:
-            pretty.append(str(stats[key]))
-
+    
+    key_map = [
+        ("file_name", "Файл"), ("sheets_processed", "Листов обработано"), ("duration_sec", "Длительность, сек"),
+        ("total_rows", "Строк обработано"), ("total_added", "Добавлено всего"), ("total_updated", "Обновлено всего"),
+    ]
+    pretty = [f"<b>{title}:</b> {stats[key]}" for key, title in key_map if key in stats]
+    
     body = "\n".join(pretty)
     return header + base + (body + "\n" if body else "")
-
 
 # =========================
 # Джобы (jobs)
 # =========================
 async def job_check_mail():
-    """Проверка почты (tracking + попытка Executive summary)."""
+    """Проверяет почту на наличие новых трекинг-файлов."""
     logger.info("📬 [job_check_mail] Старт плановой проверки почты.")
     try:
         await _maybe_await(check_mail)
@@ -123,193 +78,77 @@ async def job_check_mail():
     except Exception as e:
         logger.error(f"❌ [job_check_mail] Ошибка: {e}", exc_info=True)
 
-
 async def job_daily_terminal_import():
-    """
-    Импорт ежедневной терминальной базы. Запуск строго в 08:30 по Владивостоку.
-    Скачивает сегодняшнее Executive summary в /root/AtermTrackBot/download_container
-    и импортирует листы Loaded*/Dispatch* в terminal_containers.
-    По завершении — уведомляет администратора с цифрами «как в логе».
-    """
+    """Импортирует данные из терминального отчета Executive summary."""
     logger.info("📥 [job_daily_terminal_import] 08:30 — запуск импорта Executive summary")
     started = datetime.now(TZ)
     try:
         stats = await _maybe_await(fetch_terminal_excel_and_process)
         logger.info("✅ [job_daily_terminal_import] Импорт успешно завершён.")
-
-        # Отправка уведомления админу (без звука)
-        try:
-            text = _format_terminal_import_message(started_dt=started, stats=stats)
-            await notify_admin(text, silent=True)
-            logger.info("[job_daily_terminal_import] Администратор уведомлён об успешном обновлении.")
-        except Exception as notify_err:
-            logger.error(f"❗ [job_daily_terminal_import] Не удалось уведомить админа: {notify_err}", exc_info=True)
-
+        
+        text = _format_terminal_import_message(started_dt=started, stats=stats)
+        await notify_admin(text, silent=True)
+        logger.info("[job_daily_terminal_import] Администратор уведомлён об успешном обновлении.")
     except Exception as e:
         logger.error(f"❌ [job_daily_terminal_import] Ошибка импорта: {e}", exc_info=True)
-        # Уведомление об ошибке — со звуком
-        try:
-            await notify_admin(
-                f"❌ <b>Ошибка обновления базы терминала</b>\n"
-                f"<b>Время (Владивосток):</b> {started.strftime('%d.%m %H:%M')}\n"
-                f"<code>{e}</code>",
-                silent=False,
-            )
-        except Exception as notify_err:
-            logger.error(f"❗ [job_daily_terminal_import] Не удалось уведомить админа об ошибке: {notify_err}", exc_info=True)
+        error_message = (
+            f"❌ <b>Ошибка обновления базы терминала</b>\n"
+            f"<b>Время (Владивосток):</b> {started.strftime('%d.%m %H:%M')}\n"
+            f"<code>{e}</code>"
+        )
+        await notify_admin(error_message, silent=False)
+        logger.error("[job_daily_terminal_import] Администратор уведомлён об ошибке.")
 
-
-async def send_notifications(bot, target_time: time):
+async def job_send_notifications(bot, target_time: time):
     """
-    Рассылка уведомлений пользователям, подписанным на конкретное время.
-    target_time — время из TrackingSubscription.notify_time (09:00 / 16:00 / произвольное).
+    Задача-обертка, которая создает экземпляр сервиса уведомлений и запускает рассылку.
     """
-    logger.info(f"🔔 [send_notifications] Старт рассылки для времени: {target_time}")
+    logger.info(f"🔔 Запуск задачи на рассылку для {target_time.strftime('%H:%M')}")
+    service = NotificationService(bot)
     try:
-        async with SessionLocal() as session:
-            result = await session.execute(
-                select(TrackingSubscription).where(TrackingSubscription.notify_time == target_time)
-            )
-            subscriptions = result.scalars().all()
-            logger.info(f"[send_notifications] Найдено подписок: {len(subscriptions)}")
-
-            columns = [
-                'Номер контейнера', 'Станция отправления', 'Станция назначения',
-                'Станция операции', 'Операция', 'Дата и время операции',
-                'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-                'Номер вагона', 'Дорога операции'
-            ]
-
-            for sub in subscriptions:
-                rows = []
-                for container in sub.containers:
-                    res = await session.execute(
-                        select(Tracking)
-                        .filter(Tracking.container_number == container)
-                        .order_by(Tracking.operation_date.desc())
-                    )
-                    track = res.scalars().first()
-                    if track:
-                        rows.append([
-                            track.container_number,
-                            track.from_station,
-                            track.to_station,
-                            track.current_station,
-                            track.operation,
-                            track.operation_date,
-                            track.waybill,
-                            track.km_left,
-                            track.forecast_days,
-                            track.wagon_number,
-                            track.operation_road
-                        ])
-
-                if not rows:
-                    containers_list = list(sub.containers) if isinstance(sub.containers, (list, tuple, set)) else []
-                    await bot.send_message(sub.user_id, f"📝 Нет данных по контейнерам {', '.join(containers_list)}")
-                    logger.info(f"[send_notifications] Нет данных для пользователя {sub.user_id} ({containers_list})")
-                    continue
-
-                # Создание Excel-файла с итогами
-                file_path = create_excel_file(rows, columns)
-                filename = get_vladivostok_filename()
-
-                # Отправка в Telegram (с ретраями и явными таймаутами)
-                attempts = 3
-                for i in range(attempts):
-                    try:
-                        with open(file_path, "rb") as f:
-                            await bot.send_document(
-                                chat_id=sub.user_id,
-                                document=f,
-                                filename=filename,
-                                read_timeout=90.0,
-                                write_timeout=90.0,
-                            )
-                        logger.info(f"✅ [send_notifications] Отправлен файл {filename} пользователю {sub.user_id} (Telegram)")
-                        break
-                    except (TimedOut, NetworkError) as send_err:
-                        logger.warning(
-                            f"[send_notifications] Таймаут отправки пользователю {sub.user_id} (попытка {i+1}/{attempts}): {send_err}"
-                        )
-                        if i == attempts - 1:
-                            logger.error(
-                                f"❌ [send_notifications] Не удалось отправить файл пользователю {sub.user_id} после ретраев.",
-                                exc_info=True,
-                            )
-                        else:
-                            await asyncio.sleep(2 ** i)
-                    except Exception as send_err:
-                        logger.error(
-                            f"❌ [send_notifications] Ошибка отправки файла в Telegram пользователю {sub.user_id}: {send_err}",
-                            exc_info=True,
-                        )
-                        break
-
-                # Доп. рассылка на email (если включена)
-                user_result = await session.execute(
-                    sync_select(User).where(User.telegram_id == sub.user_id, User.email_enabled == True)
-                )
-                user = user_result.scalar_one_or_none()
-
-                if user and user.email:
-                    try:
-                        await send_email(
-                            to=user.email,
-                            attachments=[file_path]
-                        )
-                        logger.info(f"📧 [send_notifications] Email с файлом отправлен на {user.email}")
-                    except Exception as email_err:
-                        logger.error(f"❌ [send_notifications] Ошибка при отправке email на {user.email}: {email_err}", exc_info=True)
-                else:
-                    logger.info(f"[send_notifications] У пользователя {sub.user_id} нет активного email для рассылки.")
+        await service.send_scheduled_notifications(target_time)
+        logger.info(f"✅ Задача на рассылку для {target_time.strftime('%H:%M')} завершена.")
     except Exception as e:
-        logger.critical(f"❌ [send_notifications] Критическая ошибка: {e}", exc_info=True)
-
+        logger.critical(f"❌ Критическая ошибка в задаче рассылки для {target_time.strftime('%H:%M')}: {e}", exc_info=True)
 
 # =========================
 # Публичная функция запуска
 # =========================
-
 def start_scheduler(bot):
     """
-    Регистрируем и запускаем все джобы планировщика.
+    Регистрирует и запускает все задачи планировщика.
     """
-    # 1) Рассылки
+    # 1) Рассылки в 09:00 и 16:00
     scheduler.add_job(
-        send_notifications,
-        trigger='cron',
-        hour=9, minute=0,
+        job_send_notifications,
+        trigger='cron', hour=9, minute=0,
         args=[bot, time(9, 0)],
         id=JOB_ID_NOTIFY_FOR_09,
         replace_existing=True,
         jitter=10,
     )
     scheduler.add_job(
-        send_notifications,
-        trigger='cron',
-        hour=16, minute=0,
+        job_send_notifications,
+        trigger='cron', hour=16, minute=0,
         args=[bot, time(16, 0)],
         id=JOB_ID_NOTIFY_FOR_16,
         replace_existing=True,
         jitter=10,
     )
 
-    # 2) Проверка почты каждые 20 минут (tracking + попытка Executive summary)
+    # 2) Проверка почты каждые 20 минут
     scheduler.add_job(
         job_check_mail,
-        trigger='cron',
-        minute='*/20',
+        trigger='cron', minute='*/20',
         id=JOB_ID_MAIL_EVERY_20,
         replace_existing=True,
         jitter=10,
     )
 
-    # 3) Импорт Executive summary строго в 08:30
+    # 3) Импорт терминальной базы строго в 08:30
     scheduler.add_job(
         job_daily_terminal_import,
-        trigger='cron',
-        hour=8, minute=30,
+        trigger='cron', hour=8, minute=30,
         id=JOB_ID_IMPORT_08_30,
         replace_existing=True,
         jitter=10,
