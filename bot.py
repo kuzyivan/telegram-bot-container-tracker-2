@@ -3,7 +3,7 @@ logger = get_logger(__name__)
 
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, Update
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler, ContextTypes
 )
 from telegram.request import HTTPXRequest
 from dotenv import load_dotenv
