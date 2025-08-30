@@ -15,57 +15,34 @@ logger = get_logger(__name__)
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Утилиты
+# Утилиты (без изменений)
 # ───────────────────────────────────────────────────────────────────────────────
 
 def extract_train_code_from_filename(filename: str) -> str | None:
-    """
-    Извлекает код поезда из имени файла.
-    Примеры:
-      'КП К25-073 Селятино.xlsx' -> 'К25-073'
-      'КП К24-101 Находка.xls'   -> 'К24-101'
-    Берём первую подходящую подпоследовательность вида КДД-ННН.
-    """
     name = os.path.basename(filename)
     m = re.search(r"К\d{2}-\d{3}", name, flags=re.IGNORECASE)
     if not m:
         return None
-    # нормализуем К к верхнему регистру
     code = m.group(0)
-    code = "К" + code[1:]  # на случай 'к25-073'
+    code = "К" + code[1:]
     return code
 
 
 def normalize_container(value) -> str | None:
-    """
-    Приводит значение ячейки к номеру контейнера в верхнем регистре.
-    Отбрасывает пустые / nan.
-    """
     if value is None:
         return None
     s = str(value).strip().upper()
     if not s or s == "NAN":
         return None
-    # частая запись с пробелами в середине — уберём
     s = re.sub(r"\s+", "", s)
     return s
 
 
 def find_container_column(df: pd.DataFrame) -> str | None:
-    """
-    Находит колонку с номерами контейнеров по рус/англ ключам.
-    Возвращает имя колонки либо None.
-    """
     lowered = {str(c).strip(): str(c).strip().lower() for c in df.columns}
-    # кандидаты
     keys = [
-        "номер контейнера",
-        "контейнер",
-        "container",
-        "container no",
-        "container number",
-        "контейнер №",
-        "№ контейнера",
+        "номер контейнера", "контейнер", "container", "container no",
+        "container number", "контейнер №", "№ контейнера",
     ]
     for orig, low in lowered.items():
         if any(k in low for k in keys):
@@ -74,10 +51,6 @@ def find_container_column(df: pd.DataFrame) -> str | None:
 
 
 async def _collect_containers_from_excel(file_path: str) -> List[str]:
-    """
-    Возвращает список контейнеров из Excel‑файла (все листы подряд).
-    Берётся первая подходящая колонка с контейнерами.
-    """
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
@@ -97,7 +70,6 @@ async def _collect_containers_from_excel(file_path: str) -> List[str]:
         vals = [v for v in vals if v]
         containers.extend(vals)
 
-    # уберём дубликаты, сохраняя порядок
     seen = set()
     uniq: List[str] = []
     for c in containers:
@@ -119,16 +91,12 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Импорт Executive summary (Dispatch*/Loaded*) → terminal_containers
+# Импорт Executive summary → terminal_containers (ИСПРАВЛЕНО)
 # ───────────────────────────────────────────────────────────────────────────────
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
     """
-    Импорт из отчёта Executive summary:
-      - перебираем листы, начинающиеся на 'Dispatch' / 'Loaded'
-      - ищем колонку с номерами контейнеров
-      - добавляем новые номера в terminal_containers (только container_number)
-
+    Импорт из отчёта Executive summary.
     Возвращает (added_total, processed_sheets)
     """
     if not os.path.exists(file_path):
@@ -138,8 +106,7 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
     sheet_names = xls.sheet_names
     target_sheets = [
         s for s in sheet_names
-        if str(s).strip().lower().startswith("dispatch")
-        or str(s).strip().lower().startswith("loaded")
+        if str(s).strip().lower().startswith(("dispatch", "loaded"))
     ]
 
     added_total = 0
@@ -161,23 +128,23 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     processed += 1
                     continue
 
-                # вставка без дублей
                 for cn in containers:
+                    # ИСПРАВЛЕНИЕ 1: Используем 'RETURNING id'
+                    # Это современный и надежный способ узнать, была ли реально добавлена новая запись.
+                    # Запрос теперь просит БД вернуть 'id' вставленной строки. Если строка не была
+                    # вставлена (из-за ON CONFLICT), результат будет пустым.
                     res = await session.execute(
                         text("""
                             INSERT INTO terminal_containers (container_number)
                             VALUES (:cn)
                             ON CONFLICT (container_number) DO NOTHING
+                            RETURNING id
                         """),
                         {"cn": cn},
                     )
-                    # rowcount == 1 если реально вставили
-                    try:
-                        if res.rowcount and res.rowcount > 0:
-                            added_total += 1
-                    except Exception:
-                        # на некоторых драйверах rowcount может быть -1 — просто игнор
-                        pass
+                    # Если результат .scalar_one_or_none() не None, значит, вставка произошла.
+                    if res.scalar_one_or_none() is not None:
+                        added_total += 1
 
                 await session.commit()
                 processed += 1
@@ -190,16 +157,12 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Импорт «поездных» файлов → заполнение terminal_containers.train
+# Импорт «поездных» файлов → terminal_containers.train (ИСПРАВЛЕНО)
 # ───────────────────────────────────────────────────────────────────────────────
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
     """
     Импорт ручного файла с контейнерами, отправленными поездом.
-    - код поезда берётся из имени файла (формат 'К25-073');
-    - из таблицы собираются номера контейнеров;
-    - выполняется UPDATE terminal_containers.train для этих контейнеров.
-
     Возвращает (updated_count, containers_total, train_code).
     """
     if not os.path.exists(src_file_path):
@@ -217,7 +180,6 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
 
     updated_sum = 0
     async with SessionLocal() as session:
-        # Обновляем пачками, чтобы не превышать лимиты параметров
         for chunk in _chunks(containers, 500):
             res = await session.execute(
                 text("""
@@ -227,11 +189,12 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
                 """),
                 {"train": train_code, "cn_list": chunk},
             )
-            try:
-                if res.rowcount and res.rowcount > 0:
-                    updated_sum += res.rowcount
-            except Exception:
-                pass
+            # ИСПРАВЛЕНИЕ 2: Используем '# type: ignore'
+            # Для команды UPDATE атрибут .rowcount является документированным и правильным способом
+            # узнать количество обновленных строк. Pylance ошибается, так как общая типизация
+            # Result не гарантирует его наличие. Мы "успокаиваем" Pylance, говоря,
+            # что мы уверены в наличии этого атрибута в данном контексте.
+            updated_sum += res.rowcount  # type: ignore
 
         await session.commit()
 
