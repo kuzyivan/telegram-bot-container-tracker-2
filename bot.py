@@ -31,6 +31,7 @@ from handlers.tracking_handlers import (
     cancel,
     cancel_tracking_confirm
 )
+from handlers.misc_handlers import cancel_my_tracking
 # рассылка
 from handlers.broadcast import broadcast_conversation_handler
 # ПОЕЗДА: загрузка Excel с номером поезда из имени файла
@@ -114,7 +115,7 @@ def main():
         # Команды
         application.add_handler(CommandHandler("menu", show_menu))
         application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("canceltracking", cancel))
+        application.add_handler(CommandHandler("canceltracking", cancel_my_tracking))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
