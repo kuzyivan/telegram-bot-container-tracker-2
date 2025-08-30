@@ -28,8 +28,6 @@ from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 # трекинг контейнеров
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
-    cancel_tracking_start,
-    cancel_tracking_confirm,
 )
 from handlers.misc_handlers import cancel_my_tracking
 # рассылка
@@ -67,6 +65,16 @@ async def cancel_tracking_abort_cb(update: Update, context):
             pass
     except Exception:
         logger.exception("Ошибка в cancel_tracking_abort_cb")
+
+
+# Адаптер: инлайн-кнопка "Отмена слежения" вызывает ту же логику, что и /canceltracking
+async def canceltracking_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if update.callback_query:
+            await update.callback_query.answer()
+        return await cancel_my_tracking(update, context)
+    except Exception:
+        logger.exception("Ошибка в canceltracking_cb")
 
 
 # === УСТАНОВКА КОМАНД ===
@@ -124,8 +132,7 @@ def main():
         # Callback-кнопки
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_start, pattern=r"^cancel_tracking$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern=r"^cancel_tracking_confirm$"))
+        application.add_handler(CallbackQueryHandler(canceltracking_cb, pattern=r"^cancel_tracking$"))
         application.add_handler(CallbackQueryHandler(cancel_tracking_abort_cb, pattern=r"^cancel_tracking_abort$"))
 
         # Команды
