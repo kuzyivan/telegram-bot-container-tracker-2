@@ -28,8 +28,9 @@ from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 # трекинг контейнеров
 from handlers.tracking_handlers import (
     tracking_conversation_handler,
-    cancel,
-    cancel_tracking_confirm
+    cancel_tracking_start,
+    cancel_tracking_confirm,
+    cancel_tracking_abort,
 )
 from handlers.misc_handlers import cancel_my_tracking
 # рассылка
@@ -110,7 +111,9 @@ def main():
         # Callback-кнопки
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern="^cancel_tracking_"))
+        application.add_handler(CallbackQueryHandler(cancel_tracking_start, pattern=r"^cancel_tracking$"))
+        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern=r"^cancel_tracking_confirm$"))
+        application.add_handler(CallbackQueryHandler(cancel_tracking_abort, pattern=r"^cancel_tracking_abort$"))
 
         # Команды
         application.add_handler(CommandHandler("menu", show_menu))
