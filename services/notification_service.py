@@ -103,7 +103,8 @@ class NotificationService:
         Проверяет, включена ли у пользователя email-рассылка, и если да - отправляет отчет.
         """
         user = await get_user_for_email(user_id)
-        if user and user.email:
+        # ИСПРАВЛЕНИЕ: Явно проверяем, что поле email не является None
+        if user and user.email is not None:
             try:
                 await send_email(to=user.email, attachments=[file_path])
                 logger.info(f"📧 Email с файлом успешно отправлен на {user.email}")
