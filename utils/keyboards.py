@@ -42,6 +42,9 @@ tracking_inline_keyboard = InlineKeyboardMarkup([
     ]
 ])
 # Клавиатура подтверждения отмены отслеживания
-cancel_tracking_confirm_keyboard = ReplyKeyboardMarkup([
-    ["✅ Подтвердить отмену", "❌ Отмена"]
-], resize_keyboard=True, one_time_keyboard=True)
+cancel_tracking_confirm_keyboard = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("✅ Подтвердить отмену", callback_data="cancel_tracking_yes"),
+        InlineKeyboardButton("❌ Отмена", callback_data="cancel_tracking_no")
+    ]
+])

@@ -8,6 +8,7 @@ from db import SessionLocal
 from sqlalchemy import delete
 from models import TrackingSubscription
 import datetime
+# ВАЖНО: убедитесь, что utils.keyboards импортирует обновленную Inline-клавиатуру
 from utils.keyboards import cancel_tracking_confirm_keyboard
 from logger import get_logger
 from queries.containers import get_latest_train_by_container
@@ -34,21 +35,16 @@ async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "Введите список контейнеров для слежения (через запятую или пробел):"
     
-    # ИЗМЕНЕНИЕ: Запоминаем ID сообщения, с которого начался диалог
     if update.callback_query:
         await update.callback_query.answer()
-        # Сообщение с кнопкой "Задать слежение"
         if update.callback_query.message:
             context.user_data['start_message_id'] = update.callback_query.message.message_id
         if update.effective_chat:
             sent_message = await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-            # Сообщение бота "Введите список..."
             context.user_data['prompt_message_id'] = sent_message.message_id
     elif update.message:
-        # Сообщение пользователя "Задать слежение"
         context.user_data['start_message_id'] = update.message.message_id
         sent_message = await update.message.reply_text(text)
-        # Сообщение бота "Введите список..."
         context.user_data['prompt_message_id'] = sent_message.message_id
         
     return TRACK_CONTAINERS
@@ -113,7 +109,6 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await asyncio.sleep(5)
 
-        # ИЗМЕНЕНИЕ: Удаляем все сообщения по их ID, сохраненным в context
         try:
             chat_id = update.effective_chat.id if update.effective_chat else None
             if not chat_id: return
@@ -130,7 +125,7 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
                     except Exception:
-                        pass # Игнорируем ошибки, если сообщение уже удалено
+                        pass
             
         except Exception as e:
             logger.warning(f"Не удалось полностью очистить чат после установки слежения: {e}")
@@ -141,7 +136,6 @@ async def set_tracking_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Не удалось сохранить подписку. Попробуйте позже.")
             
     finally:
-        # Очищаем user_data в любом случае
         if context.user_data:
             context.user_data.clear()
 
@@ -151,16 +145,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает отмену внутри диалога."""
     if update.message:
         await update.message.reply_text("❌ Установка слежения отменена.")
-    # Очищаем user_data при отмене
     if context.user_data:
         context.user_data.clear()
     return ConversationHandler.END
 
-# ... (остальной код файла без изменений) ...
-
 async def cancel_tracking_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог отмены всех слежений."""
     text = "Вы уверены, что хотите отменить все ваши слежения?"
+    # Эта клавиатура теперь должна быть типа InlineKeyboardMarkup
     keyboard = cancel_tracking_confirm_keyboard
 
     if update.callback_query:
@@ -170,25 +162,32 @@ async def cancel_tracking_start(update: Update, context: ContextTypes.DEFAULT_TY
     elif update.message:
         await update.message.reply_text(text, reply_markup=keyboard)
 
+# --- ИЗМЕНЁННАЯ ФУНКЦИЯ ---
 async def cancel_tracking_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждает или отменяет удаление всех подписок пользователя."""
-    if not update.callback_query:
-        return ConversationHandler.END
-        
     query = update.callback_query
+    if not query or not query.data:
+        return
+
     await query.answer()
-    
-    try:
-        async with SessionLocal() as session:
-            await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == query.from_user.id))
-            await session.commit()
-        await query.edit_message_text("❌ Все ваши слежения отменены.")
-        logger.info(f"Все слежения пользователя {query.from_user.id} удалены.")
-    except Exception as e:
-        logger.error(f"Ошибка при отмене слежений пользователя {query.from_user.id}: {e}", exc_info=True)
-        await query.edit_message_text("❌ Ошибка при отмене слежений.")
-    
-    return ConversationHandler.END
+
+    # Если пользователь передумал
+    if query.data == "cancel_tracking_no":
+        await query.edit_message_text("Действие отменено.")
+        return
+
+    # Если пользователь подтвердил отмену
+    if query.data == "cancel_tracking_yes":
+        try:
+            async with SessionLocal() as session:
+                await session.execute(delete(TrackingSubscription).where(TrackingSubscription.user_id == query.from_user.id))
+                await session.commit()
+            await query.edit_message_text("✅ Все ваши слежения успешно отменены.")
+            logger.info(f"Все слежения пользователя {query.from_user.id} удалены.")
+        except Exception as e:
+            logger.error(f"Ошибка при отмене слежений пользователя {query.from_user.id}: {e}", exc_info=True)
+            await query.edit_message_text("❌ Произошла ошибка при отмене слежений.")
+# --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 async def cancel_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /canceltracking."""
@@ -252,9 +251,7 @@ async def send_container_dislocation_response(
         await update.message.reply_text(text)
     elif update.callback_query:
         message = update.callback_query.message
-        # Проверяем, что message существует и является доступным сообщением
         if message and isinstance(message, Message):
             await message.reply_text(text)
     elif update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-
