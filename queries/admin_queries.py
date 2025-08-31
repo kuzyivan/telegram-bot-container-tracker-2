@@ -80,7 +80,7 @@ async def get_data_for_test_notification() -> Dict[str, List[List[str]]]:
             logger.info(f"[test_notify_data] Контейнеры для пользователя: {sub.containers} (тип: {type(sub.containers)})")
             
             rows = []
-            if not sub.containers:
+            if not sub.containers:  # type: ignore
                 logger.warning(f"[test_notify_data] У пользователя {user_label} пустой список контейнеров в подписке.")
             else:
                 for container in sub.containers:
