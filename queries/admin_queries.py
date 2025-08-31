@@ -68,17 +68,29 @@ async def get_data_for_test_notification() -> Dict[str, List[List[str]]]:
             user_label = f"{sub.username or sub.user_id} (id:{sub.user_id})"
             rows = []
             for container in sub.containers:
+                # ИЗМЕНЕНИЕ: Запрашиваем не весь объект, а конкретные столбцы.
+                # Это более надежный способ получения данных.
                 res = await session.execute(
-                    select(Tracking).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
+                    select(
+                        Tracking.container_number,
+                        Tracking.from_station,
+                        Tracking.to_station,
+                        Tracking.current_station,
+                        Tracking.operation,
+                        Tracking.operation_date,
+                        Tracking.waybill,
+                        Tracking.km_left,
+                        Tracking.forecast_days,
+                        Tracking.wagon_number,
+                        Tracking.operation_road
+                    ).filter(Tracking.container_number == container).order_by(Tracking.operation_date.desc())
                 )
-                track = res.scalars().first()
-                if track:
-                    rows.append([
-                        track.container_number, track.from_station, track.to_station,
-                        track.current_station, track.operation, track.operation_date,
-                        track.waybill, track.km_left, track.forecast_days,
-                        track.wagon_number, track.operation_road
-                    ])
+                # ИЗМЕНЕНИЕ: Используем .first() для получения строки (Row).
+                track_row = res.first()
+                if track_row:
+                    # Конвертируем строку (Row) в обычный список.
+                    rows.append(list(track_row))
+
             if not rows:
                 rows.append(["Нет данных"] + [""] * 10)
             
