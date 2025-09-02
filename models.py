@@ -14,7 +14,7 @@ try:
         __tablename__ = "tracking_subscriptions"
 
         id = Column(Integer, primary_key=True)
-        user_id = Column(Integer, nullable=False)
+        user_id = Column(BigInteger, nullable=False) # ИЗМЕНЕНО
         username = Column(String, nullable=True)
         containers = Column(ARRAY(String), nullable=False)
         notify_time = Column(Time, nullable=False)
