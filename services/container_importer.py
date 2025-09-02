@@ -4,10 +4,11 @@ from __future__ import annotations
 import os
 import re
 from typing import List, Tuple, Iterable
+import json # <--- ИЗМЕНЕНИЕ 1: Импортируем стандартную библиотеку JSON
 
 import pandas as pd
 from sqlalchemy import text
-import pandas.io.json # <-- Добавлен этот импорт
+
 
 from db import SessionLocal
 from logger import get_logger
@@ -16,7 +17,7 @@ logger = get_logger(__name__)
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Утилиты
+# Утилиты (без изменений)
 # ───────────────────────────────────────────────────────────────────────────────
 
 def extract_train_code_from_filename(filename: str) -> str | None:
@@ -162,16 +163,13 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     continue
                 
                 # Формируем SQL-запрос для INSERT ... ON CONFLICT DO UPDATE
-                # Это самый эффективный способ вставить новые и обновить старые записи
                 update_str = ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
                 
-                # Выполняем запрос для всех записей с листа разом
-                # ВАЖНО: Этот запрос требует PostgreSQL 9.5+
                 if records_to_upsert:
                     all_db_columns = ['container_number'] + db_cols_to_update
                     
                     # Преобразуем наши записи в JSON, который может прочитать PostgreSQL
-                    records_json = pd.io.json.dumps([
+                    records_json = json.dumps([ # <--- ИЗМЕНЕНИЕ 2: Используем json.dumps вместо pd.io.json.dumps
                         {k: v for k, v in rec.items() if k in all_db_columns} 
                         for rec in records_to_upsert
                     ])
@@ -199,7 +197,7 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Импорт «поездных» файлов
+# Импорт «поездных» файлов (без изменений)
 # ───────────────────────────────────────────────────────────────────────────────
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
