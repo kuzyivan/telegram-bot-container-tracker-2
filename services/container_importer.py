@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# Утилиты
+# Utilities (unchanged)
 # -----------------------------------------------------------------------------
 
 def extract_train_code_from_filename(filename: str) -> str | None:
@@ -39,15 +39,15 @@ def normalize_container(value) -> str | None:
     s = re.sub(r"\s+", "", s)
     return s
 
-# ОБНОВЛЁННАЯ ФУНКЦИЯ ПОИСКА КОЛОНКИ
+
 def find_container_column(df: pd.DataFrame) -> str | None:
     lowered = {str(c).strip(): str(c).strip().lower() for c in df.columns}
-    # Ищем точное совпадение с русской колонкой 'контейнер'
     keys = [
-        "контейнер", "container", "container #",
+        "номер контейнера", "контейнер", "container", "container no",
+        "container number", "контейнер №", "№ контейнера",
     ]
     for orig, low in lowered.items():
-        if low in keys:
+        if any(k in low for k in keys):
             return orig
     return None
 
@@ -92,22 +92,18 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
         yield buf
 
 # -----------------------------------------------------------------------------
-# ИТОГОВАЯ ВЕРСИЯ ФУНКЦИИ ИМПОРТА
+# FINAL VERSION OF THE IMPORT FUNCTION
 # -----------------------------------------------------------------------------
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
-    # ОБНОВЛЁННЫЙ СЛОВАРЬ СООТВЕТСТВИЯ КОЛОНОК
     COLUMN_MAP = {
-        'Терминал': 'terminal',
-        'Зона': 'zone',
-        'Клиент': 'client',
-        'Сток': 'stock',
-        'Таможенный режим': 'customs_mode',
-        'Направление': 'destination_station',
-        'Примечание': 'note',
+        'Terminal': 'terminal', 'Zone': 'zone', 'INN': 'inn',
+        'Short Name': 'short_name', 'Client': 'client', 'Stock': 'stock',
+        'Customs Mode': 'customs_mode', 'Destination station': 'destination_station',
+        'Note': 'note', 'Raw Comment': 'raw_comment', 'Status Comment': 'status_comment',
     }
 
     xls = pd.ExcelFile(file_path)
@@ -127,7 +123,7 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                 
                 container_col_name = find_container_column(df)
                 if not container_col_name:
-                    logger.warning(f"[Executive summary] На листе '{sheet}' не найден столбец с контейнерами.")
+                    logger.warning(f"[Executive summary] Container column not found on sheet '{sheet}'.")
                     continue
 
                 db_cols_to_update = [db_col for xl_col, db_col in COLUMN_MAP.items() if xl_col in df.columns]
@@ -150,24 +146,31 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     processed_sheets += 1
                     continue
                 
-                if db_cols_to_update:
-                    update_clause = "UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
-                else:
-                    update_clause = "NOTHING"
-                
+                # FINAL CORRECTED LOGIC
                 all_db_columns = ['container_number'] + db_cols_to_update
-                records_json = json.dumps([
-                    {k: v for k, v in rec.items() if k in all_db_columns} 
-                    for rec in records_to_upsert
-                ])
                 
-                stmt = text(f"""
-                    INSERT INTO terminal_containers ({", ".join(all_db_columns)})
-                    SELECT p.*
-                    FROM json_populate_recordset(null::terminal_containers, :records) AS p
-                    ON CONFLICT (container_number) DO {update_clause};
-                """)
-                
+                if not db_cols_to_update:
+                    # If only container numbers are present, use a simple INSERT IGNORE
+                    stmt = text("""
+                        INSERT INTO terminal_containers (container_number)
+                        SELECT (json_array_elements_text(:records)::json->>'container_number')
+                        ON CONFLICT (container_number) DO NOTHING;
+                    """)
+                    records_json = json.dumps(records_to_upsert)
+                else:
+                    # If other columns are present, use the complex INSERT ... ON UPDATE
+                    update_clause = "UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
+                    records_json = json.dumps([
+                        {k: v for k, v in rec.items() if k in all_db_columns} 
+                        for rec in records_to_upsert
+                    ])
+                    stmt = text(f"""
+                        INSERT INTO terminal_containers ({", ".join(all_db_columns)})
+                        SELECT p.*
+                        FROM json_populate_recordset(null::terminal_containers, :records) AS p
+                        ON CONFLICT (container_number) DO {update_clause};
+                    """)
+
                 res = await session.execute(stmt, {'records': records_json})
                 total_changed += res.rowcount or 0
                 
@@ -175,14 +178,14 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                 processed_sheets += 1
 
             except Exception as e:
-                logger.error(f"[Executive summary] Ошибка обработки листа '{sheet}': {e}", exc_info=True)
+                logger.error(f"[Executive summary] Error processing sheet '{sheet}': {e}", exc_info=True)
 
-    logger.info(f"📥 Импорт Executive summary: листов обработано={processed_sheets}, обновлено/добавлено записей={total_changed}")
+    logger.info(f"📥 Executive summary import: sheets processed={processed_sheets}, records updated/added={total_changed}")
     return total_changed, processed_sheets
 
 
 # -----------------------------------------------------------------------------
-# Импорт «поездных» файлов (без изменений)
+# Train File Import (unchanged)
 # -----------------------------------------------------------------------------
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
@@ -191,12 +194,12 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
 
     train_code = extract_train_code_from_filename(src_file_path)
     if not train_code:
-        raise ValueError("Не удалось извлечь код поезда из имени файла. Ожидается шаблон 'КДД-ННН'.")
+        raise ValueError("Could not extract train code from filename. Expected pattern 'KDD-NNN'.")
 
     containers = await _collect_containers_from_excel(src_file_path)
     total = len(containers)
     if total == 0:
-        logger.info(f"[Train] В файле нет контейнеров: {os.path.basename(src_file_path)}")
+        logger.info(f"[Train] No containers found in file: {os.path.basename(src_file_path)}")
         return 0, 0, train_code
 
     updated_sum = 0
@@ -214,6 +217,6 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
 
         await session.commit()
 
-    logger.info(f"🚆 Проставлен поезд {train_code}: обновлено {updated_sum} из {total} контейнеров "
+    logger.info(f"🚆 Train {train_code} processed: updated {updated_sum} of {total} containers "
                 f"({os.path.basename(src_file_path)})")
     return updated_sum, total, train_code
