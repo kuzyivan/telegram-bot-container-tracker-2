@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import re
 from typing import List, Tuple, Iterable
-import json # <--- ИЗМЕНЕНИЕ 1: Импортируем стандартную библиотеку JSON
+import json
 
 import pandas as pd
 from sqlalchemy import text
@@ -103,19 +103,11 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
-    # Сопоставление имён колонок в Excel (ключи) с именами в БД (значения)
     COLUMN_MAP = {
-        'Terminal': 'terminal',
-        'Zone': 'zone',
-        'INN': 'inn',
-        'Short Name': 'short_name',
-        'Client': 'client',
-        'Stock': 'stock',
-        'Customs Mode': 'customs_mode',
-        'Destination station': 'destination_station',
-        'Note': 'note',
-        'Raw Comment': 'raw_comment',
-        'Status Comment': 'status_comment',
+        'Terminal': 'terminal', 'Zone': 'zone', 'INN': 'inn',
+        'Short Name': 'short_name', 'Client': 'client', 'Stock': 'stock',
+        'Customs Mode': 'customs_mode', 'Destination station': 'destination_station',
+        'Note': 'note', 'Raw Comment': 'raw_comment', 'Status Comment': 'status_comment',
     }
 
     xls = pd.ExcelFile(file_path)
@@ -131,8 +123,6 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
         for sheet in target_sheets:
             try:
                 df = pd.read_excel(file_path, sheet_name=sheet)
-                
-                # Приводим все названия колонок к единому виду
                 df.columns = [str(c).strip() for c in df.columns]
                 
                 container_col_name = find_container_column(df)
@@ -140,7 +130,6 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     logger.warning(f"[Executive summary] На листе '{sheet}' не найден столбец с контейнерами.")
                     continue
 
-                # Создаём список колонок для обновления в БД
                 db_cols_to_update = [db_col for xl_col, db_col in COLUMN_MAP.items() if xl_col in df.columns]
                 
                 records_to_upsert = []
@@ -152,9 +141,8 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     record = {'container_number': container_num}
                     for xl_col, db_col in COLUMN_MAP.items():
                         if xl_col in row:
-                            # Заменяем 'nan' и пустые значения на None
                             value = row[xl_col]
-                            record[db_col] = None if pd.isna(value) else str(value)
+                            record[db_col] = '' if pd.isna(value) else str(value)
                     
                     records_to_upsert.append(record)
 
@@ -162,35 +150,32 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     processed_sheets += 1
                     continue
                 
-                # Формируем SQL-запрос для INSERT ... ON CONFLICT DO UPDATE
                 update_str = ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
                 
                 if records_to_upsert:
                     all_db_columns = ['container_number'] + db_cols_to_update
-                    
-                    # Преобразуем наши записи в JSON, который может прочитать PostgreSQL
-                    records_json = json.dumps([ # <--- ИЗМЕНЕНИЕ 2: Используем json.dumps вместо pd.io.json.dumps
+                    records_json = json.dumps([
                         {k: v for k, v in rec.items() if k in all_db_columns} 
                         for rec in records_to_upsert
                     ])
-
+                    
+                    # ИСПРАВЛЕННЫЙ SQL ЗАПРОС
                     stmt = text(f"""
                         INSERT INTO terminal_containers ({", ".join(all_db_columns)})
                         SELECT p.*
                         FROM json_populate_recordset(null::terminal_containers, :records) AS p
                         ON CONFLICT (container_number) DO UPDATE
-                        SET {update_str}
-                        RETURNING id;
+                        SET {update_str};
                     """)
                     
                     res = await session.execute(stmt, {'records': records_json})
-                    total_changed += res.rowcount
+                    total_changed += res.rowcount  # type: ignore
                 
                 await session.commit()
                 processed_sheets += 1
 
             except Exception as e:
-                logger.exception(f"[Executive summary] Ошибка обработки листа '{sheet}': {e}")
+                logger.error(f"[Executive summary] Ошибка обработки листа '{sheet}': {e}", exc_info=True)
 
     logger.info(f"📥 Импорт Executive summary: листов обработано={processed_sheets}, обновлено/добавлено записей={total_changed}")
     return total_changed, processed_sheets
@@ -201,10 +186,6 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
 # ───────────────────────────────────────────────────────────────────────────────
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
-    """
-    Импорт ручного файла с контейнерами, отправленными поездом.
-    Возвращает (updated_count, containers_total, train_code).
-    """
     if not os.path.exists(src_file_path):
         raise FileNotFoundError(src_file_path)
 
