@@ -92,7 +92,7 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
         yield buf
 
 # -----------------------------------------------------------------------------
-# ОБНОВЛЁННАЯ ФУНКЦИЯ ИМПОРТА
+# ИТОГОВАЯ ВЕРСИЯ ФУНКЦИИ ИМПОРТА
 # -----------------------------------------------------------------------------
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
@@ -151,9 +151,9 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     continue
                 
                 if db_cols_to_update:
-                    update_str = "SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
+                    update_clause = "UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
                 else:
-                    update_str = "DO NOTHING"
+                    update_clause = "NOTHING"
                 
                 all_db_columns = ['container_number'] + db_cols_to_update
                 records_json = json.dumps([
@@ -165,7 +165,7 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     INSERT INTO terminal_containers ({", ".join(all_db_columns)})
                     SELECT p.*
                     FROM json_populate_recordset(null::terminal_containers, :records) AS p
-                    ON CONFLICT (container_number) DO {update_str};
+                    ON CONFLICT (container_number) DO {update_clause};
                 """)
                 
                 res = await session.execute(stmt, {'records': records_json})
