@@ -7,6 +7,7 @@ from typing import List, Tuple, Iterable
 
 import pandas as pd
 from sqlalchemy import text
+import pandas.io.json # <-- Добавлен этот импорт
 
 from db import SessionLocal
 from logger import get_logger
@@ -15,7 +16,7 @@ logger = get_logger(__name__)
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Утилиты (без изменений)
+# Утилиты
 # ───────────────────────────────────────────────────────────────────────────────
 
 def extract_train_code_from_filename(filename: str) -> str | None:
@@ -89,75 +90,116 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
     if buf:
         yield buf
 
-
 # ───────────────────────────────────────────────────────────────────────────────
-# Импорт Executive summary → terminal_containers (ИСПРАВЛЕНО)
+# ОБНОВЛЁННАЯ ФУНКЦИЯ ИМПОРТА
 # ───────────────────────────────────────────────────────────────────────────────
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
     """
-    Импорт из отчёта Executive summary.
-    Возвращает (added_total, processed_sheets)
+    Импорт из отчёта Executive summary с заполнением всех полей.
+    Возвращает (total_updated_or_added, processed_sheets)
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
+    # Сопоставление имён колонок в Excel (ключи) с именами в БД (значения)
+    COLUMN_MAP = {
+        'Terminal': 'terminal',
+        'Zone': 'zone',
+        'INN': 'inn',
+        'Short Name': 'short_name',
+        'Client': 'client',
+        'Stock': 'stock',
+        'Customs Mode': 'customs_mode',
+        'Destination station': 'destination_station',
+        'Note': 'note',
+        'Raw Comment': 'raw_comment',
+        'Status Comment': 'status_comment',
+    }
+
     xls = pd.ExcelFile(file_path)
-    sheet_names = xls.sheet_names
     target_sheets = [
-        s for s in sheet_names
+        s for s in xls.sheet_names
         if str(s).strip().lower().startswith(("dispatch", "loaded"))
     ]
 
-    added_total = 0
-    processed = 0
+    total_changed = 0
+    processed_sheets = 0
 
     async with SessionLocal() as session:
         for sheet in target_sheets:
             try:
                 df = pd.read_excel(file_path, sheet_name=sheet)
-                col = find_container_column(df)
-                if not col:
+                
+                # Приводим все названия колонок к единому виду
+                df.columns = [str(c).strip() for c in df.columns]
+                
+                container_col_name = find_container_column(df)
+                if not container_col_name:
                     logger.warning(f"[Executive summary] На листе '{sheet}' не найден столбец с контейнерами.")
                     continue
 
-                values = [normalize_container(v) for v in df[col].dropna().tolist()]
-                containers = [v for v in values if v]
+                # Создаём список колонок для обновления в БД
+                db_cols_to_update = [db_col for xl_col, db_col in COLUMN_MAP.items() if xl_col in df.columns]
+                
+                records_to_upsert = []
+                for _, row in df.iterrows():
+                    container_num = normalize_container(row.get(container_col_name))
+                    if not container_num:
+                        continue
+                    
+                    record = {'container_number': container_num}
+                    for xl_col, db_col in COLUMN_MAP.items():
+                        if xl_col in row:
+                            # Заменяем 'nan' и пустые значения на None
+                            value = row[xl_col]
+                            record[db_col] = None if pd.isna(value) else str(value)
+                    
+                    records_to_upsert.append(record)
 
-                if not containers:
-                    processed += 1
+                if not records_to_upsert:
+                    processed_sheets += 1
                     continue
+                
+                # Формируем SQL-запрос для INSERT ... ON CONFLICT DO UPDATE
+                # Это самый эффективный способ вставить новые и обновить старые записи
+                update_str = ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
+                
+                # Выполняем запрос для всех записей с листа разом
+                # ВАЖНО: Этот запрос требует PostgreSQL 9.5+
+                if records_to_upsert:
+                    all_db_columns = ['container_number'] + db_cols_to_update
+                    
+                    # Преобразуем наши записи в JSON, который может прочитать PostgreSQL
+                    records_json = pd.io.json.dumps([
+                        {k: v for k, v in rec.items() if k in all_db_columns} 
+                        for rec in records_to_upsert
+                    ])
 
-                for cn in containers:
-                    # ИСПРАВЛЕНИЕ 1: Используем 'RETURNING id'
-                    # Это современный и надежный способ узнать, была ли реально добавлена новая запись.
-                    # Запрос теперь просит БД вернуть 'id' вставленной строки. Если строка не была
-                    # вставлена (из-за ON CONFLICT), результат будет пустым.
-                    res = await session.execute(
-                        text("""
-                            INSERT INTO terminal_containers (container_number)
-                            VALUES (:cn)
-                            ON CONFLICT (container_number) DO NOTHING
-                            RETURNING id
-                        """),
-                        {"cn": cn},
-                    )
-                    # Если результат .scalar_one_or_none() не None, значит, вставка произошла.
-                    if res.scalar_one_or_none() is not None:
-                        added_total += 1
-
+                    stmt = text(f"""
+                        INSERT INTO terminal_containers ({", ".join(all_db_columns)})
+                        SELECT p.*
+                        FROM json_populate_recordset(null::terminal_containers, :records) AS p
+                        ON CONFLICT (container_number) DO UPDATE
+                        SET {update_str}
+                        RETURNING id;
+                    """)
+                    
+                    res = await session.execute(stmt, {'records': records_json})
+                    total_changed += res.rowcount
+                
                 await session.commit()
-                processed += 1
+                processed_sheets += 1
 
             except Exception as e:
                 logger.exception(f"[Executive summary] Ошибка обработки листа '{sheet}': {e}")
 
-    logger.info(f"📥 Импорт Executive summary: листов обработано={processed}, добавлено новых контейнеров={added_total}")
-    return added_total, processed
+    logger.info(f"📥 Импорт Executive summary: листов обработано={processed_sheets}, обновлено/добавлено записей={total_changed}")
+    return total_changed, processed_sheets
 
 
 # ───────────────────────────────────────────────────────────────────────────────
-# Импорт «поездных» файлов → terminal_containers.train (ИСПРАВЛЕНО)
+# Импорт «поездных» файлов
 # ───────────────────────────────────────────────────────────────────────────────
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
@@ -189,11 +231,6 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
                 """),
                 {"train": train_code, "cn_list": chunk},
             )
-            # ИСПРАВЛЕНИЕ 2: Используем '# type: ignore'
-            # Для команды UPDATE атрибут .rowcount является документированным и правильным способом
-            # узнать количество обновленных строк. Pylance ошибается, так как общая типизация
-            # Result не гарантирует его наличие. Мы "успокаиваем" Pylance, говоря,
-            # что мы уверены в наличии этого атрибута в данном контексте.
             updated_sum += res.rowcount  # type: ignore
 
         await session.commit()
