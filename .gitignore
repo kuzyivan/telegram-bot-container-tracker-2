@@ -4,3 +4,5 @@ __pycache__/
 *.pyo
 *.log
 *.xml
+# macOS
+.DS_Store

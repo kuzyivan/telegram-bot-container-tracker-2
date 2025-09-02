@@ -1,9 +1,8 @@
 # model/terminal_container.py
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from datetime import datetime
-from sqlalchemy.orm import declarative_base
+from models import Base # <--- ИЗМЕНЕНИЕ: Импортируем общий Base
 
-Base = declarative_base()
 class TerminalContainer(Base):
     __tablename__ = "terminal_containers"
 
