@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# Утилиты (без изменений)
+# Утилиты
 # -----------------------------------------------------------------------------
 
 def extract_train_code_from_filename(filename: str) -> str | None:
@@ -39,15 +39,15 @@ def normalize_container(value) -> str | None:
     s = re.sub(r"\s+", "", s)
     return s
 
-
+# ОБНОВЛЁННАЯ ФУНКЦИЯ ПОИСКА КОЛОНКИ
 def find_container_column(df: pd.DataFrame) -> str | None:
     lowered = {str(c).strip(): str(c).strip().lower() for c in df.columns}
+    # Ищем точное совпадение с русской колонкой 'контейнер'
     keys = [
-        "номер контейнера", "контейнер", "container", "container no",
-        "container number", "контейнер №", "№ контейнера",
+        "контейнер", "container", "container #",
     ]
     for orig, low in lowered.items():
-        if any(k in low for k in keys):
+        if low in keys:
             return orig
     return None
 
@@ -96,18 +96,18 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
 # -----------------------------------------------------------------------------
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
-    """
-    Импорт из отчёта Executive summary с заполнением всех полей.
-    Возвращает (total_updated_or_added, processed_sheets)
-    """
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
+    # ОБНОВЛЁННЫЙ СЛОВАРЬ СООТВЕТСТВИЯ КОЛОНОК
     COLUMN_MAP = {
-        'Terminal': 'terminal', 'Zone': 'zone', 'INN': 'inn',
-        'Short Name': 'short_name', 'Client': 'client', 'Stock': 'stock',
-        'Customs Mode': 'customs_mode', 'Destination station': 'destination_station',
-        'Note': 'note', 'Raw Comment': 'raw_comment', 'Status Comment': 'status_comment',
+        'Терминал': 'terminal',
+        'Зона': 'zone',
+        'Клиент': 'client',
+        'Сток': 'stock',
+        'Таможенный режим': 'customs_mode',
+        'Направление': 'destination_station',
+        'Примечание': 'note',
     }
 
     xls = pd.ExcelFile(file_path)
@@ -169,7 +169,7 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                 """)
                 
                 res = await session.execute(stmt, {'records': records_json})
-                total_changed += res.rowcount or 0 # type: ignore
+                total_changed += res.rowcount or 0
                 
                 await session.commit()
                 processed_sheets += 1
@@ -210,7 +210,7 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
                 """),
                 {"train": train_code, "cn_list": chunk},
             )
-            updated_sum += res.rowcount or 0 # type: ignore
+            updated_sum += res.rowcount or 0
 
         await session.commit()
 
