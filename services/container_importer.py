@@ -16,9 +16,9 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 
-# ───────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Утилиты (без изменений)
-# ───────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def extract_train_code_from_filename(filename: str) -> str | None:
     name = os.path.basename(filename)
@@ -91,9 +91,9 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
     if buf:
         yield buf
 
-# ───────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # ОБНОВЛЁННАЯ ФУНКЦИЯ ИМПОРТА
-# ───────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
     """
@@ -150,26 +150,26 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     processed_sheets += 1
                     continue
                 
-                update_str = ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
+                if db_cols_to_update:
+                    update_str = "SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
+                else:
+                    update_str = "DO NOTHING"
                 
-                if records_to_upsert:
-                    all_db_columns = ['container_number'] + db_cols_to_update
-                    records_json = json.dumps([
-                        {k: v for k, v in rec.items() if k in all_db_columns} 
-                        for rec in records_to_upsert
-                    ])
-                    
-                    # ИСПРАВЛЕННЫЙ SQL ЗАПРОС
-                    stmt = text(f"""
-                        INSERT INTO terminal_containers ({", ".join(all_db_columns)})
-                        SELECT p.*
-                        FROM json_populate_recordset(null::terminal_containers, :records) AS p
-                        ON CONFLICT (container_number) DO UPDATE
-                        SET {update_str};
-                    """)
-                    
-                    res = await session.execute(stmt, {'records': records_json})
-                    total_changed += res.rowcount  # type: ignore
+                all_db_columns = ['container_number'] + db_cols_to_update
+                records_json = json.dumps([
+                    {k: v for k, v in rec.items() if k in all_db_columns} 
+                    for rec in records_to_upsert
+                ])
+                
+                stmt = text(f"""
+                    INSERT INTO terminal_containers ({", ".join(all_db_columns)})
+                    SELECT p.*
+                    FROM json_populate_recordset(null::terminal_containers, :records) AS p
+                    ON CONFLICT (container_number) DO {update_str};
+                """)
+                
+                res = await session.execute(stmt, {'records': records_json})
+                total_changed += res.rowcount or 0 # type: ignore
                 
                 await session.commit()
                 processed_sheets += 1
@@ -181,9 +181,9 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
     return total_changed, processed_sheets
 
 
-# ───────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Импорт «поездных» файлов (без изменений)
-# ───────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
     if not os.path.exists(src_file_path):
@@ -210,7 +210,7 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
                 """),
                 {"train": train_code, "cn_list": chunk},
             )
-            updated_sum += res.rowcount  # type: ignore
+            updated_sum += res.rowcount or 0 # type: ignore
 
         await session.commit()
 
