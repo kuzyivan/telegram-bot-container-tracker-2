@@ -2,7 +2,6 @@
 import pandas as pd
 from telegram import Update
 from telegram.ext import ContextTypes
-# ИЗМЕНЕНИЕ: Импортируем помощника для экранирования Markdown
 from telegram.helpers import escape_markdown
 
 from config import ADMIN_CHAT_ID
@@ -62,7 +61,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await admin_only_handler(update, context) or not update.message:
         return
-    
+
     logger.info("[stats] Запрос статистики за сутки от администратора.")
     try:
         rows = await get_daily_stats()
@@ -70,21 +69,33 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Нет статистики за последние сутки.")
             return
 
-        text_parts = ["📊 *Статистика за последние 24 часа:*\n"]
+        # Лимит Telegram с небольшим запасом
+        TELEGRAM_MAX_LENGTH = 4000
+        
+        header = "📊 *Статистика за последние 24 часа:*\n"
+        current_message = header
+
         for row in rows:
-            # ИЗМЕНЕНИЕ: Экранируем данные, которые могут содержать спецсимволы
             safe_username = escape_markdown(str(row.username), version=2)
             safe_containers = escape_markdown(str(row.containers), version=2)
-            
             entry = (
                 f"👤 *{safe_username}* \\(ID: `{row.user_id}`\\)\n"
                 f"Запросов: *{row.request_count}*\n"
-                f"Контейнеры: `{safe_containers}`\n"
+                f"Контейнеры: `{safe_containers}`\n\n"
             )
-            text_parts.append(entry)
+            
+            # Если добавление новой записи превысит лимит, отправляем текущее сообщение
+            if len(current_message) + len(entry) > TELEGRAM_MAX_LENGTH:
+                await update.message.reply_text(current_message, parse_mode='MarkdownV2')
+                # Начинаем новое сообщение
+                current_message = header + entry
+            else:
+                current_message += entry
         
-        full_message = "\n".join(text_parts)
-        await update.message.reply_text(full_message, parse_mode='MarkdownV2')
+        # Отправляем последнюю часть сообщения, если она не пустая
+        if current_message != header:
+            await update.message.reply_text(current_message, parse_mode='MarkdownV2')
+
         logger.info("[stats] Статистика успешно отправлена.")
     except Exception as e:
         logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
@@ -145,4 +156,3 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         if update.message:
             await update.message.reply_text("❌ Ошибка при тестовой рассылке.")
-
