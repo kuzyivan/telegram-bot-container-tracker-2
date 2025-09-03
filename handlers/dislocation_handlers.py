@@ -8,11 +8,9 @@ from logger import get_logger
 from db import SessionLocal
 from models import Stats
 from queries.containers import get_latest_train_by_container, get_latest_tracking_data
-from handlers.subscription_management_handler import my_subscriptions_command
 
 logger = get_logger(__name__)
 
-# ... (вспомогательные функции _fmt_num, detect_wagon_type, COLUMNS остаются без изменений) ...
 def _fmt_num(x):
     try:
         f = float(x)
@@ -33,7 +31,6 @@ COLUMNS = [
     'Расстояние оставшееся', 'Прогноз прибытия (дней)', 'Номер вагона', 'Дорога операции'
 ]
 
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text or not update.message.from_user:
         return
@@ -41,20 +38,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_name = update.message.from_user.username or "—"
     text = update.message.text
-
-    # --- ИЗМЕНЕНИЕ: Добавляем маршрутизацию для кнопок главного меню ---
-    if text == "📦 Дислокация":
-        await update.message.reply_text("Введите номер контейнера для поиска:")
-        return
-    if text == "📂 Мои подписки":
-        await my_subscriptions_command(update, context)
-        return
-    # --- Конец изменений ---
-
-    logger.info(f"[dislocation] пользователь {user_id} ({user_name}) отправил текст для поиска")
+    
+    logger.info(f"[dislocation] пользователь {user_id} ({user_name}) отправил текст для поиска: {text}")
     
     container_numbers = [c.strip().upper() for c in re.split(r'[\s,\n.]+', text.strip()) if c]
-    # ... (дальнейшая логика поиска контейнеров остается без изменений) ...
+    
+    if not container_numbers:
+        await update.message.reply_text("Пожалуйста, введите корректный номер контейнера.")
+        return
+
     found_rows = []
     not_found = []
 
@@ -121,4 +113,5 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
         return
 
-    await update.message.reply_text("Ничего не найдено по введённым номерам.")
+    if not_found:
+        await update.message.reply_text(f"Ничего не найдено по номерам: {', '.join(not_found)}")

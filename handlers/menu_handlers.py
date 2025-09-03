@@ -6,12 +6,10 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-# --- Главное меню ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
-
-    # ИЗМЕНЕНИЕ: Упрощаем клавиатуру
+    
     reply_keyboard = [
         ["📦 Дислокация"],
         ["📂 Мои подписки"],
@@ -29,37 +27,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=update.effective_chat.id,
                 sticker="CAACAgIAAxkBAAJBOGiisUho8mpdezoAATaKIfwKypCNVgACb2wAAmvzmUhmDoR2oiG-5jYE"
             )
-    except Exception:
-        pass
+    except Exception: pass
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# --- Обработка inline-кнопок (без изменений) ---
-async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query:
+async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
         return
+
+    text = update.message.text
+    if text == "📦 Дислокация":
+        await update.message.reply_text("Введите номер контейнера для поиска:")
+    elif text == "📂 Мои подписки":
+        from handlers.subscription_management_handler import my_subscriptions_command
+        await my_subscriptions_command(update, context)
+
+async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.callback_query: return
     query = update.callback_query
     await query.answer()
-    if query.data == "start":
-        await show_menu(update, context)
-    elif query.data == "dislocation":
-        await query.edit_message_text("Введите номер контейнера для поиска:")
-    elif query.data == "track_request":
-        await query.edit_message_text("Введите номер контейнера для слежения:")
+    if query.data == "start": await show_menu(update, context)
+    elif query.data == "dislocation": await query.edit_message_text("Введите номер контейнера для поиска:")
+    elif query.data == "track_request": await query.edit_message_text("Введите номер контейнера для слежения:")
 
 async def dislocation_inline_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query:
-        return
+    if not update.callback_query: return
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("Введите номер контейнера для поиска:")
 
-# --- Обработка стикеров (без изменений) ---
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user or not update.message.sticker:
-        return
+    if not update.message or not update.effective_user or not update.message.sticker: return
     sticker = update.message.sticker
-    logger.info(f"handle_sticker: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
+    logger.info(f"handle_sticker: user {update.effective_user.id} sent sticker {sticker.file_id}")
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode=ParseMode.MARKDOWN)
     await show_menu(update, context)

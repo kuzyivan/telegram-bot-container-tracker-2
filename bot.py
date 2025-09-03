@@ -26,7 +26,8 @@ from handlers.train_handlers import upload_train_help, handle_train_excel
 from handlers.train import setup_handlers as setup_train_handlers
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error("❗️ An unhandled error occurred: %s", context.error, exc_info=True)
+    # <<< ЛОГИРОВАНИЕ
+    logger.error("❗️ Произошла необработанная ошибка: %s", context.error, exc_info=True)
 
 async def debug_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -34,9 +35,11 @@ async def debug_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = user.id if user else "—"
         uname = user.username if user else "—"
         txt = getattr(getattr(update, "message", None), "text", None)
-        logger.info(f"[DEBUG UPDATE] from {uid} (@{uname}) type={type(update).__name__} text='{txt}'")
+        # <<< ЛОГИРОВАНИЕ
+        logger.info(f"[DEBUG UPDATE] от {uid} (@{uname}) тип={type(update).__name__} текст='{txt}'")
     except Exception:
-        logger.exception("[DEBUG UPDATE] failed to log update")
+        # <<< ЛОГИРОВАНИЕ
+        logger.exception("[DEBUG UPDATE] не удалось залогировать обновление")
 
 async def set_bot_commands(application: Application):
     user_commands = [
@@ -46,7 +49,8 @@ async def set_bot_commands(application: Application):
         BotCommand("my_subscriptions", "Мои подписки"),
     ]
     await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
-    logger.info("✅ Commands for users have been set.")
+    # <<< ЛОГИРОВАНИЕ
+    logger.info("✅ Команды для пользователей установлены.")
     admin_commands = user_commands + [
         BotCommand("stats", "Статистика за сутки (админ)"),
         BotCommand("exportstats", "Выгрузить всю статистику (админ)"),
@@ -57,12 +61,15 @@ async def set_bot_commands(application: Application):
         BotCommand("upload_train", "Загрузить Excel поезда (админ)"),
     ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
-    logger.info(f"✅ Commands for the admin (ID: {ADMIN_CHAT_ID}) have been set.")
+    # <<< ЛОГИРОВАНИЕ
+    logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
 
 def main():
-    logger.info("🚦 Starting the bot!")
+    # <<< ЛОГИРОВАНИЕ
+    logger.info("🚦 Старт бота!")
     if not TOKEN:
-        logger.critical("🔥 Critical Error: TELEGRAM_TOKEN is not set! The bot cannot start.")
+        # <<< ЛОГИРОВАНИЕ
+        logger.critical("🔥 Критическая ошибка: TELEGRAM_TOKEN не задан! Бот не может запуститься.")
         return
     try:
         request = HTTPXRequest(
@@ -70,6 +77,7 @@ def main():
             pool_timeout=20.0, connection_pool_size=50,
         )
         application = Application.builder().token(TOKEN).request(request).build()
+        
         application.add_handler(broadcast_conversation_handler)
         application.add_handler(tracking_conversation_handler())
         setup_train_handlers(application)
@@ -85,25 +93,35 @@ def main():
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
         
+        application.add_handler(MessageHandler(
+            filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"),
+            reply_keyboard_handler
+        ))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
         application.add_handler(MessageHandler(filters.ALL, debug_all_updates))
         application.add_error_handler(error_handler)
 
         async def post_init(app: Application):
-            logger.info("⚙️ Running post-initialization tasks...")
-            await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Bot has started with full subscription logic.")
+            # <<< ЛОГИРОВАНИЕ
+            logger.info("⚙️ Запускаем задачи после инициализации...")
+            # <<< ЛОГИРОВАНИЕ (текст сообщения)
+            await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал с полной логикой подписок.")
             await set_bot_commands(app)
             start_scheduler(app.bot)
             await check_and_process_terminal_report()
-            logger.info("✅ post_init has completed.")
+            # <<< ЛОГИРОВАНИЕ
+            logger.info("✅ post_init завершён.")
         application.post_init = post_init
         
-        logger.info("🤖 Bot is ready to start. Beginning polling...")
+        # <<< ЛОГИРОВАНИЕ
+        logger.info("🤖 Бот готов к запуску. Начинаю polling...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
-        logger.critical("🔥 Critical error during bot startup: %s", e, exc_info=True)
+        # <<< ЛОГИРОВАНИЕ
+        logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
 
 if __name__ == "__main__":
     main()
