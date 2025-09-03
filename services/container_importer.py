@@ -7,17 +7,19 @@ from typing import List, Tuple, Iterable
 import json
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import text, insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 
 from db import SessionLocal
 from logger import get_logger
+from models import TerminalContainer
 
 logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# Утилиты
+# Утилиты (без изменений)
 # -----------------------------------------------------------------------------
 
 def extract_train_code_from_filename(filename: str) -> str | None:
@@ -40,7 +42,6 @@ def normalize_container(value) -> str | None:
     return s
 
 def find_container_column(df: pd.DataFrame) -> str | None:
-    # Ищем колонку с названием 'Контейнер' или похожим
     for col in df.columns:
         c = str(col).strip().lower()
         if c in ["контейнер", "container", "container #"]:
@@ -88,22 +89,17 @@ def _chunks(seq: Iterable[str], size: int) -> Iterable[List[str]]:
         yield buf
 
 # -----------------------------------------------------------------------------
-# ИТОГОВАЯ ВЕРСИЯ ФУНКЦИИ ИМПОРТА
+# ФИНАЛЬНАЯ ВЕРСИЯ ФУНКЦИИ ИМПОРТА
 # -----------------------------------------------------------------------------
 
 async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, int]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(file_path)
 
-    # Точное соответствие колонок из вашего файла Excel колонкам в БД
     COLUMN_MAP = {
-        'Терминал': 'terminal',
-        'Зона': 'zone',
-        'Клиент': 'client',
-        'Сток': 'stock',
-        'Таможенный режим': 'customs_mode',
-        'Направление': 'destination_station',
-        'Примечание': 'note',
+        'Терминал': 'terminal', 'Зона': 'zone', 'Клиент': 'client',
+        'Сток': 'stock', 'Таможенный режим': 'customs_mode',
+        'Направление': 'destination_station', 'Примечание': 'note',
     }
 
     xls = pd.ExcelFile(file_path)
@@ -126,63 +122,52 @@ async def import_loaded_and_dispatch_from_excel(file_path: str) -> Tuple[int, in
                     logger.warning(f"[Executive summary] На листе '{sheet}' не найден столбец с контейнерами.")
                     continue
 
-                db_cols_to_update = [db_col for xl_col, db_col in COLUMN_MAP.items() if xl_col in df.columns]
-                
-                records_to_upsert = []
                 for _, row in df.iterrows():
                     container_num = normalize_container(row.get(container_col_name))
                     if not container_num:
                         continue
                     
-                    record = {'container_number': container_num}
+                    # Собираем данные для вставки/обновления
+                    data_to_upsert = {'container_number': container_num}
                     for xl_col, db_col in COLUMN_MAP.items():
                         if xl_col in row:
                             value = row[xl_col]
-                            record[db_col] = '' if pd.isna(value) else str(value)
+                            data_to_upsert[db_col] = '' if pd.isna(value) else str(value)
                     
-                    records_to_upsert.append(record)
+                    # Используем конструктор запросов SQLAlchemy - это надёжнее
+                    stmt = pg_insert(TerminalContainer).values(data_to_upsert)
+                    
+                    # Определяем, какие поля обновлять при конфликте
+                    update_data = {k: v for k, v in data_to_upsert.items() if k != 'container_number'}
+                    
+                    # Добавляем ON CONFLICT ... DO UPDATE
+                    # Это сработает, только если есть что обновлять
+                    if update_data:
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=['container_number'],
+                            set_=update_data
+                        )
+                    else:
+                        stmt = stmt.on_conflict_do_nothing(
+                            index_elements=['container_number']
+                        )
 
-                if not records_to_upsert:
-                    processed_sheets += 1
-                    continue
-                
-                all_db_columns = ['container_number'] + db_cols_to_update
-                
-                if not db_cols_to_update:
-                    stmt = text("""
-                        INSERT INTO terminal_containers (container_number)
-                        SELECT (json_array_elements_text(:records)::json->>'container_number')
-                        ON CONFLICT (container_number) DO NOTHING;
-                    """)
-                    records_json = json.dumps(records_to_upsert)
-                else:
-                    update_clause = "UPDATE SET " + ", ".join([f"{col} = EXCLUDED.{col}" for col in db_cols_to_update])
-                    records_json = json.dumps([
-                        {k: v for k, v in rec.items() if k in all_db_columns} 
-                        for rec in records_to_upsert
-                    ])
-                    stmt = text(f"""
-                        INSERT INTO terminal_containers ({", ".join(all_db_columns)})
-                        SELECT p.*
-                        FROM json_populate_recordset(null::terminal_containers, :records) AS p
-                        ON CONFLICT (container_number) DO {update_clause};
-                    """)
+                    await session.execute(stmt)
+                    total_changed +=1 # Считаем каждую попытку вставки/обновления
 
-                res = await session.execute(stmt, {'records': records_json})
-                total_changed += res.rowcount or 0 # type: ignore
-                
                 await session.commit()
                 processed_sheets += 1
 
             except Exception as e:
                 logger.error(f"[Executive summary] Ошибка обработки листа '{sheet}': {e}", exc_info=True)
+                await session.rollback()
 
-    logger.info(f"📥 Импорт Executive summary: листов обработано={processed_sheets}, обновлено/добавлено записей={total_changed}")
+    logger.info(f"📥 Импорт Executive summary: листов обработано={processed_sheets}, обработано записей={total_changed}")
     return total_changed, processed_sheets
 
 
 # -----------------------------------------------------------------------------
-# Импорт «поездных» файлов
+# Импорт «поездных» файлов (без изменений)
 # -----------------------------------------------------------------------------
 
 async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
@@ -210,7 +195,7 @@ async def import_train_excel(src_file_path: str) -> Tuple[int, int, str]:
                 """),
                 {"train": train_code, "cn_list": chunk},
             )
-            updated_sum += res.rowcount or 0 # type: ignore
+            updated_sum += res.rowcount or 0
 
         await session.commit()
 
