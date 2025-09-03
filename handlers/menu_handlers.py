@@ -60,6 +60,6 @@ async def dislocation_inline_callback_handler(update: Update, context: ContextTy
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user or not update.message.sticker: return
     sticker = update.message.sticker
-    logger.info(f"handle_sticker: user {update.effective_user.id} sent sticker {sticker.file_id}")
+    logger.info(f"Обработка стикера: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
     await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode=ParseMode.MARKDOWN)
     await show_menu(update, context)

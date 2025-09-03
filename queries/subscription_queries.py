@@ -1,5 +1,6 @@
 # queries/subscription_queries.py
 from typing import List, Optional
+import datetime
 from sqlalchemy import select, delete, func
 from sqlalchemy.orm import selectinload
 from db import SessionLocal
@@ -27,7 +28,7 @@ async def get_subscription_details(subscription_id: int, user_telegram_id: int) 
         )
         return result.scalar_one_or_none()
 
-async def create_subscription(user_id: int, name: str, containers: List[str], notify_time, email_ids: List[int]) -> TrackingSubscription:
+async def create_subscription(user_id: int, name: str, containers: List[str], notify_time: datetime.time, email_ids: List[int]) -> TrackingSubscription:
     async with SessionLocal() as session:
         count_result = await session.execute(
             select(func.count(TrackingSubscription.id)).where(TrackingSubscription.user_telegram_id == user_id)
