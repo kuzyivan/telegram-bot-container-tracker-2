@@ -25,12 +25,10 @@ async def build_email_management_menu(telegram_id: int, intro_text: str) -> dict
     if user_emails:
         text += "Сохраненные адреса:\n"
         for email in user_emails:
-            # Используем escape для точки в MarkdownV2
-            escaped_email = email.email.replace('.', '\\.')
-            text += f"• `{escaped_email}`\n"
+            text += f"• `{email.email}`\n"
             keyboard.append([InlineKeyboardButton(f"🗑️ Удалить {email.email}", callback_data=f"delete_email_{email.id}")])
     else:
-        text += "У вас пока нет сохраненных email-адресов\\.\n"
+        text += "У вас пока нет сохраненных email-адресов.\n"
     
     keyboard.append([InlineKeyboardButton("➕ Добавить новый Email", callback_data="add_email_start")])
     
@@ -38,15 +36,15 @@ async def build_email_management_menu(telegram_id: int, intro_text: str) -> dict
 
 async def my_emails_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Точка входа в управление email-адресами по команде /my_emails."""
-    # <<< ИСПРАВЛЕНИЕ: Добавлена проверка на наличие update.message и update.effective_user
     if not update.effective_user or not update.message:
         return
     
     menu_data = await build_email_management_menu(
         update.effective_user.id,
-        "📧 *Управление Email\\-адресами*"
+        "📧 *Управление Email-адресами*"
     )
-    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+    # <<< ИСПРАВЛЕНИЕ: Используем более безопасный parse_mode='Markdown'
+    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
 
 async def delete_email_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает нажатие на кнопку 'Удалить'."""
@@ -65,7 +63,7 @@ async def delete_email_callback(update: Update, context: ContextTypes.DEFAULT_TY
         intro_text = "❌ Не удалось удалить email."
         
     menu_data = await build_email_management_menu(query.from_user.id, intro_text)
-    await query.edit_message_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+    await query.edit_message_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
 
 async def add_email_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог добавления email."""
@@ -91,14 +89,12 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     added_email = await add_user_email(update.effective_user.id, email)
     
     if added_email:
-        escaped_email = added_email.email.replace('.', '\\.')
-        intro_text = f"✅ Новый email `{escaped_email}` успешно добавлен."
+        intro_text = f"✅ Новый email `{added_email.email}` успешно добавлен."
     else:
-        escaped_email = email.replace('.', '\\.')
-        intro_text = f"⚠️ Email `{escaped_email}` уже был в вашем списке."
+        intro_text = f"⚠️ Email `{email}` уже был в вашем списке."
     
     menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
-    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
     
     return ConversationHandler.END
 
@@ -109,7 +105,7 @@ async def add_email_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     intro_text = "Действие отменено."
     menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
-    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
     return ConversationHandler.END
 
 def get_email_management_handlers():

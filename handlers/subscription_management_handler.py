@@ -52,10 +52,7 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
     email_list = [e.email for e in sub.target_emails]
     emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
 
-    # <<< ИСПРАВЛЕНИЕ #1: Явное сравнение `is True` для Pylance
     status_text = 'Активна ✅' if sub.is_active is True else 'Неактивна ⏸️'
-    
-    # <<< ИСПРАВЛЕНИЕ #2: Явное получение длины списка для Pylance
     containers_count = len(sub.containers) if sub.containers is not None else 0
 
     text = (
@@ -88,14 +85,12 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
         await query.answer("❌ Ошибка: подписка не найдена.", show_alert=True)
         return
 
-    # <<< ИСПРАВЛЕНИЕ #3: Явная проверка на пустой список для Pylance
     if not sub.containers or len(sub.containers) == 0:
         text = "В этой подписке нет контейнеров."
     else:
         container_list = "\n".join(f"`{c}`" for c in sub.containers)
         text = f"Контейнеры в подписке *{sub.subscription_name}*:\n{container_list}"
     
-    # <<< ИСПРАВЛЕНИЕ #4: Используем более надежный метод send_message
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
 
