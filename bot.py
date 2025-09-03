@@ -12,15 +12,15 @@ load_dotenv()
 
 from config import TOKEN, ADMIN_CHAT_ID
 from scheduler import start_scheduler
-# Импортируем новый сервис для стартовой проверки
 from services.terminal_importer import check_and_process_terminal_report
 
 # --- Импорты хендлеров ---
-from handlers.email_handlers import set_email_command, process_email, cancel_email, SET_EMAIL
 from handlers.menu_handlers import (
     start, show_menu, reply_keyboard_handler,
     menu_button_handler, dislocation_inline_callback_handler, handle_sticker
 )
+# <<< НОВОЕ: Импортируем обработчики для управления Email
+from handlers.email_management_handler import get_email_management_handlers
 from handlers.dislocation_handlers import handle_message
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from handlers.tracking_handlers import (
@@ -56,6 +56,8 @@ async def set_bot_commands(application: Application):
     user_commands = [
         BotCommand("start", "Главное меню"),
         BotCommand("menu", "Показать главное меню"),
+        # <<< НОВОЕ: Добавляем команду для управления email
+        BotCommand("my_emails", "Управление Email-адресами"),
         BotCommand("canceltracking", "Отменить все слежения"),
         BotCommand("set_email", "Указать/изменить e-mail для отчётов"),
     ]
@@ -95,13 +97,16 @@ def main():
 
         # --- Регистрация обработчиков ---
         
-        # Диалоги (Conversation Handlers)
-        set_email_conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("set_email", set_email_command)],
-            states={SET_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_email)]},
-            fallbacks=[CommandHandler("cancel", cancel_email)],
-        )
-        application.add_handler(set_email_conv_handler)
+        # <<< НОВОЕ: Регистрируем обработчики для управления email.
+        # Важно добавить их ПЕРЕД другими ConversationHandler, если есть пересечения
+        email_handlers = get_email_management_handlers()
+        application.add_handlers(email_handlers)
+
+        # Старые диалоги (Conversation Handlers)
+        # УДАЛЯЕМ СТАРЫЙ ОБРАБОТЧИК set_email, так как он заменен новым меню
+        # set_email_conv_handler = ConversationHandler(...)
+        # application.add_handler(set_email_conv_handler)
+        
         application.add_handler(broadcast_conversation_handler)
         application.add_handler(tracking_conversation_handler())
         setup_train_handlers(application)
@@ -109,6 +114,10 @@ def main():
         # Обработчики команд
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("menu", show_menu))
+        # Команда /set_email теперь не нужна, так как есть /my_emails. 
+        # Можно оставить для обратной совместимости или удалить. Пока оставим.
+        # from handlers.email_handlers import set_email_command, process_email, cancel_email, SET_EMAIL
+        # application.add_handler(CommandHandler("set_email", ...))
         application.add_handler(CommandHandler("canceltracking", cancel_my_tracking))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CommandHandler("exportstats", exportstats))
@@ -130,10 +139,9 @@ def main():
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
         
-        # Этот обработчик должен быть одним из последних, так как он ловит любой текст
+        # Этот обработчик должен быть одним из последних
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         
-        # Отладочный обработчик (ловит вообще всё, что не было поймано ранее)
         application.add_handler(MessageHandler(filters.ALL, debug_all_updates))
 
         # Глобальный обработчик ошибок
@@ -143,21 +151,17 @@ def main():
             """Выполняется после инициализации приложения, перед запуском polling."""
             logger.info("⚙️ Запускаем задачи после инициализации...")
             try:
-                await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал (с разделенными задачами).")
+                await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал с обновленной логикой email.")
                 me = await app.bot.get_me()
                 logger.info(f"Успешный getMe: @{me.username} (id={me.id})")
             except Exception as e:
                 logger.error(f"Не смог отправить стартовое сообщение админу: {e}", exc_info=True)
 
-            # При старте запускаем импорт отчета терминала, чтобы получить актуальную базу,
-            # если бот был выключен во время планового запуска.
             logger.info("Запускаю стартовую проверку отчета терминала...")
             await check_and_process_terminal_report()
             
-            # Запускаем планировщик
             start_scheduler(app.bot)
             
-            # Устанавливаем команды в меню
             await set_bot_commands(app)
             logger.info("✅ post_init завершён.")
 

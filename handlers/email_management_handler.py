@@ -1,0 +1,133 @@
+# handlers/email_management_handler.py
+import re
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ContextTypes, ConversationHandler, CommandHandler, 
+    CallbackQueryHandler, MessageHandler, filters
+)
+
+from queries.user_queries import get_user_emails, add_user_email, delete_user_email
+from logger import get_logger
+
+logger = get_logger(__name__)
+
+# Состояние для диалога добавления email
+ADD_EMAIL = range(1)
+EMAIL_REGEX = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+
+async def build_email_management_menu(telegram_id: int, intro_text: str) -> dict:
+    """Вспомогательная функция для создания текста и клавиатуры меню управления email."""
+    user_emails = await get_user_emails(telegram_id)
+    
+    keyboard = []
+    text = f"{intro_text}\n\n"
+    
+    if user_emails:
+        text += "Сохраненные адреса:\n"
+        for email in user_emails:
+            # Используем escape для точки в MarkdownV2
+            escaped_email = email.email.replace('.', '\\.')
+            text += f"• `{escaped_email}`\n"
+            keyboard.append([InlineKeyboardButton(f"🗑️ Удалить {email.email}", callback_data=f"delete_email_{email.id}")])
+    else:
+        text += "У вас пока нет сохраненных email-адресов\\.\n"
+    
+    keyboard.append([InlineKeyboardButton("➕ Добавить новый Email", callback_data="add_email_start")])
+    
+    return {"text": text, "reply_markup": InlineKeyboardMarkup(keyboard)}
+
+async def my_emails_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Точка входа в управление email-адресами по команде /my_emails."""
+    # <<< ИСПРАВЛЕНИЕ: Добавлена проверка на наличие update.message и update.effective_user
+    if not update.effective_user or not update.message:
+        return
+    
+    menu_data = await build_email_management_menu(
+        update.effective_user.id,
+        "📧 *Управление Email\\-адресами*"
+    )
+    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+
+async def delete_email_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатие на кнопку 'Удалить'."""
+    query = update.callback_query
+    if not query or not query.data or not query.from_user:
+        return
+
+    await query.answer()
+    email_id = int(query.data.split("_")[-1])
+    
+    deleted = await delete_user_email(email_id, query.from_user.id)
+    
+    if deleted:
+        intro_text = "✅ Email успешно удален."
+    else:
+        intro_text = "❌ Не удалось удалить email."
+        
+    menu_data = await build_email_management_menu(query.from_user.id, intro_text)
+    await query.edit_message_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+
+async def add_email_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начинает диалог добавления email."""
+    query = update.callback_query
+    if not query:
+        return ConversationHandler.END
+
+    await query.answer()
+    await query.edit_message_text("Пожалуйста, отправьте email-адрес, который хотите добавить. Для отмены введите /cancel.")
+    return ADD_EMAIL
+
+async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получает и сохраняет новый email."""
+    if not update.message or not update.message.text or not update.effective_user:
+        return ConversationHandler.END
+
+    email = update.message.text.strip()
+    
+    if not re.fullmatch(EMAIL_REGEX, email):
+        await update.message.reply_text("⛔️ Кажется, это не похоже на email. Попробуйте еще раз или введите /cancel для отмены.")
+        return ADD_EMAIL
+
+    added_email = await add_user_email(update.effective_user.id, email)
+    
+    if added_email:
+        escaped_email = added_email.email.replace('.', '\\.')
+        intro_text = f"✅ Новый email `{escaped_email}` успешно добавлен."
+    else:
+        escaped_email = email.replace('.', '\\.')
+        intro_text = f"⚠️ Email `{escaped_email}` уже был в вашем списке."
+    
+    menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
+    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+    
+    return ConversationHandler.END
+
+async def add_email_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отменяет диалог добавления email."""
+    if not update.message or not update.effective_user:
+        return ConversationHandler.END
+        
+    intro_text = "Действие отменено."
+    menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
+    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='MarkdownV2')
+    return ConversationHandler.END
+
+def get_email_management_handlers():
+    """Возвращает набор обработчиков для управления email."""
+    
+    add_email_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(add_email_start, pattern="^add_email_start$")],
+        states={
+            ADD_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_email_receive)]
+        },
+        fallbacks=[CommandHandler("cancel", add_email_cancel)],
+        map_to_parent={
+            ConversationHandler.END: ConversationHandler.END
+        }
+    )
+    
+    return [
+        CommandHandler("my_emails", my_emails_command),
+        CallbackQueryHandler(delete_email_callback, pattern="^delete_email_"),
+        add_email_conv
+    ]
