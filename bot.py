@@ -84,10 +84,7 @@ def main():
         application.add_handler(CommandHandler("upload_train", upload_train_help))
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-        application.add_handler(MessageHandler(
-            filters.Regex("^(📦 Дислокация|🔔 Задать слежение|❌ Отмена слежения)$"),
-            reply_keyboard_handler
-        ))
+        
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

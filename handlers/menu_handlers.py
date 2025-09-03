@@ -11,15 +11,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
-    # ИЗМЕНЕНИЕ: Обновляем клавиатуру, убирая устаревшие кнопки
+    # ИЗМЕНЕНИЕ: Упрощаем клавиатуру
     reply_keyboard = [
         ["📦 Дислокация"],
-        ["/my_subscriptions - Мои подписки"],
+        ["📂 Мои подписки"],
     ]
 
     await update.message.reply_text(
         "Привет! Я бот для отслеживания контейнеров 🚆\n\n"
-        "Для поиска введите номер контейнера. Для управления подписками используйте команду /my_subscriptions.",
+        "Для поиска введите номер контейнера. Для управления подписками нажмите кнопку или используйте команду /my_subscriptions.",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True),
     )
 
@@ -33,31 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Эта функция теперь просто вызывает start для консистентности
     await start(update, context)
-
-# --- Обработка reply-клавиатуры ---
-async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    text = update.message.text
-    if text == "📦 Дислокация":
-        await update.message.reply_text("Введите номер контейнера для поиска:")
-    # ИЗМЕНЕНИЕ: Направляем пользователя к новым командам
-    elif text == "🔔 Задать слежение" or text == "❌ Отмена слежения":
-        await update.message.reply_text(
-            "Управление подписками теперь происходит через команду /my_subscriptions. Пожалуйста, используйте ее."
-        )
-    elif text == "/my_subscriptions - Мои подписки":
-        # Импортируем здесь, чтобы избежать циклических зависимостей
-        from .subscription_management_handler import my_subscriptions_command
-        await my_subscriptions_command(update, context)
-    else:
-        # Передаем обработку текстовых сообщений (номеров контейнеров) в соответствующий хендлер
-        from .dislocation_handlers import handle_message
-        await handle_message(update, context)
-
 
 # --- Обработка inline-кнопок (без изменений) ---
 async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
