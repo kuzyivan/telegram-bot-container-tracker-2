@@ -19,8 +19,9 @@ from handlers.menu_handlers import (
     start, show_menu, reply_keyboard_handler,
     menu_button_handler, dislocation_inline_callback_handler, handle_sticker
 )
-# <<< НОВОЕ: Импортируем обработчики для управления Email
 from handlers.email_management_handler import get_email_management_handlers
+# <<< НОВОЕ: Импортируем обработчики для управления ПОДПИСКАМИ
+from handlers.subscription_management_handler import get_subscription_management_handlers
 from handlers.dislocation_handlers import handle_message
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify
 from handlers.tracking_handlers import (
@@ -56,10 +57,9 @@ async def set_bot_commands(application: Application):
     user_commands = [
         BotCommand("start", "Главное меню"),
         BotCommand("menu", "Показать главное меню"),
-        # <<< НОВОЕ: Добавляем команду для управления email
         BotCommand("my_emails", "Управление Email-адресами"),
-        BotCommand("canceltracking", "Отменить все слежения"),
-        BotCommand("set_email", "Указать/изменить e-mail для отчётов"),
+        # <<< НОВОЕ: Добавляем команду для управления подписками
+        BotCommand("my_subscriptions", "Мои подписки"),
     ]
     await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     logger.info("✅ Команды для пользователей установлены.")
@@ -73,6 +73,11 @@ async def set_bot_commands(application: Application):
         BotCommand("train", "Отчёт по поезду (админ)"),
         BotCommand("upload_train", "Загрузить Excel поезда (админ)"),
     ]
+    # <<< ИЗМЕНЕНИЕ: Убираем устаревшие команды, которые больше не нужны
+    # Убираем /canceltracking и /set_email, так как новый интерфейс их заменяет
+    user_commands = [cmd for cmd in user_commands if cmd.command not in ["canceltracking", "set_email"]]
+    
+    await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
 
@@ -87,25 +92,15 @@ def main():
 
     try:
         request = HTTPXRequest(
-            connect_timeout=20.0,
-            read_timeout=60.0,
-            write_timeout=60.0,
-            pool_timeout=20.0,
-            connection_pool_size=50,
+            connect_timeout=20.0, read_timeout=60.0, write_timeout=60.0,
+            pool_timeout=20.0, connection_pool_size=50,
         )
         application = Application.builder().token(TOKEN).request(request).build()
 
         # --- Регистрация обработчиков ---
-        
-        # <<< НОВОЕ: Регистрируем обработчики для управления email.
-        # Важно добавить их ПЕРЕД другими ConversationHandler, если есть пересечения
-        email_handlers = get_email_management_handlers()
-        application.add_handlers(email_handlers)
-
-        # Старые диалоги (Conversation Handlers)
-        # УДАЛЯЕМ СТАРЫЙ ОБРАБОТЧИК set_email, так как он заменен новым меню
-        # set_email_conv_handler = ConversationHandler(...)
-        # application.add_handler(set_email_conv_handler)
+        application.add_handlers(get_email_management_handlers())
+        # <<< НОВОЕ: Регистрируем обработчики для управления подписками
+        application.add_handlers(get_subscription_management_handlers())
         
         application.add_handler(broadcast_conversation_handler)
         application.add_handler(tracking_conversation_handler())
@@ -114,11 +109,6 @@ def main():
         # Обработчики команд
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("menu", show_menu))
-        # Команда /set_email теперь не нужна, так как есть /my_emails. 
-        # Можно оставить для обратной совместимости или удалить. Пока оставим.
-        # from handlers.email_handlers import set_email_command, process_email, cancel_email, SET_EMAIL
-        # application.add_handler(CommandHandler("set_email", ...))
-        application.add_handler(CommandHandler("canceltracking", cancel_my_tracking))
         application.add_handler(CommandHandler("stats", stats))
         application.add_handler(CommandHandler("exportstats", exportstats))
         application.add_handler(CommandHandler("tracking", tracking))
@@ -128,8 +118,6 @@ def main():
         # Обработчики Callback-кнопок
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_start, pattern=r"^cancel_tracking$"))
-        application.add_handler(CallbackQueryHandler(cancel_tracking_confirm, pattern=r"^cancel_tracking_(yes|no)$"))
 
         # Обработчики сообщений
         application.add_handler(MessageHandler(
@@ -139,30 +127,16 @@ def main():
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
         
-        # Этот обработчик должен быть одним из последних
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        
         application.add_handler(MessageHandler(filters.ALL, debug_all_updates))
-
-        # Глобальный обработчик ошибок
         application.add_error_handler(error_handler)
 
         async def post_init(app: Application):
-            """Выполняется после инициализации приложения, перед запуском polling."""
             logger.info("⚙️ Запускаем задачи после инициализации...")
-            try:
-                await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал с обновленной логикой email.")
-                me = await app.bot.get_me()
-                logger.info(f"Успешный getMe: @{me.username} (id={me.id})")
-            except Exception as e:
-                logger.error(f"Не смог отправить стартовое сообщение админу: {e}", exc_info=True)
-
-            logger.info("Запускаю стартовую проверку отчета терминала...")
-            await check_and_process_terminal_report()
-            
-            start_scheduler(app.bot)
-            
+            await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал с новой логикой подписок.")
             await set_bot_commands(app)
+            start_scheduler(app.bot)
+            await check_and_process_terminal_report()
             logger.info("✅ post_init завершён.")
 
         application.post_init = post_init
