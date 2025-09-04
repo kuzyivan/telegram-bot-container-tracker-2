@@ -8,7 +8,6 @@ from pytz import timezone
 from utils.notify import notify_admin
 from logger import get_logger
 from services.notification_service import NotificationService
-# ИЗМЕНЕНИЕ: Импортируем наши новые, разделенные сервисы
 from services.dislocation_importer import check_and_process_dislocation
 from services.terminal_importer import check_and_process_terminal_report
 
@@ -18,7 +17,6 @@ TZ = timezone("Asia/Vladivostok")
 JOB_DEFAULTS = {"coalesce": True, "max_instances": 1, "misfire_grace_time": 300}
 scheduler = AsyncIOScheduler(timezone=TZ, job_defaults=JOB_DEFAULTS)
 
-# --- Вспомогательные функции и рассылка уведомлений (без изменений) ---
 
 def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mapping] = None) -> str:
     header = "✅ <b>Обновление базы терминала завершено</b>\n"
@@ -31,6 +29,7 @@ def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mappin
     pretty = [f"<b>{title}:</b> {stats[key]}" for key, title in key_map if key in stats]
     return header + base + "\n".join(pretty)
 
+
 async def job_send_notifications(bot, target_time: time):
     logger.info(f"🔔 Запуск задачи на рассылку для {target_time.strftime('%H:%M')}")
     service = NotificationService(bot)
@@ -41,10 +40,7 @@ async def job_send_notifications(bot, target_time: time):
         logger.critical(f"❌ Критическая ошибка в задаче рассылки для {target_time.strftime('%H:%M')}: {e}", exc_info=True)
 
 
-# --- ИЗМЕНЕНИЕ: Новые, разделенные задачи для проверки почты ---
-
 async def job_periodic_dislocation_check():
-    """Задача для периодической проверки дислокации (каждые 20 минут)."""
     logger.info("Scheduler: Запуск периодической проверки дислокации...")
     try:
         await check_and_process_dislocation()
@@ -52,8 +48,8 @@ async def job_periodic_dislocation_check():
     except Exception as e:
         logger.error(f"❌ Scheduler: Ошибка в задаче проверки дислокации: {e}", exc_info=True)
 
+
 async def job_daily_terminal_import():
-    """Задача для ежедневного импорта базы терминала (в 8:30)."""
     logger.info("Scheduler: Запуск ежедневного импорта базы терминала...")
     started = datetime.now(TZ)
     try:
@@ -71,8 +67,6 @@ async def job_daily_terminal_import():
         await notify_admin(error_message, silent=False)
 
 
-# --- Публичная функция запуска ---
-
 def start_scheduler(bot):
     """
     Регистрирует и запускает все задачи планировщика.
@@ -80,27 +74,30 @@ def start_scheduler(bot):
     # 1) Рассылки пользователям
     scheduler.add_job(
         job_send_notifications, 'cron', hour=9, minute=0,
-        args=[bot, time(9, 0)], id="notify_for_09", replace_existing=True, jitter=10
+        args=[bot, time(9, 0)], id="notify_for_09", replace_existing=True,
+        jitter=600  # <<< РЕКОМЕНДАЦИЯ: 600 секунд (10 минут)
     )
     scheduler.add_job(
         job_send_notifications, 'cron', hour=16, minute=0,
-        args=[bot, time(16, 0)], id="notify_for_16", replace_existing=True, jitter=10
+        args=[bot, time(16, 0)], id="notify_for_16", replace_existing=True,
+        jitter=600  # <<< РЕКОМЕНДАЦИЯ: 600 секунд (10 минут)
     )
 
-    # 2) ИЗМЕНЕНИЕ: Задача для проверки дислокации каждые 20 минут
+    # 2) Задача для проверки дислокации каждые 20 минут
     scheduler.add_job(
         job_periodic_dislocation_check, 'cron', minute='*/20',
         id="dislocation_check_20min", replace_existing=True, jitter=10
     )
 
-    # 3) ИЗМЕНЕНИЕ: Задача для импорта базы терминала в 08:30
+    # 3) Задача для импорта базы терминала в 08:30
     scheduler.add_job(
         job_daily_terminal_import, 'cron', hour=8, minute=30,
         id="terminal_import_0830", replace_existing=True, jitter=10
     )
 
     scheduler.start()
-    logger.info("🟢 Планировщик запущен с разделенными задачами.")
+    # <<< РЕКОМЕНДАЦИЯ: Обновленное сообщение в логе
+    logger.info("🟢 Планировщик запущен с разделенными задачами и дрожанием (jitter).")
     local_time = datetime.now(TZ)
     logger.info(f"🕒 Локальное время Владивостока: {local_time}")
     logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
