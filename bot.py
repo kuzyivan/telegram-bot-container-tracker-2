@@ -66,18 +66,17 @@ def main():
         logger.critical("🔥 Критическая ошибка: TELEGRAM_TOKEN не задан! Бот не может запуститься.")
         return
     try:
+        # Здесь мы уже задали все необходимые таймауты
         request = HTTPXRequest(
             connect_timeout=30.0, read_timeout=90.0, write_timeout=90.0,
             pool_timeout=30.0, connection_pool_size=50,
         )
         
-        # <<< ИСПРАВЛЕНИЕ: Добавляем таймауты для polling'а сюда, в builder
+        # <<< ИСПРАВЛЕНИЕ: Убираем дублирующие и конфликтующие настройки таймаутов
         application = (
             Application.builder()
             .token(TOKEN)
             .request(request)
-            .connect_timeout(30)  # Таймаут на подключение для getUpdates
-            .read_timeout(60)     # Таймаут на чтение для getUpdates
             .build()
         )
         
@@ -114,7 +113,6 @@ def main():
         application.post_init = post_init
         
         logger.info("🤖 Бот готов к запуску. Начинаю polling...")
-        # <<< ИСПРАВЛЕНИЕ: Убираем неверные параметры отсюда
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
