@@ -20,7 +20,8 @@ from handlers.email_management_handler import get_email_management_handlers
 from handlers.subscription_management_handler import get_subscription_management_handlers
 from handlers.tracking_handlers import tracking_conversation_handler
 from handlers.dislocation_handlers import handle_message
-from handlers.admin_handlers import stats, exportstats, tracking, test_notify
+# <<< ИЗМЕНЕНИЕ: Импортируем новую функцию
+from handlers.admin_handlers import stats, exportstats, tracking, test_notify, force_notify
 from handlers.broadcast import broadcast_conversation_handler
 from handlers.train_handlers import upload_train_help, handle_train_excel
 from handlers.train import setup_handlers as setup_train_handlers
@@ -50,11 +51,13 @@ async def set_bot_commands(application: Application):
     admin_commands = user_commands + [
         BotCommand("stats", "Статистика за сутки (админ)"),
         BotCommand("exportstats", "Выгрузить всю статистику (админ)"),
-        BotCommand("testnotify", "Тестовая рассылка по всем (админ)"),
+        BotCommand("testnotify", "Тестовая рассылка (админ)"),
         BotCommand("tracking", "Выгрузить все подписки (админ)"),
-        BotCommand("broadcast", "Рассылка всем пользователям (админ)"),
+        BotCommand("broadcast", "Рассылка всем (админ)"),
         BotCommand("train", "Отчёт по поезду (админ)"),
         BotCommand("upload_train", "Загрузить Excel поезда (админ)"),
+        # <<< НОВОЕ: Добавляем команду в меню админа
+        BotCommand("force_notify", "Принудительная рассылка (админ)"),
     ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
@@ -65,10 +68,7 @@ def main():
         logger.critical("🔥 Критическая ошибка: TELEGRAM_TOKEN не задан! Бот не может запуститься.")
         return
     try:
-        request = HTTPXRequest(
-            connect_timeout=20.0, read_timeout=60.0, write_timeout=60.0,
-            pool_timeout=20.0, connection_pool_size=50,
-        )
+        request = HTTPXRequest(connect_timeout=20.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=20.0, connection_pool_size=50)
         application = Application.builder().token(TOKEN).request(request).build()
         
         application.add_handler(broadcast_conversation_handler)
@@ -83,13 +83,13 @@ def main():
         application.add_handler(CommandHandler("tracking", tracking))
         application.add_handler(CommandHandler("testnotify", test_notify))
         application.add_handler(CommandHandler("upload_train", upload_train_help))
+        # <<< НОВОЕ: Регистрируем обработчик команды
+        application.add_handler(CommandHandler("force_notify", force_notify))
+        
         application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
         application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
         
-        application.add_handler(MessageHandler(
-            filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"),
-            reply_keyboard_handler
-        ))
+        application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), reply_keyboard_handler))
         application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
         application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
