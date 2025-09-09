@@ -3,7 +3,8 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
-    CallbackQueryHandler, MessageHandler, filters
+    CallbackQueryHandler, MessageHandler, filters,
+    ApplicationHandlerStop  # <<< ИЗМЕНЕНИЕ: Импортируем ApplicationHandlerStop
 )
 from queries.user_queries import get_user_emails, add_user_email, delete_user_email
 from logger import get_logger
@@ -63,16 +64,22 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     intro_text = f"✅ Новый email `{added_email.email}` успешно добавлен." if added_email else f"⚠️ Email `{email}` уже был в вашем списке."
     menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
-    return ConversationHandler.END
+    
+    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку этого сообщения
+    raise ApplicationHandlerStop()
 
 async def add_email_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user: return ConversationHandler.END
     intro_text = "Действие отменено."
     menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
+    
+    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку, если отмена была по команде
+    if update.message and update.message.text == "/cancel":
+        raise ApplicationHandlerStop()
+    
     return ConversationHandler.END
 
-# <<< ИЗМЕНЕНИЕ: Отдельная функция для диалога
 def get_email_conversation_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CallbackQueryHandler(add_email_start, pattern="^add_email_start$")],
@@ -82,7 +89,6 @@ def get_email_conversation_handler() -> ConversationHandler:
         fallbacks=[CommandHandler("cancel", add_email_cancel)],
     )
 
-# <<< ИЗМЕНЕНИЕ: Отдельная функция для обычных команд
 def get_email_command_handlers():
     return [
         CommandHandler("my_emails", my_emails_command),
