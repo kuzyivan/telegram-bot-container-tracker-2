@@ -1,6 +1,6 @@
 # models.py
 from sqlalchemy import (Boolean, Column, Integer, String, BigInteger, DateTime,
-                        Time, ARRAY, ForeignKey, Table, Float, UniqueConstraint) # <<< ИЗМЕНЕНИЕ: Импортируем UniqueConstraint
+                        Time, ARRAY, ForeignKey, Table, Float, UniqueConstraint)
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 from logger import get_logger
@@ -12,7 +12,7 @@ subscription_email_association = Table(
     "subscription_email_association",
     Base.metadata,
     Column("subscription_id", Integer, ForeignKey("tracking_subscriptions.id"), primary_key=True),
-    Column("email_id", Integer, ForeignKey("user_emails.id"), primary_key=True),
+    Column("email_id", Integer, ForeignKey("user_emails.id", ondelete='CASCADE'), primary_key=True),
 )
 
 class UserEmail(Base):
@@ -28,11 +28,7 @@ class UserEmail(Base):
         secondary=subscription_email_association,
         back_populates="target_emails"
     )
-    
-    # <<< ИЗМЕНЕНИЕ: Добавляем составное ограничение уникальности
-    __table_args__ = (
-        UniqueConstraint('user_telegram_id', 'email', name='_user_email_uc'),
-    )
+    __table_args__ = (UniqueConstraint('user_telegram_id', 'email', name='_user_email_uc'),)
 
 class User(Base):
     __tablename__ = "users"
@@ -42,7 +38,6 @@ class User(Base):
     subscriptions = relationship("TrackingSubscription", back_populates="user", cascade="all, delete-orphan")
     emails = relationship("UserEmail", back_populates="user", cascade="all, delete-orphan")
 
-# ... (остальные классы TrackingSubscription, Stats, Tracking остаются без изменений) ...
 class TrackingSubscription(Base):
     __tablename__ = "tracking_subscriptions"
     id = Column(Integer, primary_key=True)
@@ -85,7 +80,4 @@ class Tracking(Base):
 
 from model.terminal_container import TerminalContainer
 
-__all__ = [
-    "Base", "User", "UserEmail", "TrackingSubscription", 
-    "Stats", "Tracking", "TerminalContainer"
-]
+__all__ = ["Base", "User", "UserEmail", "TrackingSubscription", "Stats", "Tracking", "TerminalContainer"]

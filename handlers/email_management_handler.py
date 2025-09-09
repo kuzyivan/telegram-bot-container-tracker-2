@@ -3,14 +3,13 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
-    CallbackQueryHandler, MessageHandler, filters,
-    ApplicationHandlerStop  # <<< ИЗМЕНЕНИЕ: Импортируем ApplicationHandlerStop
+    CallbackQueryHandler, MessageHandler, filters
 )
 from queries.user_queries import get_user_emails, add_user_email, delete_user_email
 from logger import get_logger
+from handlers.menu_handlers import reply_keyboard_handler
 
 logger = get_logger(__name__)
-
 ADD_EMAIL = range(1)
 EMAIL_REGEX = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
 
@@ -29,12 +28,8 @@ async def build_email_management_menu(telegram_id: int, intro_text: str) -> dict
     return {"text": text, "reply_markup": InlineKeyboardMarkup(keyboard)}
 
 async def my_emails_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.effective_user or not update.message:
-        return
-    menu_data = await build_email_management_menu(
-        update.effective_user.id,
-        "📧 *Управление Email-адресами*"
-    )
+    if not update.effective_user or not update.message: return
+    menu_data = await build_email_management_menu(update.effective_user.id, "📧 *Управление Email-адресами*")
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
 
 async def delete_email_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -64,20 +59,17 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     intro_text = f"✅ Новый email `{added_email.email}` успешно добавлен." if added_email else f"⚠️ Email `{email}` уже был в вашем списке."
     menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
-    
-    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку этого сообщения
-    raise ApplicationHandlerStop()
+    return ConversationHandler.END
 
-async def add_email_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user: return ConversationHandler.END
-    intro_text = "Действие отменено."
-    menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
-    await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
-    
-    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку, если отмена была по команде
-    if update.message and update.message.text == "/cancel":
-        raise ApplicationHandlerStop()
-    
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message: return ConversationHandler.END
+    await update.message.reply_text("Действие отменено.")
+    return ConversationHandler.END
+
+async def cancel_and_reroute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message: return ConversationHandler.END
+    await update.message.reply_text("Действие отменено. Выполняю команду из меню...")
+    await reply_keyboard_handler(update, context)
     return ConversationHandler.END
 
 def get_email_conversation_handler() -> ConversationHandler:
@@ -86,7 +78,10 @@ def get_email_conversation_handler() -> ConversationHandler:
         states={
             ADD_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_email_receive)]
         },
-        fallbacks=[CommandHandler("cancel", add_email_cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_conversation),
+            MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), cancel_and_reroute)
+        ],
     )
 
 def get_email_command_handlers():

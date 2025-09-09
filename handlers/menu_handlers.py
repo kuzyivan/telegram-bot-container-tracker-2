@@ -3,7 +3,7 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from logger import get_logger
-from queries.user_queries import register_user # <<< ИЗМЕНЕНИЕ: Импортируем новую функцию
+from queries.user_queries import register_user
 
 logger = get_logger(__name__)
 
@@ -11,7 +11,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user:
         return
     
-    # <<< ИЗМЕНЕНИЕ: Регистрируем пользователя при первом старте
     await register_user(
         telegram_id=update.effective_user.id,
         username=update.effective_user.username
@@ -34,7 +33,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception: pass
 
-# ... (остальные функции остаются без изменений) ...
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
