@@ -4,7 +4,7 @@ import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters,
-    CommandHandler
+    CommandHandler, ApplicationHandlerStop
 )
 from logger import get_logger
 from queries.user_queries import get_user_emails
@@ -30,7 +30,6 @@ async def create_subscription_start(update: Update, context: ContextTypes.DEFAUL
     else:
         context.user_data.clear()
         
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Шаг 1 (Начало): Пользователь {query.from_user.id} начал создание новой подписки.")
 
     await query.edit_message_text(
@@ -50,7 +49,6 @@ async def get_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['containers'] = containers
     
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Шаг 2 (Контейнеры): Пользователь {update.effective_user.id} ввел контейнеры: {containers}")
     
     keyboard = [
@@ -61,7 +59,9 @@ async def get_containers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Шаг 2/4: Отлично! Теперь выберите время для ежедневного отчета:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return GET_TIME
+    
+    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку этого сообщения
+    raise ApplicationHandlerStop()
 
 # --- Шаг 3: Получение времени и запрос email ---
 async def get_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +75,6 @@ async def get_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hour, minute = map(int, time_str.split(':'))
     context.user_data['notify_time'] = datetime.time(hour=hour, minute=minute)
 
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Шаг 3 (Время): Пользователь {query.from_user.id} выбрал время {time_str}.")
 
     user_emails = await get_user_emails(query.from_user.id)
@@ -101,7 +100,6 @@ async def get_emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "emails_done":
-        # <<< ЛОГИРОВАНИЕ
         logger.info(f"Шаг 4 (Email Готово): Пользователь {query.from_user.id} завершил выбор email. Выбранные ID: {context.user_data.get('selected_emails')}")
         await query.edit_message_text("Шаг 4/4: Теперь придумайте название для этой подписки (например, 'Контейнеры для клиента А').")
         return GET_NAME
@@ -115,7 +113,6 @@ async def get_emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
         selected_emails.add(email_id)
     context.user_data['selected_emails'] = selected_emails
 
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Шаг 3.1 (Выбор Email): Пользователь {query.from_user.id} изменил выбор. Текущие ID: {selected_emails}")
 
     user_emails = await get_user_emails(query.from_user.id)
@@ -141,7 +138,6 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subscription_name = update.message.text.strip()
     context.user_data['name'] = subscription_name
     
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Шаг 5 (Имя): Пользователь {update.effective_user.id} ввел имя подписки: '{subscription_name}'")
     
     ud = context.user_data
@@ -167,7 +163,9 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineKeyboardButton("❌ Отмена", callback_data="cancel_create")
     ]]
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-    return CONFIRM
+
+    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку этого сообщения
+    raise ApplicationHandlerStop()
 
 # --- Шаг 6: Финальное создание ---
 async def confirm_creation(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,14 +174,12 @@ async def confirm_creation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if query.data == "cancel_create":
-        # <<< ЛОГИРОВАНИЕ
         logger.info(f"Шаг 6 (Отмена): Пользователь {query.from_user.id} отменил создание на финальном шаге.")
         await query.edit_message_text("Создание подписки отменено.")
         context.user_data.clear()
         return ConversationHandler.END
 
     ud = context.user_data
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Шаг 6 (Подтверждение): Пользователь {query.from_user.id} подтвердил создание подписки '{ud.get('name')}'.")
     
     await create_subscription(
@@ -201,7 +197,6 @@ async def confirm_creation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Отмена диалога ---
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id if update.effective_user else "N/A"
-    # <<< ЛОГИРОВАНИЕ
     logger.info(f"Диалог создания подписки принудительно отменен командой /cancel пользователем {user_id}.")
 
     message_to_send = "Действие отменено."
@@ -212,6 +207,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data:
         context.user_data.clear()
+    
+    # <<< ИЗМЕНЕНИЕ: Прерываем дальнейшую обработку, если отмена была по команде /cancel
+    if update.message and update.message.text and update.message.text.startswith("/cancel"):
+         raise ApplicationHandlerStop()
+
     return ConversationHandler.END
 
 # --- Собираем все в один ConversationHandler ---
