@@ -38,8 +38,7 @@ async def my_emails_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def delete_email_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if not query or not query.data or not query.from_user:
-        return
+    if not query or not query.data or not query.from_user: return
     await query.answer()
     email_id = int(query.data.split("_")[-1])
     deleted = await delete_user_email(email_id, query.from_user.id)
@@ -49,15 +48,13 @@ async def delete_email_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def add_email_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if not query:
-        return ConversationHandler.END
+    if not query: return ConversationHandler.END
     await query.answer()
     await query.edit_message_text("Пожалуйста, отправьте email-адрес, который хотите добавить. Для отмены введите /cancel.")
     return ADD_EMAIL
 
 async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text or not update.effective_user:
-        return ConversationHandler.END
+    if not update.message or not update.message.text or not update.effective_user: return ConversationHandler.END
     email = update.message.text.strip()
     if not re.fullmatch(EMAIL_REGEX, email):
         await update.message.reply_text("⛔️ Кажется, это не похоже на email. Попробуйте еще раз или введите /cancel для отмены.")
@@ -69,24 +66,25 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def add_email_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
-        return ConversationHandler.END
+    if not update.message or not update.effective_user: return ConversationHandler.END
     intro_text = "Действие отменено."
     menu_data = await build_email_management_menu(update.effective_user.id, intro_text)
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
     return ConversationHandler.END
 
-def get_email_management_handlers():
-    add_email_conv = ConversationHandler(
+# <<< ИЗМЕНЕНИЕ: Отдельная функция для диалога
+def get_email_conversation_handler() -> ConversationHandler:
+    return ConversationHandler(
         entry_points=[CallbackQueryHandler(add_email_start, pattern="^add_email_start$")],
         states={
             ADD_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_email_receive)]
         },
         fallbacks=[CommandHandler("cancel", add_email_cancel)],
-        map_to_parent={ConversationHandler.END: ConversationHandler.END}
     )
+
+# <<< ИЗМЕНЕНИЕ: Отдельная функция для обычных команд
+def get_email_command_handlers():
     return [
         CommandHandler("my_emails", my_emails_command),
         CallbackQueryHandler(delete_email_callback, pattern="^delete_email_"),
-        add_email_conv
     ]
