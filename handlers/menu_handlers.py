@@ -3,24 +3,29 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from logger import get_logger
+from queries.user_queries import register_user # <<< ИЗМЕНЕНИЕ: Импортируем новую функцию
 
 logger = get_logger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message:
+    if not update.message or not update.effective_user:
         return
+    
+    # <<< ИЗМЕНЕНИЕ: Регистрируем пользователя при первом старте
+    await register_user(
+        telegram_id=update.effective_user.id,
+        username=update.effective_user.username
+    )
     
     reply_keyboard = [
         ["📦 Дислокация"],
         ["📂 Мои подписки"],
     ]
-
     await update.message.reply_text(
         "Привет! Я бот для отслеживания контейнеров 🚆\n\n"
         "Для поиска введите номер контейнера. Для управления подписками нажмите кнопку или используйте команду /my_subscriptions.",
         reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True),
     )
-
     try:
         if update.effective_chat:
             await context.bot.send_sticker(
@@ -29,13 +34,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception: pass
 
+# ... (остальные функции остаются без изменений) ...
 async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
+    if not update.message or not update.message.text: return
     text = update.message.text
     if text == "📦 Дислокация":
         await update.message.reply_text("Введите номер контейнера для поиска:")
