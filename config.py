@@ -1,3 +1,4 @@
+# config.py
 from dotenv import load_dotenv
 import os
 
@@ -8,19 +9,23 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID")) # type: ignore
 RENDER_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 PORT = int(os.environ.get("PORT", 10000))
-#стабильная версия
+
 # =========================
 # Настройки уведомлений
 # =========================
-# Колонки для Excel-отчета по дислокации
 TRACKING_REPORT_COLUMNS = [
     'Номер контейнера', 'Станция отправления', 'Станция назначения',
     'Станция операции', 'Операция', 'Дата и время операции',
     'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
     'Номер вагона', 'Дорога операции'
 ]
+TELEGRAM_SEND_ATTEMPTS = 3
+TELEGRAM_SEND_TIMEOUT = 90.0
+TELEGRAM_RETRY_DELAY_SEC = 2
 
-# Настройки отправки в Telegram
-TELEGRAM_SEND_ATTEMPTS = 3      # Количество попыток отправки
-TELEGRAM_SEND_TIMEOUT = 90.0    # Таймаут на чтение/запись в секундах
-TELEGRAM_RETRY_DELAY_SEC = 2    # Начальная задержка перед повторной отправкой (будет увеличиваться экспоненциально)
+# =========================
+# Настройки кеширования станций OSM
+# =========================
+# Расписание в формате cron: 15-я минута каждого 2-го часа.
+# Установите в "" (пустую строку), чтобы отключить.
+STATIONS_CACHE_CRON_SCHEDULE = "15 */2 * * *"
