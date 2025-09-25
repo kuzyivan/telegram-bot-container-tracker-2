@@ -10,17 +10,39 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = get_logger(__name__)
-logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v8.0 (на базе httpx) >>>>>")
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v9.0 (умное каноническое имя) >>>>>")
 
 OVERPASS_API_URL = "https://overpass-api.de/api/interpreter"
 
 def get_canonical_name(station_name: str) -> str:
-    """Возвращает базовое, 'каноническое' имя станции для использования в качестве ключа кеша."""
+    """
+    Приводит любое название станции к единому, 'каноническому' виду для использования в качестве ключа кеша.
+    """
+    # 1. Убираем код станции в скобках
     name = re.sub(r'\s*\(\d+\)$', '', station_name).strip()
-    return name.upper()
+    
+    # 2. Список суффиксов и слов-уточнений для удаления
+    suffixes_to_remove = [
+        "ТОВАРНЫЙ", "ПАССАЖИРСКИЙ", "СОРТИРОВОЧНЫЙ", "СЕВЕРНЫЙ", "ЮЖНЫЙ",
+        "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ",
+        "ЭКСП", "ПАРК"
+    ]
+    for suffix in suffixes_to_remove:
+        name = re.sub(r'[\s-]+' + re.escape(suffix) + r'\b', '', name, flags=re.IGNORECASE)
+
+    # 3. Унифицируем римские цифры в арабские
+    name = re.sub(r'\s+I$', ' 1', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+II$', ' 2', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+III$', ' 3', name, flags=re.IGNORECASE)
+    
+    # 4. Унифицируем разделитель перед цифрой: любой пробел или дефис -> один дефис
+    name = re.sub(r'[\s-]+\s*([1-9])$', r'-\1', name)
+    
+    return name.strip().upper()
+
 
 async def _make_overpass_request(query: str) -> dict | None:
-    """Отправляет запрос к Overpass API и возвращает JSON ответ."""
+    # ... (код без изменений) ...
     async with httpx.AsyncClient(timeout=90.0) as client:
         try:
             response = await client.post(OVERPASS_API_URL, data={'data': query})
@@ -34,7 +56,7 @@ async def _make_overpass_request(query: str) -> dict | None:
             return None
 
 async def get_station_from_cache(canonical_name: str) -> RailwayStation | None:
-    """Ищет станцию в нашей локальной БД (кеше) по каноническому имени."""
+    # ... (код без изменений) ...
     async with SessionLocal() as session:
         result = await session.execute(
             select(RailwayStation).where(RailwayStation.name == canonical_name)
@@ -42,7 +64,7 @@ async def get_station_from_cache(canonical_name: str) -> RailwayStation | None:
         return result.scalar_one_or_none()
 
 async def save_station_to_cache(canonical_name: str, lat: float, lon: float):
-    """Сохраняет найденную станцию в нашу локальную БД под каноническим именем."""
+    # ... (код без изменений) ...
     async with SessionLocal() as session:
         stmt = pg_insert(RailwayStation).values(
             name=canonical_name, latitude=lat, longitude=lon
@@ -59,7 +81,7 @@ async def fetch_station_coords(station_name_for_search: str, original_station_na
     
     cached_station = await get_station_from_cache(canonical_name)
     if cached_station:
-        logger.info(f"Станция '{original_station_name}' найдена в кеше по имени '{canonical_name}'.")
+        logger.info(f"Станция '{original_station_name}' найдена в кеше по каноническому имени '{canonical_name}'.")
         return {"lat": cached_station.latitude, "lon": cached_station.longitude}
 
     logger.info(f"Станция '{original_station_name}' не найдена в кеше, запрашиваю OSM по варианту '{station_name_for_search}'...")
@@ -96,8 +118,4 @@ async def fetch_station_coords(station_name_for_search: str, original_station_na
 
 
 async def fetch_route_distance(from_station: str, to_station: str) -> int | None:
-    """
-    Эта функция имеет мало шансов на успех, так как полные маршруты редко размечены в OSM.
-    Она оставлена для возможного будущего развития, но в текущей логике почти не используется.
-    """
     return None
