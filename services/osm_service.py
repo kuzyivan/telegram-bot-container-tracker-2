@@ -10,12 +10,15 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = get_logger(__name__)
-logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v4.0 (менее строгий поиск) >>>>>")
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v5.0 (улучшенный поиск) >>>>>")
 
 api = overpass.API(timeout=90)
 
 def _clean_station_name(station_name: str) -> str:
-    return re.sub(r'\s*\(\d+\)$', '', station_name).strip()
+    # Убираем код станции И слова вроде "Сортировочный", "Главный" для лучшего поиска
+    name = re.sub(r'\s*\(\d+\)$', '', station_name).strip()
+    name = re.sub(r'[\s-]+(СОРТИРОВОЧНЫЙ|ГЛАВНЫЙ|ВОСТОЧНЫЙ|ЗАПАДНЫЙ|СЕВЕРНЫЙ|ЮЖНЫЙ)$', '', name, flags=re.IGNORECASE)
+    return name.strip()
 
 async def get_station_from_cache(name: str) -> RailwayStation | None:
     async with SessionLocal() as session:
@@ -40,11 +43,13 @@ async def fetch_station_coords(station_name: str) -> dict | None:
         return {"lat": cached_station.latitude, "lon": cached_station.longitude}
 
     logger.info(f"Станция '{clean_name}' не найдена в кеше, запрашиваю OSM...")
-    # V--- ИЗМЕНЕНИЕ: Убираем ^ и $ для более гибкого поиска по названию ---V
+    # V--- ФИНАЛЬНОЕ ИЗМЕНЕНИЕ: Самый надежный запрос ---V
+    # Ищем узлы и пути, которые являются станциями (а не платформами или остановками)
+    # и в названии которых содержится наше чистое имя.
     query = f'''
         [out:json];(
-          node["railway"="station"]["name"~"{clean_name}",i];
-          way["railway"="station"]["name"~"{clean_name}",i];
+          node["railway"~"station|yard"]["name"~"{clean_name}",i];
+          way["railway"~"station|yard"]["name"~"{clean_name}",i];
         );out center;
     '''
     try:
@@ -53,19 +58,30 @@ async def fetch_station_coords(station_name: str) -> dict | None:
             logger.warning(f"Станция '{clean_name}' не найдена в OSM.")
             return None
         
-        station_feature = response.features[0]
-        geom = station_feature.get('geometry', {})
+        # Фильтруем результаты, чтобы найти наиболее релевантный
+        # (предпочитаем 'станция', а не 'остановка')
+        features = response.features
+        best_feature = features[0] # По умолчанию берем первый
+        for f in features:
+            if "Станция" in f.get('properties', {}).get('name', ''):
+                best_feature = f
+                break
+        
+        geom = best_feature.get('geometry', {})
         coords = geom.get('center', {}).get('coordinates') or geom.get('coordinates')
         if not coords: return None
         lat, lon = coords[1], coords[0]
         
-        await save_station_to_cache(clean_name, lat, lon)
+        # Кешируем по оригинальному "чистому" имени
+        await save_station_to_cache(station_name.split('(')[0].strip(), lat, lon)
         return {"lat": lat, "lon": lon}
     except Exception as e:
         logger.error(f"Ошибка при запросе координат станции '{clean_name}' в Overpass API: {e}")
         return None
 
 async def fetch_route_distance(from_station: str, to_station: str) -> int | None:
+    # Эта функция остается без изменений, т.к. поиск маршрутов очень специфичен
+    # и редко бывает успешным. Основная ставка на расчет по координатам.
     clean_from = _clean_station_name(from_station)
     clean_to = _clean_station_name(to_station)
     logger.info(f"Запрашиваю маршрут в OSM от '{clean_from}' до '{clean_to}'.")
