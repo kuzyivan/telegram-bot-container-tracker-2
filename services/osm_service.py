@@ -1,7 +1,7 @@
 # services/osm_service.py
-import overpass
 import asyncio
 import re
+import httpx
 from geopy.distance import geodesic
 from logger import get_logger
 from db import SessionLocal
@@ -10,15 +10,28 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = get_logger(__name__)
-logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v7.0 (с каноническим кешированием) >>>>>")
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v8.0 (на базе httpx) >>>>>")
 
-api = overpass.API(timeout=90)
+OVERPASS_API_URL = "https://overpass-api.de/api/interpreter"
 
 def get_canonical_name(station_name: str) -> str:
     """Возвращает базовое, 'каноническое' имя станции для использования в качестве ключа кеша."""
-    name = re.sub(r'\s*\(\d+\)$', '', station_name).strip() # Убираем код
-    # Можно добавить и другие правила, но для кеша достаточно этого
+    name = re.sub(r'\s*\(\d+\)$', '', station_name).strip()
     return name.upper()
+
+async def _make_overpass_request(query: str) -> dict | None:
+    """Отправляет запрос к Overpass API и возвращает JSON ответ."""
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        try:
+            response = await client.post(OVERPASS_API_URL, data={'data': query})
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Ошибка HTTP при запросе к Overpass API: {e.response.status_code} - {e.response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"Ошибка при выполнении запроса к Overpass API: {e}", exc_info=True)
+            return None
 
 async def get_station_from_cache(canonical_name: str) -> RailwayStation | None:
     """Ищет станцию в нашей локальной БД (кеше) по каноническому имени."""
@@ -51,32 +64,40 @@ async def fetch_station_coords(station_name_for_search: str, original_station_na
 
     logger.info(f"Станция '{original_station_name}' не найдена в кеше, запрашиваю OSM по варианту '{station_name_for_search}'...")
     query = f'''
-        [out:json];(
-          node["railway"~"station|yard"]["name"~"^{station_name_for_search}$",i];
-          way["railway"~"station|yard"]["name"~"^{station_name_for_search}$",i];
-        );out center;
+        [out:json];
+        (
+          node["railway"~"station|yard"]["name"~"{station_name_for_search}",i];
+          way["railway"~"station|yard"]["name"~"{station_name_for_search}",i];
+        );
+        out center;
     '''
-    try:
-        response = await asyncio.to_thread(api.get, query)
-        if not response or not response.features:
-            # logger.warning(f"Вариант '{station_name_for_search}' не найден в OSM.") # Логируем это в кешере
-            return None
-        
-        station_feature = response.features[0]
-        geom = station_feature.get('geometry', {})
-        coords = geom.get('center', {}).get('coordinates') or geom.get('coordinates')
-        if not coords: return None
-        lat, lon = coords[1], coords[0]
-        
-        await save_station_to_cache(canonical_name, lat, lon)
-        logger.info(f"Найдено! Станция '{original_station_name}' сохранена в кеш как '{canonical_name}'.")
-        return {"lat": lat, "lon": lon}
-    except Exception as e:
-        logger.error(f"Ошибка при запросе координат для '{station_name_for_search}' в Overpass API: {e}")
+    data = await _make_overpass_request(query)
+    if not data or not data.get('elements'):
+        return None
+    
+    elements = data['elements']
+    best_element = elements[0]
+    for el in elements:
+        if el.get('tags', {}).get('railway') == 'station':
+            best_element = el
+            break
+    
+    lat, lon = 0.0, 0.0
+    if 'center' in best_element:
+        lat, lon = best_element['center']['lat'], best_element['center']['lon']
+    elif 'lat' in best_element:
+        lat, lon = best_element['lat'], best_element['lon']
+    else:
         return None
 
-# Функция fetch_route_distance остается без изменений, так как она не использует кеш
+    await save_station_to_cache(canonical_name, lat, lon)
+    logger.info(f"Найдено! Станция '{original_station_name}' сохранена в кеш как '{canonical_name}'.")
+    return {"lat": lat, "lon": lon}
+
+
 async def fetch_route_distance(from_station: str, to_station: str) -> int | None:
-    # ... (код без изменений) ...
-    # ...
-    pass # Заглушка, чтобы показать, что код здесь не меняется
+    """
+    Эта функция имеет мало шансов на успех, так как полные маршруты редко размечены в OSM.
+    Она оставлена для возможного будущего развития, но в текущей логике почти не используется.
+    """
+    return None
