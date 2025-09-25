@@ -49,13 +49,13 @@ async def fetch_station_coords(station_name: str) -> dict | None:
         if not response or not response.features:
             logger.warning(f"Станция '{clean_name}' не найдена в OSM.")
             return None
-
+        
         station_feature = response.features[0]
         geom = station_feature.get('geometry', {})
         coords = geom.get('center', {}).get('coordinates') or geom.get('coordinates')
         if not coords: return None
         lat, lon = coords[1], coords[0]
-
+        
         await save_station_to_cache(clean_name, lat, lon)
         return {"lat": lat, "lon": lon}
     except Exception as e:
@@ -76,7 +76,7 @@ async def fetch_route_distance(from_station: str, to_station: str) -> int | None
         if not response or not response.features:
             logger.warning(f"Маршрут от '{clean_from}' до '{clean_to}' не найден в OSM.")
             return None
-
+        
         route = response.features[0]
         total_distance = 0.0
         for segment in route.geometry['coordinates']:
