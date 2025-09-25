@@ -97,7 +97,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
         # 1. По умолчанию берем данные из базы
         km_left_val = tracking_obj.km_left
-        distance_str = f"📏 *Осталось ехать (по данным)*: *{_fmt_num(km_left_val)}* км\n"
+        distance_str = f"📏 *Осталось ехать (по данным ЭТРАН)*: *{_fmt_num(km_left_val)}* км\n"
 
         # 2. Вызываем наш новый умный маршрутизатор
         remaining_distance = await get_remaining_distance_on_route(
