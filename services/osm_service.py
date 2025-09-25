@@ -1,7 +1,7 @@
 # services/osm_service.py
 import overpass
 import asyncio
-import re  # <--- НОВЫЙ ИМПОРТ
+import re
 from geopy.distance import geodesic
 from logger import get_logger
 from db import SessionLocal
@@ -12,12 +12,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 logger = get_logger(__name__)
 api = overpass.API(timeout=90)
 
-# --- НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ---
 def _clean_station_name(station_name: str) -> str:
     """Убирает код станции в скобках, например, 'СЕЛЯТИНО (181102)' -> 'СЕЛЯТИНО'."""
     return re.sub(r'\s*\(\d+\)$', '', station_name).strip()
 
-# --- Кеширование (без изменений) ---
 async def get_station_from_cache(name: str) -> RailwayStation | None:
     async with SessionLocal() as session:
         result = await session.execute(
@@ -33,21 +31,15 @@ async def save_station_to_cache(name: str, lat: float, lon: float):
         await session.execute(stmt)
         await session.commit()
 
-# --- Функции для работы с API (С ИЗМЕНЕНИЯМИ) ---
 async def fetch_station_coords(station_name: str) -> dict | None:
-    """
-    Ищет ж/д станцию в OpenStreetMap по названию и возвращает её координаты.
-    """
-    # V--- ИЗМЕНЕНИЕ: Очищаем имя перед использованием ---V
     clean_name = _clean_station_name(station_name)
-
     cached_station = await get_station_from_cache(clean_name)
     if cached_station:
         logger.info(f"Станция '{clean_name}' найдена в кеше.")
         return {"lat": cached_station.latitude, "lon": cached_station.longitude}
 
     logger.info(f"Станция '{clean_name}' не найдена в кеше, запрашиваю OSM...")
-    # V--- ИЗМЕНЕНИЕ: Используем очищенное имя в запросе ---V
+    # V--- ИСПРАВЛЕНИЕ: Убрана лишняя часть ';out body;' ---V
     query = f'''
         [out:json];(
           node["railway"="station"]["name"~"^{clean_name}$",i];
@@ -73,15 +65,10 @@ async def fetch_station_coords(station_name: str) -> dict | None:
         return None
 
 async def fetch_route_distance(from_station: str, to_station: str) -> int | None:
-    """
-    Находит ж/д маршрут между станциями в OSM и считает его длину в км.
-    """
-    # V--- ИЗМЕНЕНИЕ: Очищаем оба имени ---V
     clean_from = _clean_station_name(from_station)
     clean_to = _clean_station_name(to_station)
-
     logger.info(f"Запрашиваю маршрут в OSM от '{clean_from}' до '{clean_to}'.")
-    # V--- ИЗМЕНЕНИЕ: Используем очищенные имена в запросе ---V
+    # V--- ИСПРАВЛЕНИЕ: Убрана лишняя часть ';out body;' ---V
     query = f'''
         [out:json][timeout:90];
         relation["type"="route"]["route"="train"]["from"~"^{clean_from}$",i]["to"~"^{clean_to}$",i];
