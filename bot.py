@@ -1,7 +1,7 @@
 # bot.py
 from logger import get_logger
 logger = get_logger(__name__)
-from typing import Optional
+
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
@@ -9,13 +9,13 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 from dotenv import load_dotenv
 load_dotenv()
+
+# --- Конфигурация и сервисы ---
 from config import TOKEN, ADMIN_CHAT_ID
 from scheduler import start_scheduler
-from services.terminal_importer import check_and_process_terminal_report
-from handlers.menu_handlers import (
-    start, show_menu, reply_keyboard_handler,
-    menu_button_handler, dislocation_inline_callback_handler, handle_sticker
-)
+
+# --- Обработчики ---
+from handlers.menu_handlers import start, reply_keyboard_handler, handle_sticker
 from handlers.email_management_handler import get_email_conversation_handler, get_email_command_handlers
 from handlers.subscription_management_handler import get_subscription_management_handlers
 from handlers.tracking_handlers import tracking_conversation_handler
@@ -23,24 +23,31 @@ from handlers.dislocation_handlers import handle_message
 from handlers.admin_handlers import stats, exportstats, tracking, test_notify, force_notify
 from handlers.broadcast import broadcast_conversation_handler
 from handlers.train_handlers import upload_train_help, handle_train_excel
+# V--- НОВЫЙ ИМПОРТ ---V
 from handlers.train import setup_handlers as setup_train_handlers
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("❗️ Произошла необработанная ошибка: %s", context.error, exc_info=True)
 
-async def debug_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user = update.effective_user
-        uid = user.id if user else "—"; uname = user.username if user else "—"
-        txt = getattr(getattr(update, "message", None), "text", None)
-        logger.info(f"[DEBUG UPDATE] от {uid} (@{uname}) тип={type(update).__name__} текст='{txt}'")
-    except Exception: logger.exception("[DEBUG UPDATE] не удалось залогировать обновление")
-
 async def set_bot_commands(application: Application):
-    user_commands = [BotCommand("start", "Главное меню"), BotCommand("menu", "Показать главное меню"), BotCommand("my_emails", "Управление Email-адресами"), BotCommand("my_subscriptions", "Мои подписки")]
+    user_commands = [
+        BotCommand("start", "Главное меню"),
+        BotCommand("my_emails", "Управление Email-адресами"),
+        BotCommand("my_subscriptions", "Мои подписки")
+    ]
     await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
     logger.info("✅ Команды для пользователей установлены.")
-    admin_commands = user_commands + [BotCommand("stats", "Статистика за сутки (админ)"), BotCommand("exportstats", "Выгрузить всю статистику (админ)"), BotCommand("testnotify", "Тестовая рассылка (админ)"), BotCommand("tracking", "Выгрузить все подписки (админ)"), BotCommand("broadcast", "Рассылка всем (админ)"), BotCommand("train", "Отчёт по поезду (админ)"), BotCommand("upload_train", "Загрузить Excel поезда (админ)"), BotCommand("force_notify", "Принудительная рассылка (админ)")]
+    
+    admin_commands = user_commands + [
+        BotCommand("stats", "Статистика за сутки"),
+        BotCommand("exportstats", "Выгрузить всю статистику"),
+        BotCommand("tracking", "Выгрузить все подписки"),
+        BotCommand("testnotify", "Тестовая рассылка"),
+        BotCommand("force_notify", "Принудительная рассылка"),
+        BotCommand("broadcast", "Рассылка всем"),
+        BotCommand("train", "Отчёт по поезду"),
+        BotCommand("upload_train", "Загрузить Excel поезда")
+    ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
 
@@ -49,62 +56,55 @@ def main():
     if not TOKEN:
         logger.critical("🔥 Критическая ошибка: TELEGRAM_TOKEN не задан!")
         return
-    try:
-        request = HTTPXRequest(connect_timeout=30.0, read_timeout=90.0, write_timeout=90.0, pool_timeout=30.0, connection_pool_size=50)
-        application = Application.builder().token(TOKEN).request(request).build()
-        
-        # --- Регистрация обработчиков в правильном порядке ---
-        
-        # 1. Сначала регистрируем все диалоги (ConversationHandlers)
-        # Библиотека автоматически отдает им приоритет перед другими обработчиками
-        application.add_handler(broadcast_conversation_handler)
-        application.add_handler(tracking_conversation_handler())
-        application.add_handler(get_email_conversation_handler())
-        setup_train_handlers(application)
-        
-        # 2. Затем - все остальные обработчики (команды, колбэки и т.д.)
-        application.add_handlers(get_email_command_handlers())
-        application.add_handlers(get_subscription_management_handlers())
-        
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("menu", show_menu))
-        
-        application.add_handler(CommandHandler("stats", stats))
-        application.add_handler(CommandHandler("exportstats", exportstats))
-        application.add_handler(CommandHandler("tracking", tracking))
-        application.add_handler(CommandHandler("testnotify", test_notify))
-        application.add_handler(CommandHandler("upload_train", upload_train_help))
-        application.add_handler(CommandHandler("force_notify", force_notify))
-        
-        application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^(start|dislocation|track_request)$"))
-        application.add_handler(CallbackQueryHandler(dislocation_inline_callback_handler, pattern="^dislocation_inline$"))
-        
-        # 3. Обработчики сообщений: сначала конкретные, потом общий
-        application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), reply_keyboard_handler))
-        application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-        application.add_handler(MessageHandler(filters.Document.ALL, handle_train_excel))
-        
-        # Общий текстовый обработчик должен быть последним среди обычных обработчиков
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        
-        # Отладочный обработчик и обработчик ошибок
-        application.add_handler(MessageHandler(filters.ALL, debug_all_updates))
-        application.add_error_handler(error_handler)
 
-        async def post_init(app: Application):
-            logger.info("⚙️ Запускаем задачи после инициализации...")
-            await app.bot.send_message(ADMIN_CHAT_ID, "🤖 Бот стартовал с полной логикой подписок.")
-            await set_bot_commands(app)
-            start_scheduler(app.bot)
-            await check_and_process_terminal_report()
-            logger.info("✅ post_init завершён.")
-        application.post_init = post_init
-        
-        logger.info("🤖 Бот готов к запуску. Начинаю polling...")
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-        
-    except Exception as e:
-        logger.critical("🔥 Критическая ошибка при запуске бота: %s", e, exc_info=True)
+    # Устанавливаем таймауты для работы с медленным OSM API
+    request = HTTPXRequest(connect_timeout=10.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=60.0)
+    
+    application = Application.builder().token(TOKEN).request(request).build()
+    
+    # --- Регистрация обработчиков ---
+    
+    # 1. Диалоги (ConversationHandlers)
+    application.add_handler(broadcast_conversation_handler)
+    application.add_handler(tracking_conversation_handler())
+    application.add_handler(get_email_conversation_handler())
+    # V--- НОВАЯ РЕГИСТРАЦИЯ ---V
+    setup_train_handlers(application) # Регистрирует диалог для команды /train
+    
+    # 2. Обработчики команд и колбэков
+    application.add_handlers(get_email_command_handlers())
+    application.add_handlers(get_subscription_management_handlers())
+    
+    application.add_handler(CommandHandler("start", start))
+    
+    # Команды админа
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("exportstats", exportstats))
+    application.add_handler(CommandHandler("tracking", tracking))
+    application.add_handler(CommandHandler("testnotify", test_notify))
+    application.add_handler(CommandHandler("force_notify", force_notify))
+    application.add_handler(CommandHandler("upload_train", upload_train_help))
+    
+    # 3. Обработчики сообщений (от частных к общим)
+    application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), reply_keyboard_handler))
+    application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
+    application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), handle_train_excel))
+    
+    # Общий текстовый обработчик для поиска контейнеров (должен быть одним из последних)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # Обработчик ошибок
+    application.add_error_handler(error_handler)
+
+    async def post_init(app: Application):
+        await set_bot_commands(app)
+        start_scheduler(app.bot)
+        logger.info("✅ Бот полностью настроен и запущен.")
+
+    application.post_init = post_init
+    
+    logger.info("🤖 Начинаю polling...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
