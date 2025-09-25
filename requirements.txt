@@ -31,5 +31,5 @@ pip install ruff
 # Устанавливается так:
 pip install uvicorn
 
-# Расчет гео-расстояний
+overpass==0.7.1
 geopy
