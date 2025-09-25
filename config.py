@@ -28,4 +28,4 @@ TELEGRAM_RETRY_DELAY_SEC = 2
 # =========================
 # Расписание в формате cron: 15-я минута каждого 2-го часа.
 # Установите в "" (пустую строку), чтобы отключить.
-STATIONS_CACHE_CRON_SCHEDULE = "15 */2 * * *"
+STATIONS_CACHE_CRON_SCHEDULE = "0 */8 * * *"
