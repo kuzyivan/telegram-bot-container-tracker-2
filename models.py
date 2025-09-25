@@ -15,6 +15,14 @@ subscription_email_association = Table(
     Column("email_id", Integer, ForeignKey("user_emails.id", ondelete='CASCADE'), primary_key=True),
 )
 
+# --- НОВАЯ МОДЕЛЬ ---
+class RailwayStation(Base):
+    __tablename__ = 'railway_stations'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False, index=True, unique=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+
 class UserEmail(Base):
     __tablename__ = "user_emails"
     id = Column(Integer, primary_key=True)
@@ -80,4 +88,5 @@ class Tracking(Base):
 
 from model.terminal_container import TerminalContainer
 
-__all__ = ["Base", "User", "UserEmail", "TrackingSubscription", "Stats", "Tracking", "TerminalContainer"]
+# --- ОБНОВЛЕНИЕ __all__ ---
+__all__ = ["Base", "User", "UserEmail", "TrackingSubscription", "Stats", "Tracking", "TerminalContainer", "RailwayStation"]
