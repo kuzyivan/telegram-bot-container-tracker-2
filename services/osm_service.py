@@ -1,4 +1,5 @@
 # services/osm_service.py
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v2.0 >>>>>") # <--- НАШ "МАЯЧОК"
 import overpass
 import asyncio
 import re
