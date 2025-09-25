@@ -1,17 +1,14 @@
 # services/railway_router.py
 from typing import Optional
 import re
-from services.osm_service import fetch_station_coords
+from services.osm_service import fetch_station_coords, get_canonical_name # Убедимся, что get_canonical_name импортирован
 from services.distance_calculator import haversine_distance, RAILWAY_WINDING_FACTOR
 from logger import get_logger
 
 logger = get_logger(__name__)
 
-def _clean_station_name(station_name: str) -> str:
-    """Очищает имя станции от кодов и уточнений для поиска координат."""
-    name = re.sub(r'\s*\(\d+\)$', '', station_name).strip()
-    name = name.replace('ЭКСП.', '').strip()
-    return name
+# Убираем старую функцию очистки, будем использовать каноническую из osm_service
+# def _clean_station_name(station_name: str) -> str: ...
 
 async def get_remaining_distance_on_route(
     start_station: str,
@@ -19,23 +16,23 @@ async def get_remaining_distance_on_route(
     current_station: str
 ) -> Optional[int]:
     """
-    Простой и надежный расчет расстояния:
-    1. Получает координаты текущей и конечной станций из OSM.
-    2. Считает расстояние между ними по прямой.
-    3. Применяет коэффициент извилистости ж/д путей.
+    Простой и надежный расчет расстояния.
     """
     
-    clean_current = _clean_station_name(current_station)
-    clean_end = _clean_station_name(end_station)
+    # Используем канонические имена для логирования
+    canon_current = get_canonical_name(current_station)
+    canon_end = get_canonical_name(end_station)
 
-    logger.info(f"Начинаю прямой расчет расстояния от '{clean_current}' до '{clean_end}'.")
+    logger.info(f"Начинаю прямой расчет расстояния от '{canon_current}' до '{canon_end}'.")
     
-    # Получаем координаты для обеих станций
-    current_coords = await fetch_station_coords(current_station) # Передаем оригинал, т.к. osm_service сам чистит
-    end_coords = await fetch_station_coords(end_station)
+    # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+    # Вызываем fetch_station_coords с двумя одинаковыми аргументами,
+    # так как при поиске в реальном времени "имя для поиска" и "оригинал" совпадают.
+    current_coords = await fetch_station_coords(current_station, current_station)
+    end_coords = await fetch_station_coords(end_station, end_station)
     
     if not current_coords or not end_coords:
-        logger.error(f"Не удалось получить координаты для одной из станций: '{clean_current}' или '{clean_end}'.")
+        logger.error(f"Не удалось получить координаты для одной из станций: '{canon_current}' или '{canon_end}'.")
         return None
 
     # Рассчитываем расстояние
