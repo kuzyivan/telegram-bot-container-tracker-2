@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = get_logger(__name__)
-logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v3.0 >>>>>") # Обновил версию для наглядности
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v4.0 (менее строгий поиск) >>>>>")
 
 api = overpass.API(timeout=90)
 
@@ -40,10 +40,11 @@ async def fetch_station_coords(station_name: str) -> dict | None:
         return {"lat": cached_station.latitude, "lon": cached_station.longitude}
 
     logger.info(f"Станция '{clean_name}' не найдена в кеше, запрашиваю OSM...")
+    # V--- ИЗМЕНЕНИЕ: Убираем ^ и $ для более гибкого поиска по названию ---V
     query = f'''
         [out:json];(
-          node["railway"="station"]["name"~"^{clean_name}$",i];
-          way["railway"="station"]["name"~"^{clean_name}$",i];
+          node["railway"="station"]["name"~"{clean_name}",i];
+          way["railway"="station"]["name"~"{clean_name}",i];
         );out center;
     '''
     try:
