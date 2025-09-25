@@ -13,7 +13,6 @@ logger = get_logger(__name__)
 api = overpass.API(timeout=90)
 
 def _clean_station_name(station_name: str) -> str:
-    """Убирает код станции в скобках, например, 'СЕЛЯТИНО (181102)' -> 'СЕЛЯТИНО'."""
     return re.sub(r'\s*\(\d+\)$', '', station_name).strip()
 
 async def get_station_from_cache(name: str) -> RailwayStation | None:
@@ -39,7 +38,6 @@ async def fetch_station_coords(station_name: str) -> dict | None:
         return {"lat": cached_station.latitude, "lon": cached_station.longitude}
 
     logger.info(f"Станция '{clean_name}' не найдена в кеше, запрашиваю OSM...")
-    # V--- ИСПРАВЛЕНИЕ: Убрана лишняя часть ';out body;' ---V
     query = f'''
         [out:json];(
           node["railway"="station"]["name"~"^{clean_name}$",i];
@@ -51,13 +49,13 @@ async def fetch_station_coords(station_name: str) -> dict | None:
         if not response or not response.features:
             logger.warning(f"Станция '{clean_name}' не найдена в OSM.")
             return None
-        
+
         station_feature = response.features[0]
         geom = station_feature.get('geometry', {})
         coords = geom.get('center', {}).get('coordinates') or geom.get('coordinates')
         if not coords: return None
         lat, lon = coords[1], coords[0]
-        
+
         await save_station_to_cache(clean_name, lat, lon)
         return {"lat": lat, "lon": lon}
     except Exception as e:
@@ -68,7 +66,6 @@ async def fetch_route_distance(from_station: str, to_station: str) -> int | None
     clean_from = _clean_station_name(from_station)
     clean_to = _clean_station_name(to_station)
     logger.info(f"Запрашиваю маршрут в OSM от '{clean_from}' до '{clean_to}'.")
-    # V--- ИСПРАВЛЕНИЕ: Убрана лишняя часть ';out body;' ---V
     query = f'''
         [out:json][timeout:90];
         relation["type"="route"]["route"="train"]["from"~"^{clean_from}$",i]["to"~"^{clean_to}$",i];
@@ -79,7 +76,7 @@ async def fetch_route_distance(from_station: str, to_station: str) -> int | None
         if not response or not response.features:
             logger.warning(f"Маршрут от '{clean_from}' до '{clean_to}' не найден в OSM.")
             return None
-        
+
         route = response.features[0]
         total_distance = 0.0
         for segment in route.geometry['coordinates']:
