@@ -1,5 +1,4 @@
 # services/osm_service.py
-logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v2.0 >>>>>") # <--- НАШ "МАЯЧОК"
 import overpass
 import asyncio
 import re
@@ -11,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = get_logger(__name__)
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v3.0 >>>>>") # Обновил версию для наглядности
+
 api = overpass.API(timeout=90)
 
 def _clean_station_name(station_name: str) -> str:
