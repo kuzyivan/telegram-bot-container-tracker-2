@@ -18,7 +18,6 @@ async def get_remaining_distance_on_route(
     """
     Простой и надежный расчет расстояния.
     """
-    
     # Используем канонические имена для логирования
     canon_current = get_canonical_name(current_station)
     canon_end = get_canonical_name(end_station)
