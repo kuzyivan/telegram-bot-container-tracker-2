@@ -10,22 +10,22 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 logger = get_logger(__name__)
-logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v9.0 (умное каноническое имя) >>>>>")
+logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v11.0 (финальная) >>>>>")
 
 OVERPASS_API_URL = "https://overpass-api.de/api/interpreter"
 
 def get_canonical_name(station_name: str) -> str:
     """
     Приводит любое название станции к единому, 'каноническому' виду для использования в качестве ключа кеша.
+    УДАЛЯЕТ любой текст в скобках и приводит цифры к единому формату.
     """
-    # 1. Убираем код станции в скобках
-    name = re.sub(r'\s*\(\d+\)$', '', station_name).strip()
+    # 1. Удаляем любой текст в скобках, например, (ЭКСП.) или (982300)
+    name = re.sub(r'\s*\([^)]*\)', '', station_name).strip()
     
     # 2. Список суффиксов и слов-уточнений для удаления
     suffixes_to_remove = [
         "ТОВАРНЫЙ", "ПАССАЖИРСКИЙ", "СОРТИРОВОЧНЫЙ", "СЕВЕРНЫЙ", "ЮЖНЫЙ",
-        "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ",
-        "ЭКСП", "ПАРК"
+        "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ", "ПАРК"
     ]
     for suffix in suffixes_to_remove:
         name = re.sub(r'[\s-]+' + re.escape(suffix) + r'\b', '', name, flags=re.IGNORECASE)
@@ -40,9 +40,8 @@ def get_canonical_name(station_name: str) -> str:
     
     return name.strip().upper()
 
-
 async def _make_overpass_request(query: str) -> dict | None:
-    # ... (код без изменений) ...
+    """Отправляет запрос к Overpass API и возвращает JSON ответ."""
     async with httpx.AsyncClient(timeout=90.0) as client:
         try:
             response = await client.post(OVERPASS_API_URL, data={'data': query})
@@ -56,7 +55,7 @@ async def _make_overpass_request(query: str) -> dict | None:
             return None
 
 async def get_station_from_cache(canonical_name: str) -> RailwayStation | None:
-    # ... (код без изменений) ...
+    """Ищет станцию в нашей локальной БД (кеше) по каноническому имени."""
     async with SessionLocal() as session:
         result = await session.execute(
             select(RailwayStation).where(RailwayStation.name == canonical_name)
@@ -64,7 +63,7 @@ async def get_station_from_cache(canonical_name: str) -> RailwayStation | None:
         return result.scalar_one_or_none()
 
 async def save_station_to_cache(canonical_name: str, lat: float, lon: float):
-    # ... (код без изменений) ...
+    """Сохраняет найденную станцию в нашу локальную БД под каноническим именем."""
     async with SessionLocal() as session:
         stmt = pg_insert(RailwayStation).values(
             name=canonical_name, latitude=lat, longitude=lon
@@ -118,4 +117,5 @@ async def fetch_station_coords(station_name_for_search: str, original_station_na
 
 
 async def fetch_route_distance(from_station: str, to_station: str) -> int | None:
+    """Эта функция не используется в текущей логике, оставлена для совместимости."""
     return None
