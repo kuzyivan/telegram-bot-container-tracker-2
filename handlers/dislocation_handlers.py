@@ -8,6 +8,8 @@ from logger import get_logger
 from db import SessionLocal
 from models import Stats
 from queries.containers import get_latest_train_by_container, get_latest_tracking_data
+# V--- НОВЫЙ ИМПОРТ ---V
+from services.railway_router import get_remaining_distance_on_route
 
 logger = get_logger(__name__)
 
@@ -91,12 +93,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         train = await get_latest_train_by_container(tracking_obj.container_number)
         wagon_number = str(tracking_obj.wagon_number) if tracking_obj.wagon_number else "—"
         wagon_type = detect_wagon_type(wagon_number)
+        
+        # --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
+        # 1. По умолчанию берем данные из базы
+        km_left_val = tracking_obj.km_left
+        distance_str = f"📏 *Осталось ехать (по данным)*: *{_fmt_num(km_left_val)}* км\n"
+
+        # 2. Вызываем наш новый умный маршрутизатор
+        remaining_distance = await get_remaining_distance_on_route(
+            start_station=tracking_obj.from_station,
+            end_station=tracking_obj.to_station,
+            current_station=tracking_obj.current_station
+        )
+        
+        # 3. Если он вернул точное расстояние, используем его
+        if remaining_distance is not None:
+            distance_str = f"🚆 *Осталось ехать (расчет по OSM)*: *{_fmt_num(remaining_distance)}* км\n"
+            km_left_val = remaining_distance # Переопределяем для расчета прогноза
+
         try:
-            km_left_val = float(tracking_obj.km_left)
-            forecast_days_calc = round(km_left_val / 600 + 1, 1)
+            km_float = float(km_left_val)
+            forecast_days_calc = round(km_float / 600 + 1, 1) if km_float > 0 else 0
         except (ValueError, TypeError):
-            km_left_val = "—"
             forecast_days_calc = "—"
+        # --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
         operation_station = f"{tracking_obj.current_station} 🛤️ ({tracking_obj.operation_road})" if tracking_obj.operation_road else tracking_obj.current_station
         header = f"📦 *Контейнер*: `{tracking_obj.container_number}`\n"
         if train:
@@ -107,7 +128,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📍 *Текущая станция*: {operation_station}\n"
             f"📅 *Последняя операция*:\n{tracking_obj.operation_date} — _{tracking_obj.operation}_\n\n"
             f"🚆 *Вагон*: `{_fmt_num(wagon_number)}` ({wagon_type})\n"
-            f"📏 *Осталось ехать*: *{_fmt_num(km_left_val)}* км\n\n"
+            f"{distance_str}\n"
             f"⏳ *Оценка времени в пути*:\n~*{_fmt_num(forecast_days_calc)}* суток"
         )
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
