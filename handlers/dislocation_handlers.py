@@ -107,7 +107,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wagon_type = detect_wagon_type(wagon_number)
         
         km_left_val = tracking_obj.km_left
-        distance_str = f"📏 *Осталось ехать (по данным OSM)*: *{_fmt_num(km_left_val)}* км\n"
+        distance_str = f"📏 *Осталось ехать (по данным ЭТРАН)*: *{_fmt_num(km_left_val)}* км\n"
 
         remaining_distance = await get_remaining_distance_on_route(
             start_station=tracking_obj.from_station,
