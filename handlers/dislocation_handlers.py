@@ -8,7 +8,6 @@ from logger import get_logger
 from db import SessionLocal
 from models import Stats
 from queries.containers import get_latest_train_by_container, get_latest_tracking_data
-# V--- НОВЫЙ ИМПОРТ ---V
 from services.railway_router import get_remaining_distance_on_route
 
 logger = get_logger(__name__)
@@ -69,13 +68,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for row in found_rows:
                 tracking_obj = row[0]
                 train = await get_latest_train_by_container(tracking_obj.container_number) or ""
+                
+                # Вызываем сервис для пересчета расстояния
+                remaining_distance = await get_remaining_distance_on_route(
+                    start_station=tracking_obj.from_station,
+                    end_station=tracking_obj.to_station,
+                    current_station=tracking_obj.current_station
+                )
+                
+                # Используем новое расстояние, если оно посчиталось, иначе - старое
+                km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
+                forecast_days = round(km_left / 600 + 1, 1) if km_left and km_left > 0 else 0
+                
                 rows_for_excel.append([
                     tracking_obj.container_number, train,
                     tracking_obj.from_station, tracking_obj.to_station,
                     tracking_obj.current_station, tracking_obj.operation, tracking_obj.operation_date,
-                    tracking_obj.waybill, tracking_obj.km_left, tracking_obj.forecast_days,
+                    tracking_obj.waybill, km_left, forecast_days,
                     _fmt_num(tracking_obj.wagon_number), tracking_obj.operation_road,
                 ])
+
             from utils.send_tracking import create_excel_file, get_vladivostok_filename
             file_path = create_excel_file(rows_for_excel, COLUMNS)
             filename = get_vladivostok_filename()
@@ -94,29 +106,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wagon_number = str(tracking_obj.wagon_number) if tracking_obj.wagon_number else "—"
         wagon_type = detect_wagon_type(wagon_number)
         
-        # --- ИЗМЕНЕНИЯ ЗДЕСЬ ---
-        # 1. По умолчанию берем данные из базы
         km_left_val = tracking_obj.km_left
-        distance_str = f"📏 *Осталось ехать (по данным ЭТРАН)*: *{_fmt_num(km_left_val)}* км\n"
+        distance_str = f"📏 *Осталось ехать (по данным)*: *{_fmt_num(km_left_val)}* км\n"
 
-        # 2. Вызываем наш новый умный маршрутизатор
         remaining_distance = await get_remaining_distance_on_route(
             start_station=tracking_obj.from_station,
             end_station=tracking_obj.to_station,
             current_station=tracking_obj.current_station
         )
         
-        # 3. Если он вернул точное расстояние, используем его
         if remaining_distance is not None:
             distance_str = f"🚆 *Осталось ехать (расчет по OSM)*: *{_fmt_num(remaining_distance)}* км\n"
-            km_left_val = remaining_distance # Переопределяем для расчета прогноза
+            km_left_val = remaining_distance
 
         try:
-            km_float = float(km_left_val)
+            km_float = float(km_left_val) if km_left_val is not None else 0.0
             forecast_days_calc = round(km_float / 600 + 1, 1) if km_float > 0 else 0
         except (ValueError, TypeError):
             forecast_days_calc = "—"
-        # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
         operation_station = f"{tracking_obj.current_station} 🛤️ ({tracking_obj.operation_road})" if tracking_obj.operation_road else tracking_obj.current_station
         header = f"📦 *Контейнер*: `{tracking_obj.container_number}`\n"
