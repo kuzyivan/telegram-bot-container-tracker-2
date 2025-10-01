@@ -1,6 +1,6 @@
 # services/train_event_notifier.py
 from collections import defaultdict
-from sqlalchemy import select, insert, and_, or_ # <<< ИСПРАВЛЕННЫЙ ИМПОРТ
+from sqlalchemy import select, insert, and_, or_
 from sqlalchemy.exc import IntegrityError
 from typing import List, Dict
 
@@ -11,7 +11,8 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-TARGET_OPERATIONS = ["выгрузка", "бросание"]
+# <<< ИЗМЕНЕНИЕ ЗДЕСЬ >>>
+TARGET_OPERATIONS = ["выгрузка", "бросание", "включение"]
 
 async def _get_trains_for_containers(container_numbers: List[str]) -> Dict[str, str]:
     """Эффективно получает номера поездов для списка контейнеров."""
