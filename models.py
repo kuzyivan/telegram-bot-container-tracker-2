@@ -1,6 +1,6 @@
 # models.py
 from sqlalchemy import (Boolean, Column, Integer, String, BigInteger, DateTime,
-                        Time, ARRAY, ForeignKey, Table, Float, UniqueConstraint)
+                        Time, ARRAY, ForeignKey, Table, Float, UniqueConstraint) # <<< Убедитесь, что UniqueConstraint импортирован
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 from logger import get_logger
@@ -86,7 +86,21 @@ class Tracking(Base):
     wagon_number = Column(String)
     operation_road = Column(String)
 
+# <<< НОВАЯ ТАБЛИЦА ДЛЯ ОТСЛЕЖИВАНИЯ СОБЫТИЙ ПОЕЗДА >>>
+class TrainOperationEvent(Base):
+    __tablename__ = "train_operation_events"
+    id = Column(Integer, primary_key=True)
+    train_number = Column(String, nullable=False, index=True)
+    operation = Column(String, nullable=False)
+    station = Column(String, nullable=False, index=True)
+    operation_date = Column(String, nullable=False) # Используем String, как в таблице Tracking
+    notified_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('train_number', 'operation', 'station', 'operation_date', name='_train_event_uc'),
+    )
+
 from model.terminal_container import TerminalContainer
 
 # --- ОБНОВЛЕНИЕ __all__ ---
-__all__ = ["Base", "User", "UserEmail", "TrackingSubscription", "Stats", "Tracking", "TerminalContainer", "RailwayStation"]
+__all__ = ["Base", "User", "UserEmail", "TrackingSubscription", "Stats", "Tracking", "TerminalContainer", "RailwayStation", "TrainOperationEvent"]
