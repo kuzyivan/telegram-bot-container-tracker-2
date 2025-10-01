@@ -1,6 +1,5 @@
 # handlers/broadcast.py
-
-import html  # <<< ИСПОЛЬЗУЕМ СТАНДАРТНУЮ БИБЛИОТЕКУ
+import html
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from telegram.error import BadRequest
 from telegram.ext import (
@@ -17,18 +16,34 @@ logger = get_logger(__name__)
 BROADCAST_TEXT, BROADCAST_CONFIRM = range(2)
 
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинает диалог создания рассылки."""
+    """Начинает диалог создания рассылки (адаптировано для кнопок)."""
     user = update.effective_user
-    message = update.message
-    if not user or not message:
-        return ConversationHandler.END
+    chat = update.effective_chat
     
-    if user.id != ADMIN_CHAT_ID:
-        await message.reply_text("⛔ Эта команда доступна только администратору.")
+    # Сразу проверяем наличие пользователя и чата
+    if not user or not chat:
         return ConversationHandler.END
+
+    if user.id != ADMIN_CHAT_ID:
+        if update.message:
+            await chat.send_message("⛔ Эта команда доступна только администратору.")
+        elif update.callback_query:
+            await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
+        return ConversationHandler.END
+
+    text = "Введите текст для рассылки всем пользователям:"
+    
+    # <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
+    # Если это нажатие кнопки, сначала отвечаем на него, чтобы убрать "часики"
+    if update.callback_query:
+        await update.callback_query.answer()
+
+    # Универсально и безопасно отправляем новое сообщение в текущий чат
+    await chat.send_message(text)
+    # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
         
-    await message.reply_text("Введите текст для рассылки всем пользователям:")
     return BROADCAST_TEXT
+
 
 async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Получает текст рассылки и запрашивает подтверждение (безопасный предпросмотр)."""
@@ -50,8 +65,6 @@ async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]
     ])
     
-    # Изолируем текст пользователя в тег <pre> для безопасного предпросмотра,
-    # используя стандартный модуль html.
     safe_text_preview = html.escape(text)
     
     await message.reply_text(
@@ -87,25 +100,21 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for user_id in set(user_ids):
         try:
-            # Попытка №1: отправить как HTML
             await context.bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
             sent_count += 1
         except BadRequest as e:
             if "Can't parse entities" in str(e):
                 logger.warning(f"Ошибка парсинга HTML для пользователя {user_id}. Пробую отправить как простой текст.")
                 try:
-                    # Попытка №2: отправить как простой текст
                     await context.bot.send_message(chat_id=user_id, text=text)
                     sent_count += 1
                 except Exception as plain_e:
                     failed_count += 1
                     logger.error(f"Не удалось отправить сообщение {user_id} даже как простой текст: {plain_e}")
             else:
-                # Другая ошибка BadRequest, не связанная с парсингом
                 failed_count += 1
                 logger.warning(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
         except Exception as e:
-            # Любая другая ошибка (например, пользователь заблокировал бота)
             failed_count += 1
             logger.warning(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
 

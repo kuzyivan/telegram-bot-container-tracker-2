@@ -20,10 +20,12 @@ from handlers.email_management_handler import get_email_conversation_handler, ge
 from handlers.subscription_management_handler import get_subscription_management_handlers
 from handlers.tracking_handlers import tracking_conversation_handler
 from handlers.dislocation_handlers import handle_message
-from handlers.admin_handlers import stats, exportstats, tracking, test_notify, force_notify
+from handlers.admin_handlers import (
+    stats, exportstats, tracking, test_notify, force_notify, 
+    admin_panel, admin_panel_callback  # <<< ДОБАВЛЕНЫ НОВЫЕ ИМПОРТЫ
+)
 from handlers.broadcast import broadcast_conversation_handler
 from handlers.train_handlers import upload_train_help, handle_train_excel
-# V--- НОВЫЙ ИМПОРТ ---V
 from handlers.train import setup_handlers as setup_train_handlers
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -39,6 +41,7 @@ async def set_bot_commands(application: Application):
     logger.info("✅ Команды для пользователей установлены.")
     
     admin_commands = user_commands + [
+        BotCommand("admin", "Панель администратора"), # <<< ДОБАВЛЕНА КОМАНДА /admin
         BotCommand("stats", "Статистика за сутки"),
         BotCommand("exportstats", "Выгрузить всю статистику"),
         BotCommand("tracking", "Выгрузить все подписки"),
@@ -57,7 +60,6 @@ def main():
         logger.critical("🔥 Критическая ошибка: TELEGRAM_TOKEN не задан!")
         return
 
-    # Устанавливаем таймауты для работы с медленным OSM API
     request = HTTPXRequest(connect_timeout=10.0, read_timeout=60.0, write_timeout=60.0, pool_timeout=60.0)
     
     application = Application.builder().token(TOKEN).request(request).build()
@@ -68,16 +70,19 @@ def main():
     application.add_handler(broadcast_conversation_handler)
     application.add_handler(tracking_conversation_handler())
     application.add_handler(get_email_conversation_handler())
-    # V--- НОВАЯ РЕГИСТРАЦИЯ ---V
-    setup_train_handlers(application) # Регистрирует диалог для команды /train
+    setup_train_handlers(application)
     
     # 2. Обработчики команд и колбэков
+    # <<< ДОБАВЛЕНЫ ОБРАБОТЧИКИ АДМИН-ПАНЕЛИ >>>
+    application.add_handler(CommandHandler("admin", admin_panel))
+    application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
+
     application.add_handlers(get_email_command_handlers())
     application.add_handlers(get_subscription_management_handlers())
     
     application.add_handler(CommandHandler("start", start))
     
-    # Команды админа
+    # Команды админа (остаются для обратной совместимости)
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(CommandHandler("tracking", tracking))
@@ -85,15 +90,13 @@ def main():
     application.add_handler(CommandHandler("force_notify", force_notify))
     application.add_handler(CommandHandler("upload_train", upload_train_help))
     
-    # 3. Обработчики сообщений (от частных к общим)
+    # 3. Обработчики сообщений
     application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), reply_keyboard_handler))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), handle_train_excel))
     
-    # Общий текстовый обработчик для поиска контейнеров (должен быть одним из последних)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Обработчик ошибок
     application.add_error_handler(error_handler)
 
     async def post_init(app: Application):
