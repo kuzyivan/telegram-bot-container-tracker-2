@@ -1,4 +1,4 @@
-
+# utils/notify.py
 import asyncio
 from telegram import Bot
 from telegram.error import TimedOut, NetworkError
@@ -23,7 +23,7 @@ async def notify_admin(text: str, silent: bool = True):
             await bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
                 text=text,
-                parse_mode="HTML",
+                parse_mode="MarkdownV2", # <<< ИЗМЕНЕНИЕ: HTML заменен на MarkdownV2
                 disable_notification=silent,
                 read_timeout=60.0,
                 write_timeout=60.0,

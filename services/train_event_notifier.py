@@ -3,6 +3,7 @@ from collections import defaultdict
 from sqlalchemy import select, insert, and_, or_
 from sqlalchemy.exc import IntegrityError
 from typing import List, Dict
+from telegram.helpers import escape_markdown # <<< ДОБАВЛЕН НОВЫЙ ИМПОРТ
 
 from db import SessionLocal
 from models import TrainOperationEvent, TerminalContainer
@@ -15,6 +16,7 @@ TARGET_OPERATIONS = ["выгрузка", "бросание", "включение
 
 async def _get_trains_for_containers(container_numbers: List[str]) -> Dict[str, str]:
     """Эффективно получает номера поездов для списка контейнеров."""
+    # ... (эта функция остается без изменений)
     if not container_numbers:
         return {}
     
@@ -25,11 +27,14 @@ async def _get_trains_for_containers(container_numbers: List[str]) -> Dict[str, 
         )
         return {row.container_number: row.train for row in result if row.train}
 
+
 async def process_dislocation_for_train_events(records: List[Dict]):
     """
     Анализирует все записи из файла дислокации и отправляет уведомления о новых событиях поезда.
     """
-    # 1. Фильтруем только интересующие нас операции
+    # ... (логика до отправки уведомления остается без изменений) ...
+
+    # 1. Фильтруем
     target_records = [
         rec for rec in records
         if any(op in rec.get("operation", "").lower() for op in TARGET_OPERATIONS)
@@ -37,58 +42,37 @@ async def process_dislocation_for_train_events(records: List[Dict]):
     if not target_records:
         return
 
-    # 2. Получаем номера поездов для всех найденных контейнеров одним запросом
+    # 2. Получаем поезда
     container_to_train = await _get_trains_for_containers([r["container_number"] for r in target_records])
 
-    # 3. Группируем события по новому, более общему ключу
+    # 3. Группируем
     unique_events = {}
     for rec in target_records:
         train = container_to_train.get(rec["container_number"])
         if not train:
             continue
         
-        # <<< НАЧАЛО КЛЮЧЕВЫХ ИЗМЕНЕНИЙ >>>
-        # Нормализуем тип операции
         op_text = rec["operation"].lower()
         op_type = "неизвестно"
-        if "выгрузка" in op_text:
-            op_type = "выгрузка"
-        elif "бросание" in op_text:
-            op_type = "бросание"
-        elif "включение" in op_text:
-            op_type = "включение"
+        if "выгрузка" in op_text: op_type = "выгрузка"
+        elif "бросание" in op_text: op_type = "бросание"
+        elif "включение" in op_text: op_type = "включение"
 
-        # Извлекаем только дату, отбрасывая время
         date_only = rec["operation_date"].split(' ')[0]
 
-        # Собираем более общий ключ
-        event_key = (
-            train,
-            op_type,
-            rec["current_station"],
-            date_only
-        )
-        # <<< КОНЕЦ КЛЮЧЕВЫХ ИЗМЕНЕНИЙ >>>
+        event_key = (train, op_type, rec["current_station"], date_only)
         
         if event_key not in unique_events:
-            unique_events[event_key] = rec # Сохраняем первую запись, которая сформировала событие
-
+            unique_events[event_key] = rec
+    
     if not unique_events:
-        logger.info("Найдены целевые операции, но не удалось определить поезда. Уведомления не отправлены.")
         return
 
-    # 4. Проверяем, о каких событиях мы уже уведомляли
+    # 4. Проверяем в БД
     async with SessionLocal() as session:
         event_filters = []
         for train, op, station, date in unique_events.keys():
-            event_filters.append(
-                and_(
-                    TrainOperationEvent.train_number == train,
-                    TrainOperationEvent.operation == op, # <<< ИСПОЛЬЗУЕМ НОРМАЛИЗОВАННЫЙ ТИП ОПЕРАЦИИ
-                    TrainOperationEvent.station == station,
-                    TrainOperationEvent.operation_date == date # <<< ИСПОЛЬЗУЕМ ТОЛЬКО ДАТУ
-                )
-            )
+            event_filters.append(and_(TrainOperationEvent.train_number == train, TrainOperationEvent.operation == op, TrainOperationEvent.station == station, TrainOperationEvent.operation_date == date))
         
         if event_filters:
             existing_events_query = select(TrainOperationEvent).where(or_(*event_filters))
@@ -97,11 +81,8 @@ async def process_dislocation_for_train_events(records: List[Dict]):
         else:
             existing_events = set()
 
-    # 5. Отправляем уведомления только о новых событиях
-    new_events_to_notify_keys = []
-    for key in unique_events.keys():
-        if key not in existing_events:
-            new_events_to_notify_keys.append(key)
+    # 5. Отправляем уведомления
+    new_events_to_notify_keys = [key for key in unique_events.keys() if key not in existing_events]
             
     if not new_events_to_notify_keys:
         logger.info("Все найденные события по поездам уже были отправлены ранее.")
@@ -110,30 +91,43 @@ async def process_dislocation_for_train_events(records: List[Dict]):
     logger.info(f"Обнаружено {len(new_events_to_notify_keys)} новых событий по поездам. Отправка уведомлений...")
     
     for key in new_events_to_notify_keys:
-        # Берем данные из самой первой записи, которая сформировала это событие
         rec = unique_events[key]
         train = key[0]
         
+        # <<< НАЧАЛО ИЗМЕНЕНИЙ В ФОРМАТИРОВАНИИ СООБЩЕНИЯ >>>
+        
+        # Экранируем все переменные, чтобы избежать ошибок форматирования MarkdownV2
+        container_esc = escape_markdown(rec['container_number'], version=2)
+        train_esc = escape_markdown(train, version=2)
+        from_station_esc = escape_markdown(rec.get('from_station', 'N/A'), version=2)
+        to_station_esc = escape_markdown(rec.get('to_station', 'N/A'), version=2)
+        current_station_esc = escape_markdown(rec.get('current_station', 'N/A'), version=2)
+        operation_road_esc = escape_markdown(rec.get('operation_road', 'N/A'), version=2)
+        operation_date_esc = escape_markdown(rec.get('operation_date', 'N/A'), version=2)
+        operation_esc = escape_markdown(rec.get('operation', 'N/A'), version=2)
+
+        # Собираем сообщение с символом '>' в начале каждой строки
         message = (
-            f"📦 *Контейнер*: `{rec['container_number']}` (как представитель поезда)\n"
-            f"🚂 *Поезд*: `{train}`\n\n"
-            f"🛤 *Маршрут*:\n`{rec.get('from_station', 'N/A')}` 🚂 → `{rec.get('to_station', 'N/A')}`\n\n"
-            f"📍 *Текущая станция*: {rec.get('current_station', 'N/A')} 🛤️ ({rec.get('operation_road', 'N/A')})\n"
-            f"📅 *Последняя операция*:\n{rec.get('operation_date', 'N/A')} — _{rec.get('operation', 'N/A')}_"
+            f"> ❗️🔔 *НОВЫЙ СТАТУС ПОЕЗДА* 🔔❗️\n"
+            f"> \n"
+            f"> 📦 *Контейнер*: `{container_esc}` \\(как представитель поезда\\)\n"
+            f"> 🚂 *Поезд*: `{train_esc}`\n"
+            f"> \n"
+            f"> 🛤 *Маршрут*:\n"
+            f"> `{from_station_esc}` 🚂 → `{to_station_esc}`\n"
+            f"> \n"
+            f"> 📍 *Текущая станция*: {current_station_esc} 🛤️ \\({operation_road_esc}\\)\n"
+            f"> 📅 *Последняя операция*:\n"
+            f"> {operation_date_esc} — _{operation_esc}_"
         )
+        # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
+
         await notify_admin(message, silent=False)
 
-    # 6. Сохраняем информацию о том, что мы отправили уведомления
+    # 6. Сохраняем информацию
     async with SessionLocal() as session:
-        new_event_rows = [
-            {
-                "train_number": key[0],
-                "operation": key[1],
-                "station": key[2],
-                "operation_date": key[3]
-            }
-            for key in new_events_to_notify_keys
-        ]
+        # ... (этот блок остается без изменений)
+        new_event_rows = [{"train_number": key[0], "operation": key[1], "station": key[2], "operation_date": key[3]} for key in new_events_to_notify_keys]
         if new_event_rows:
             try:
                 await session.execute(insert(TrainOperationEvent), new_event_rows)
