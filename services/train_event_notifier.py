@@ -11,7 +11,6 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-# <<< ИЗМЕНЕНИЕ ЗДЕСЬ >>>
 TARGET_OPERATIONS = ["выгрузка", "бросание", "включение"]
 
 async def _get_trains_for_containers(container_numbers: List[str]) -> Dict[str, str]:
@@ -41,19 +40,35 @@ async def process_dislocation_for_train_events(records: List[Dict]):
     # 2. Получаем номера поездов для всех найденных контейнеров одним запросом
     container_to_train = await _get_trains_for_containers([r["container_number"] for r in target_records])
 
-    # 3. Группируем события по уникальному ключу (поезд, операция, станция, дата)
+    # 3. Группируем события по новому, более общему ключу
     unique_events = {}
     for rec in target_records:
         train = container_to_train.get(rec["container_number"])
         if not train:
             continue
         
+        # <<< НАЧАЛО КЛЮЧЕВЫХ ИЗМЕНЕНИЙ >>>
+        # Нормализуем тип операции
+        op_text = rec["operation"].lower()
+        op_type = "неизвестно"
+        if "выгрузка" in op_text:
+            op_type = "выгрузка"
+        elif "бросание" in op_text:
+            op_type = "бросание"
+        elif "включение" in op_text:
+            op_type = "включение"
+
+        # Извлекаем только дату, отбрасывая время
+        date_only = rec["operation_date"].split(' ')[0]
+
+        # Собираем более общий ключ
         event_key = (
             train,
-            rec["operation"],
+            op_type,
             rec["current_station"],
-            rec["operation_date"]
+            date_only
         )
+        # <<< КОНЕЦ КЛЮЧЕВЫХ ИЗМЕНЕНИЙ >>>
         
         if event_key not in unique_events:
             unique_events[event_key] = rec # Сохраняем первую запись, которая сформировала событие
@@ -64,19 +79,17 @@ async def process_dislocation_for_train_events(records: List[Dict]):
 
     # 4. Проверяем, о каких событиях мы уже уведомляли
     async with SessionLocal() as session:
-        # Собираем ключи для запроса к БД
         event_filters = []
         for train, op, station, date in unique_events.keys():
             event_filters.append(
                 and_(
                     TrainOperationEvent.train_number == train,
-                    TrainOperationEvent.operation == op,
+                    TrainOperationEvent.operation == op, # <<< ИСПОЛЬЗУЕМ НОРМАЛИЗОВАННЫЙ ТИП ОПЕРАЦИИ
                     TrainOperationEvent.station == station,
-                    TrainOperationEvent.operation_date == date
+                    TrainOperationEvent.operation_date == date # <<< ИСПОЛЬЗУЕМ ТОЛЬКО ДАТУ
                 )
             )
         
-        # Выполняем запрос, чтобы найти уже существующие события
         if event_filters:
             existing_events_query = select(TrainOperationEvent).where(or_(*event_filters))
             existing_events_result = await session.execute(existing_events_query)
@@ -84,21 +97,23 @@ async def process_dislocation_for_train_events(records: List[Dict]):
         else:
             existing_events = set()
 
-
     # 5. Отправляем уведомления только о новых событиях
-    new_events_to_notify = []
-    for key, record_data in unique_events.items():
+    new_events_to_notify_keys = []
+    for key in unique_events.keys():
         if key not in existing_events:
-            new_events_to_notify.append(record_data)
+            new_events_to_notify_keys.append(key)
             
-    if not new_events_to_notify:
+    if not new_events_to_notify_keys:
         logger.info("Все найденные события по поездам уже были отправлены ранее.")
         return
 
-    logger.info(f"Обнаружено {len(new_events_to_notify)} новых событий по поездам. Отправка уведомлений...")
+    logger.info(f"Обнаружено {len(new_events_to_notify_keys)} новых событий по поездам. Отправка уведомлений...")
     
-    for rec in new_events_to_notify:
-        train = container_to_train.get(rec["container_number"], "неизвестен")
+    for key in new_events_to_notify_keys:
+        # Берем данные из самой первой записи, которая сформировала это событие
+        rec = unique_events[key]
+        train = key[0]
+        
         message = (
             f"📦 *Контейнер*: `{rec['container_number']}` (как представитель поезда)\n"
             f"🚂 *Поезд*: `{train}`\n\n"
@@ -112,12 +127,12 @@ async def process_dislocation_for_train_events(records: List[Dict]):
     async with SessionLocal() as session:
         new_event_rows = [
             {
-                "train_number": container_to_train.get(rec["container_number"]),
-                "operation": rec["operation"],
-                "station": rec["current_station"],
-                "operation_date": rec["operation_date"]
+                "train_number": key[0],
+                "operation": key[1],
+                "station": key[2],
+                "operation_date": key[3]
             }
-            for rec in new_events_to_notify if container_to_train.get(rec["container_number"])
+            for key in new_events_to_notify_keys
         ]
         if new_event_rows:
             try:
