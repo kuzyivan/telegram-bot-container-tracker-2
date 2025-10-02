@@ -30,7 +30,7 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
         return ConversationHandler.END
 
-    text = "Введите текст для рассылки всем пользователям:"
+    text = "Введите текст для рассылки всем пользователям.\n\nДля отмены введите /cancel"
     
     if update.callback_query:
         await update.callback_query.answer()
