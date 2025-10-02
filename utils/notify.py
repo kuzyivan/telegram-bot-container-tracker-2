@@ -8,13 +8,11 @@ from config import TOKEN, ADMIN_CHAT_ID
 
 logger = get_logger(__name__)
 
-# <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
 async def notify_admin(text: str, silent: bool = True, parse_mode: str | None = "Markdown"):
     """
     Отправляет уведомление администратору с указанным режимом форматирования.
     По умолчанию используется Markdown.
     """
-# <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
     if not TOKEN:
         logger.critical("[notify_admin] TELEGRAM_TOKEN не задан! Невозможно отправить уведомление.")
         return
@@ -33,7 +31,6 @@ async def notify_admin(text: str, silent: bool = True, parse_mode: str | None = 
             await bot.send_message(
                 chat_id=ADMIN_CHAT_ID,
                 text=text,
-                # <<< ИСПОЛЬЗУЕМ ПЕРЕДАННЫЙ PARSE_MODE >>>
                 parse_mode=parse_mode,
                 disable_notification=silent,
                 read_timeout=60.0,
@@ -44,10 +41,15 @@ async def notify_admin(text: str, silent: bool = True, parse_mode: str | None = 
         except BadRequest as e:
             if "Can't parse entities" in str(e):
                 logger.error(f"[notify_admin] Ошибка парсинга ({parse_mode}): {e}. Отправляю как простой текст.")
-                await bot.send_message(chat_id=ADMIN_CHAT_ID, text=text, disable_notification=silent)
+                try:
+                    await bot.send_message(chat_id=ADMIN_CHAT_ID, text=text, disable_notification=silent)
+                except Exception as final_e:
+                     logger.error(f"[notify_admin] Не удалось отправить сообщение даже как простой текст: {final_e}")
                 return
             else:
-                raise e
+                # Другая ошибка BadRequest, не связанная с парсингом
+                logger.error(f"Ошибка BadRequest при отправке уведомления: {e}")
+                break # Прерываем, т.к. повторные попытки скорее всего не помогут
         except (TimedOut, NetworkError) as e:
             logger.warning(f"[notify_admin] Временная ошибка отправки (попытка {i+1}/{attempts}): {e}")
             if i < attempts - 1:
@@ -55,5 +57,5 @@ async def notify_admin(text: str, silent: bool = True, parse_mode: str | None = 
         except Exception as e:
             logger.exception("Не удалось отправить уведомление админу: %s", e)
             break
-
-    logger.error("Не удалось отправить уведомление админу после всех попыток.")
+    else:
+        logger.error("Не удалось отправить уведомление админу после всех попыток.")

@@ -51,7 +51,6 @@ async def job_daily_terminal_import():
         stats = await check_and_process_terminal_report()
         if stats:
             text = _format_terminal_import_message(started_dt=started, stats=stats)
-            # <<< ИЗМЕНЕНИЕ ЗДЕСЬ: Явно указываем HTML режим >>>
             await notify_admin(text, silent=True, parse_mode="HTML")
     except Exception as e:
         logger.error(f"❌ Scheduler: Ошибка в задаче импорта терминала: {e}", exc_info=True)
