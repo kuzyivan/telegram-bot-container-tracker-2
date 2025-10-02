@@ -20,7 +20,6 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    # Сразу проверяем наличие пользователя и чата
     if not user or not chat:
         return ConversationHandler.END
 
@@ -33,14 +32,10 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "Введите текст для рассылки всем пользователям:"
     
-    # <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
-    # Если это нажатие кнопки, сначала отвечаем на него, чтобы убрать "часики"
     if update.callback_query:
         await update.callback_query.answer()
 
-    # Универсально и безопасно отправляем новое сообщение в текущий чат
     await chat.send_message(text)
-    # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
         
     return BROADCAST_TEXT
 
@@ -85,12 +80,13 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Рассылка отменена.")
         return ConversationHandler.END
 
-    if context.user_data is None:
-        context.user_data = {}
-    text = context.user_data.get('broadcast_text')
+    # <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
+    user_data = context.user_data or {}
+    text = user_data.get('broadcast_text')
     if not text:
         await query.edit_message_text("Не найден текст для рассылки. Попробуйте снова.")
         return ConversationHandler.END
+    # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
 
     user_ids = await get_all_user_ids()
     sent_count = 0
@@ -132,7 +128,10 @@ async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 broadcast_conversation_handler = ConversationHandler(
-    entry_points=[CommandHandler("broadcast", broadcast_start)],
+    entry_points=[
+        CommandHandler("broadcast", broadcast_start),
+        CallbackQueryHandler(broadcast_start, pattern="^admin_broadcast$")
+    ],
     states={
         BROADCAST_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_get_text)],
         BROADCAST_CONFIRM: [CallbackQueryHandler(broadcast_confirm)],

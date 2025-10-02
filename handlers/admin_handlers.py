@@ -46,16 +46,13 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает нажатия кнопок в панели администратора."""
     query = update.callback_query
-    # <<< ИСПРАВЛЕНИЕ PYLANCE: Добавлена проверка на None >>>
     if not query:
         return
         
     await query.answer()
-
     action = query.data
 
-    from handlers.broadcast import broadcast_start
-
+    # <<< ИЗМЕНЕНИЕ: Убрали обработку 'admin_broadcast' отсюда >>>
     if action == "admin_stats":
         await stats(update, context)
     elif action == "admin_exportstats":
@@ -64,8 +61,6 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await tracking(update, context)
     elif action == "admin_testnotify":
         await test_notify(update, context)
-    elif action == "admin_broadcast":
-        await broadcast_start(update, context)
 
 
 # --- АДАПТИРОВАННЫЕ ФУНКЦИИ ---
@@ -82,7 +77,7 @@ async def admin_only_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return False
     return True
 
-
+# ... (остальные функции: tracking, stats, exportstats, test_notify, force_notify остаются без изменений, как в предыдущем ответе) ...
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not await admin_only_handler(update, context): return
@@ -184,7 +179,6 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def force_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Принудительно запускает рассылку для указанного времени."""
     chat = update.effective_chat
     if not chat or not await admin_only_handler(update, context): return
 
