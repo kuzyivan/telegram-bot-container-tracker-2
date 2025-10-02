@@ -51,25 +51,20 @@ async def job_daily_terminal_import():
         stats = await check_and_process_terminal_report()
         if stats:
             text = _format_terminal_import_message(started_dt=started, stats=stats)
-            await notify_admin(text, silent=True)
+            # <<< ИЗМЕНЕНИЕ ЗДЕСЬ: Явно указываем HTML режим >>>
+            await notify_admin(text, silent=True, parse_mode="HTML")
     except Exception as e:
         logger.error(f"❌ Scheduler: Ошибка в задаче импорта терминала: {e}", exc_info=True)
         error_message = (f"❌ <b>Ошибка обновления базы терминала</b>\n<b>Время:</b> {started.strftime('%d.%m %H:%M')}\n<code>{e}</code>")
-        await notify_admin(error_message, silent=False)
+        await notify_admin(error_message, silent=False, parse_mode="HTML")
 
 def start_scheduler(bot):
     """Регистрирует и запускает все задачи планировщика."""
-    # 1) Рассылки пользователям
     scheduler.add_job(job_send_notifications, 'cron', hour=9, minute=0, args=[bot, time(9, 0)], id="notify_for_09", replace_existing=True, jitter=600)
     scheduler.add_job(job_send_notifications, 'cron', hour=16, minute=0, args=[bot, time(16, 0)], id="notify_for_16", replace_existing=True, jitter=600)
-
-    # 2) Задача для проверки дислокации каждые 20 минут
     scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', id="dislocation_check_20min", replace_existing=True, jitter=10)
-
-    # 3) Задача для импорта базы терминала в 08:30
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
 
-    # 4) Задача для кеширования станций OSM
     if config.STATIONS_CACHE_CRON_SCHEDULE:
         try:
             trigger = CronTrigger.from_crontab(config.STATIONS_CACHE_CRON_SCHEDULE, timezone=TZ)
