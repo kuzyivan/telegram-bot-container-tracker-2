@@ -135,6 +135,4 @@ SMTP_HOST="smtp.yandex.ru"
 SMTP_PORT="587"
 SMTP_USER="bot-email@yandex.ru"
 SMTP_PASS="тот_же_пароль_приложения"
-```
-
-тест 
+```т 
