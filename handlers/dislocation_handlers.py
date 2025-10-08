@@ -27,13 +27,11 @@ def detect_wagon_type(wagon_number: str) -> str:
     if 60 <= num <= 69: return "полувагон"
     return "платформа"
 
-# <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
 def _are_all_tokens_wagons(tokens: List[str]) -> bool:
     """Проверяет, являются ли все токены 8-значными числами."""
     if not tokens:
         return False
     return all(t.isdigit() and len(t) == 8 for t in tokens)
-# <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
 
 COLUMNS = [
     'Номер контейнера', 'Поезд', 'Станция отправления', 'Станция назначения',
@@ -57,7 +55,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пожалуйста, введите корректный номер контейнера или вагона.")
         return
 
-    # <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
     if _are_all_tokens_wagons(input_tokens):
         wagon_numbers = input_tokens
         logger.info(f"Распознан поиск по номеру вагона(ов): {', '.join(wagon_numbers)}")
@@ -68,39 +65,73 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"Не найдено активных контейнеров на вагонах: `{', '.join(wagon_numbers)}`.", parse_mode=ParseMode.MARKDOWN)
             return
             
-        rows_for_excel = []
-        for tracking_obj in tracking_results:
-            train = await get_latest_train_by_container(tracking_obj.container_number) or ""
-            remaining_distance = await get_remaining_distance_on_route(
-                start_station=tracking_obj.from_station,
-                end_station=tracking_obj.to_station,
-                current_station=tracking_obj.current_station
-            )
-            km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
-            forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
+        if len(wagon_numbers) > 1:
+            rows_for_excel = []
+            for tracking_obj in tracking_results:
+                train = await get_latest_train_by_container(tracking_obj.container_number) or ""
+                remaining_distance = await get_remaining_distance_on_route(
+                    start_station=tracking_obj.from_station,
+                    end_station=tracking_obj.to_station,
+                    current_station=tracking_obj.current_station
+                )
+                km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
+                forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
+                
+                rows_for_excel.append([
+                    tracking_obj.container_number, train,
+                    tracking_obj.from_station, tracking_obj.to_station,
+                    tracking_obj.current_station, tracking_obj.operation, tracking_obj.operation_date,
+                    tracking_obj.waybill, km_left, forecast_days,
+                    _fmt_num(tracking_obj.wagon_number), tracking_obj.operation_road,
+                ])
             
-            rows_for_excel.append([
-                tracking_obj.container_number, train,
-                tracking_obj.from_station, tracking_obj.to_station,
-                tracking_obj.current_station, tracking_obj.operation, tracking_obj.operation_date,
-                tracking_obj.waybill, km_left, forecast_days,
-                _fmt_num(tracking_obj.wagon_number), tracking_obj.operation_road,
-            ])
-        
-        from utils.send_tracking import create_excel_file, get_vladivostok_filename
-        
-        filename_prefix = f"Вагоны_{'-'.join(wagon_numbers)}" if len(wagon_numbers) > 5 else f"Вагоны_{wagon_numbers[0]}"
-        caption = f"На вагонах `{', '.join(wagon_numbers)}` найдено контейнеров: {len(rows_for_excel)} шт."
+            from utils.send_tracking import create_excel_file, get_vladivostok_filename
+            
+            filename_prefix = f"Вагоны_{'-'.join(wagon_numbers[:3])}"
+            caption = f"На вагонах `{', '.join(wagon_numbers)}` найдено контейнеров: {len(rows_for_excel)} шт."
 
-        file_path = create_excel_file(rows_for_excel, COLUMNS)
-        filename = get_vladivostok_filename(filename_prefix)
+            file_path = create_excel_file(rows_for_excel, COLUMNS)
+            filename = get_vladivostok_filename(filename_prefix)
 
-        with open(file_path, "rb") as f:
-            await update.message.reply_document(document=f, filename=filename, caption=caption, parse_mode=ParseMode.MARKDOWN)
-        return
-    # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
+            with open(file_path, "rb") as f:
+                await update.message.reply_document(document=f, filename=filename, caption=caption, parse_mode=ParseMode.MARKDOWN)
+            return
+        else:
+            wagon_number = wagon_numbers[0]
+            first_container = tracking_results[0]
+            train = await get_latest_train_by_container(first_container.container_number) or "неизвестен"
 
-    # --- Логика поиска по контейнерам (остаётся без изменений) ---
+            header_lines = [
+                f"🚆 *Вагон*: `{wagon_number}` ({detect_wagon_type(wagon_number)})",
+                f"📍 *Текущая станция*: `{first_container.current_station}` 🛤️ ({first_container.operation_road})",
+                f"📅 *Последняя операция*: {first_container.operation_date} — _{first_container.operation}_",
+            ]
+            if train != "неизвестен":
+                header_lines.append(f"🚂 *Поезд*: `{train}`")
+            
+            message = "\n".join(header_lines)
+            message += f"\n\nНа вагоне найдено контейнеров: *{len(tracking_results)}* шт."
+            message += "\n" + ("-"*20)
+
+            for tracking_obj in tracking_results:
+                remaining_distance = await get_remaining_distance_on_route(
+                    start_station=tracking_obj.from_station,
+                    end_station=tracking_obj.to_station,
+                    current_station=tracking_obj.current_station
+                )
+                km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
+                forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
+                
+                container_part = (
+                    f"\n\n📦 *Контейнер*: `{tracking_obj.container_number}`\n"
+                    f"🛤 *Маршрут*: `{tracking_obj.from_station}` → `{tracking_obj.to_station}`\n"
+                    f"📏 *Осталось ехать*: {_fmt_num(km_left)} км (~{_fmt_num(forecast_days)} суток)"
+                )
+                message += container_part
+            
+            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
+            return
+
     else:
         container_numbers = input_tokens
         found_rows = []
@@ -120,7 +151,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(container_numbers) > 1 and found_rows:
             try:
                 rows_for_excel = []
+                # <<< НАЧАЛО ИСПРАВЛЕНИЙ ВО ВТОРОМ БЛОКЕ >>>
                 for tracking_obj in found_rows:
+                    # Используем доступ к атрибутам через точку
                     train = await get_latest_train_by_container(tracking_obj.container_number) or ""
                     remaining_distance = await get_remaining_distance_on_route(
                         start_station=tracking_obj.from_station,
@@ -128,6 +161,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         current_station=tracking_obj.current_station
                     )
                     km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
+                    # Приводим km_left к float для безопасности
                     forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
                     rows_for_excel.append([
                         tracking_obj.container_number, train,
@@ -136,6 +170,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         tracking_obj.waybill, km_left, forecast_days,
                         _fmt_num(tracking_obj.wagon_number), tracking_obj.operation_road,
                     ])
+                # <<< КОНЕЦ ИСПРАВЛЕНИЙ >>>
 
                 from utils.send_tracking import create_excel_file, get_vladivostok_filename
                 file_path = create_excel_file(rows_for_excel, COLUMNS)
