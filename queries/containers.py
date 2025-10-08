@@ -1,6 +1,6 @@
 # queries/containers.py
-from typing import Sequence
-from sqlalchemy import text, select
+from typing import Sequence, List
+from sqlalchemy import text, select, func
 from sqlalchemy.engine import Row
 
 from db import SessionLocal
@@ -25,7 +25,7 @@ async def get_latest_train_by_container(container_number: str) -> str | None:
         return res.scalar_one_or_none()
 
 
-async def get_latest_tracking_data(container_number: str) -> Sequence[Row]:
+async def get_latest_tracking_data(container_number: str) -> Sequence[Tracking]:
     """
     Находит все последние записи о дислокации для указанного контейнера
     из таблицы 'Tracking'.
@@ -38,5 +38,28 @@ async def get_latest_tracking_data(container_number: str) -> Sequence[Row]:
                 Tracking.operation_date.desc()
             )
         )
-        # fetchall() возвращает список объектов Row
-        return result.fetchall()
+        return result.scalars().all()
+
+
+async def get_tracking_data_by_wagon(wagon_number: str) -> List[Tracking]:
+    """
+    Находит самые последние данные по всем контейнерам,
+    которые в данный момент числятся на указанном вагоне.
+    """
+    async with SessionLocal() as session:
+        latest_ids_subquery = (
+            select(func.max(Tracking.id).label("max_id"))
+            .group_by(Tracking.container_number)
+            .subquery()
+        )
+
+        query = (
+            select(Tracking)
+            .join(latest_ids_subquery, Tracking.id == latest_ids_subquery.c.max_id)
+            .where(Tracking.wagon_number == wagon_number)
+        )
+        
+        result = await session.execute(query)
+        
+        # <<< ИЗМЕНЕНИЕ ЗДЕСЬ: Преобразуем Sequence в List >>>
+        return list(result.scalars().all())
