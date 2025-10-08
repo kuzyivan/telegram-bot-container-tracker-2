@@ -53,13 +53,16 @@ async def get_tracking_data_by_wagon(wagon_number: str) -> List[Tracking]:
             .subquery()
         )
 
+        # <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
+        # Вместо прямого сравнения `==` мы будем сравнивать только часть строки до точки.
+        # Это сделает поиск устойчивым к наличию `.0` в конце номера вагона.
         query = (
             select(Tracking)
             .join(latest_ids_subquery, Tracking.id == latest_ids_subquery.c.max_id)
-            .where(Tracking.wagon_number == wagon_number)
+            .where(func.split_part(Tracking.wagon_number, '.', 1) == wagon_number)
         )
+        # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
         
         result = await session.execute(query)
         
-        # <<< ИЗМЕНЕНИЕ ЗДЕСЬ: Преобразуем Sequence в List >>>
         return list(result.scalars().all())
