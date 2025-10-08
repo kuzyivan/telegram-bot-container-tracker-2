@@ -41,28 +41,30 @@ async def get_latest_tracking_data(container_number: str) -> Sequence[Tracking]:
         return result.scalars().all()
 
 
-async def get_tracking_data_by_wagon(wagon_number: str) -> List[Tracking]:
+# <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
+async def get_tracking_data_by_wagons(wagon_numbers: List[str]) -> List[Tracking]:
     """
     Находит самые последние данные по всем контейнерам,
-    которые в данный момент числятся на указанном вагоне.
+    которые в данный момент числятся на любом из указанных вагонов.
     """
+    if not wagon_numbers:
+        return []
+
     async with SessionLocal() as session:
         latest_ids_subquery = (
             select(func.max(Tracking.id).label("max_id"))
             .group_by(Tracking.container_number)
             .subquery()
         )
-
-        # <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
-        # Вместо прямого сравнения `==` мы будем сравнивать только часть строки до точки.
-        # Это сделает поиск устойчивым к наличию `.0` в конце номера вагона.
+        
+        # Используем .in_() для поиска по списку номеров вагонов
         query = (
             select(Tracking)
             .join(latest_ids_subquery, Tracking.id == latest_ids_subquery.c.max_id)
-            .where(func.split_part(Tracking.wagon_number, '.', 1) == wagon_number)
+            .where(func.split_part(Tracking.wagon_number, '.', 1).in_(wagon_numbers))
         )
-        # <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
         
         result = await session.execute(query)
         
         return list(result.scalars().all())
+# <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
