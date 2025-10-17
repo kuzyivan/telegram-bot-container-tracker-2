@@ -21,11 +21,13 @@ from handlers.subscription_management_handler import get_subscription_management
 from handlers.tracking_handlers import tracking_conversation_handler
 from handlers.dislocation_handlers import handle_message
 from handlers.admin_handlers import (
-    stats, exportstats, tracking, test_notify,
-    admin_panel, admin_panel_callback, force_notify_conversation_handler
+    stats, exportstats, tracking, test_notify, force_notify, 
+    admin_panel, admin_panel_callback,
+    upload_file_command, handle_admin_document # ✅ Новый импорт
 )
 from handlers.broadcast import broadcast_conversation_handler
-from handlers.train_handlers import upload_train_help, handle_train_excel
+# ❌ Старый импорт больше не нужен
+# from handlers.train_handlers import upload_train_help, handle_train_excel 
 from handlers.train import setup_handlers as setup_train_handlers
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -49,7 +51,7 @@ async def set_bot_commands(application: Application):
         BotCommand("force_notify", "Принудительная рассылка"),
         BotCommand("broadcast", "Рассылка всем"),
         BotCommand("train", "Отчёт по поезду"),
-        BotCommand("upload_train", "Загрузить Excel поезда")
+        BotCommand("upload_file", "Загрузить файл дислокации/поезда") # ✅ Обновленная команда
     ]
     await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
     logger.info(f"✅ Команды для админа (ID: {ADMIN_CHAT_ID}) установлены.")
@@ -66,11 +68,10 @@ def main():
     
     # --- Регистрация обработчиков ---
     
-    # 1. Диалоги (ConversationHandlers) - должны идти первыми
+    # 1. Диалоги (ConversationHandlers)
     application.add_handler(broadcast_conversation_handler)
     application.add_handler(tracking_conversation_handler())
     application.add_handler(get_email_conversation_handler())
-    application.add_handler(force_notify_conversation_handler) # ✅ Добавлен новый диалог
     setup_train_handlers(application)
     
     # 2. Обработчики команд и колбэков
@@ -82,19 +83,26 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     
-    # Команды админа (для прямого вызова)
+    # Команды админа
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(CommandHandler("testnotify", test_notify))
-    application.add_handler(CommandHandler("upload_train", upload_train_help))
+    application.add_handler(CommandHandler("force_notify", force_notify))
+    application.add_handler(CommandHandler("upload_file", upload_file_command)) # ✅ Новая команда
     
     # 3. Обработчики сообщений
     application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), reply_keyboard_handler))
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-    application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), handle_train_excel))
     
-    # Этот обработчик должен быть одним из последних, т.к. он ловит любой текст
+    # ✅ Новый единый обработчик документов от админа
+    application.add_handler(MessageHandler(
+        filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
+        handle_admin_document
+    ))
+    # ❌ Старый обработчик больше не нужен
+    # application.add_handler(MessageHandler(filters.Document.FileExtension("xlsx"), handle_train_excel))
+    
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     application.add_error_handler(error_handler)

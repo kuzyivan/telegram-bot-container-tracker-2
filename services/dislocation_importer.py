@@ -8,16 +8,16 @@ from db import SessionLocal
 from logger import get_logger
 from models import Tracking
 from services.imap_service import ImapService
-from services.train_event_notifier import process_dislocation_for_train_events # <<< ИЗМЕНЕННЫЙ ИМПОРТ
+from services.train_event_notifier import process_dislocation_for_train_events
 
 logger = get_logger(__name__)
 DOWNLOAD_FOLDER = "downloads"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 
-async def _process_dislocation_file(filepath: str):
+async def process_dislocation_file(filepath: str) -> int:
     """
-    Обновляет таблицу tracking и запускает анализ на наличие новых событий поезда.
+    Обновляет таблицу tracking, запускает анализ событий и возвращает кол-во записей.
     """
     try:
         df = pd.read_excel(filepath, skiprows=3)
@@ -56,11 +56,14 @@ async def _process_dislocation_file(filepath: str):
                 if records_to_insert:
                     await session.execute(Tracking.__table__.insert(), records_to_insert)
         
-        logger.info(f"✅ Таблица 'tracking' успешно обновлена. Записей: {len(records_to_insert)}.")
+        records_count = len(records_to_insert)
+        logger.info(f"✅ Таблица 'tracking' успешно обновлена. Записей: {records_count}.")
         
         # Теперь, когда база обновлена, запускаем анализ на наличие событий
         if records_to_insert:
             await process_dislocation_for_train_events(records_to_insert)
+            
+        return records_count
 
     except Exception as e:
         logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
@@ -90,4 +93,4 @@ async def check_and_process_dislocation():
         logger.info(f"[Dislocation] Файл '{os.path.basename(filepath)}' пропущен, так как это отчет терминала.")
         return
 
-    await _process_dislocation_file(filepath)
+    await process_dislocation_file(filepath)
