@@ -2,7 +2,7 @@
 import pandas as pd
 from datetime import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters
 from telegram.helpers import escape_markdown
 
 from config import ADMIN_CHAT_ID
@@ -20,14 +20,14 @@ from services.notification_service import NotificationService
 
 logger = get_logger(__name__)
 
+# Состояния для нового диалога
+AWAIT_FORCE_NOTIFY_TIME = range(1)
 
-# --- ФУНКЦИОНАЛ АДМИН-ПАНЕЛИ ---
+# --- ФУНКЦИОНАЛ АДМИН-ПАНЕЛИ (без изменений) ---
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет основную панель администратора."""
     if not await admin_only_handler(update, context):
         return
-
     keyboard = [
         [InlineKeyboardButton("📊 Статистика за сутки", callback_data="admin_stats")],
         [InlineKeyboardButton("📤 Экспорт всей статистики", callback_data="admin_exportstats")],
@@ -36,34 +36,20 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⚡️ Тестовое уведомление", callback_data="admin_testnotify")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     if update.message:
         await update.message.reply_text("⚙️ Панель администратора:", reply_markup=reply_markup)
     elif update.callback_query:
         await update.callback_query.edit_message_text("⚙️ Панель администратора:", reply_markup=reply_markup)
 
-
 async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает нажатия кнопок в панели администратора."""
     query = update.callback_query
-    if not query:
-        return
-        
+    if not query: return
     await query.answer()
     action = query.data
-
-    # <<< ИЗМЕНЕНИЕ: Убрали обработку 'admin_broadcast' отсюда >>>
-    if action == "admin_stats":
-        await stats(update, context)
-    elif action == "admin_exportstats":
-        await exportstats(update, context)
-    elif action == "admin_tracking":
-        await tracking(update, context)
-    elif action == "admin_testnotify":
-        await test_notify(update, context)
-
-
-# --- АДАПТИРОВАННЫЕ ФУНКЦИИ ---
+    if action == "admin_stats": await stats(update, context)
+    elif action == "admin_exportstats": await exportstats(update, context)
+    elif action == "admin_tracking": await tracking(update, context)
+    elif action == "admin_testnotify": await test_notify(update, context)
 
 async def admin_only_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user = update.effective_user
@@ -77,11 +63,10 @@ async def admin_only_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return False
     return True
 
-# ... (остальные функции: tracking, stats, exportstats, test_notify, force_notify остаются без изменений, как в предыдущем ответе) ...
+# --- ПРОЧИЕ АДМИН-КОМАНДЫ (без изменений) ---
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not await admin_only_handler(update, context): return
-    
     logger.info("[tracking] Запрос выгрузки всех подписок от администратора.")
     try:
         subs, columns = await get_all_tracking_subscriptions()
@@ -91,18 +76,15 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         df = pd.DataFrame([list(row) for row in subs], columns=columns)
         file_path = create_excel_file(df.values.tolist(), df.columns.tolist())
         filename = get_vladivostok_filename("Подписки_на_трекинг")
-        with open(file_path, "rb") as f:
-            await chat.send_document(document=f, filename=filename)
+        with open(file_path, "rb") as f: await chat.send_document(document=f, filename=filename)
         logger.info("[tracking] Выгрузка подписок успешно отправлена.")
     except Exception as e:
         logger.error(f"[tracking] Ошибка выгрузки подписок: {e}", exc_info=True)
         if chat: await chat.send_message("❌ Ошибка при экспорте подписок.")
 
-
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not await admin_only_handler(update, context): return
-    
     logger.info("[stats] Запрос статистики за сутки от администратора.")
     try:
         rows = await get_daily_stats()
@@ -130,11 +112,9 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
         if chat: await chat.send_message("❌ Ошибка при получении статистики.")
 
-
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not await admin_only_handler(update, context): return
-    
     logger.info("[exportstats] Запрос Excel-выгрузки всех запросов от администратора.")
     try:
         rows, columns = await get_all_stats_for_export()
@@ -150,11 +130,9 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[exportstats] Ошибка выгрузки статистики: {e}", exc_info=True)
         if chat: await chat.send_message("❌ Ошибка при экспорте статистики.")
 
-
 async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if not chat or not await admin_only_handler(update, context): return
-    
     logger.info("[test_notify] Запрос тестовой мульти-рассылки от администратора.")
     try:
         data_per_user = await get_data_for_test_notification()
@@ -177,22 +155,42 @@ async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"[test_notify] Ошибка тестовой мульти-рассылки: {e}", exc_info=True)
         if chat: await chat.send_message("❌ Ошибка при тестовой рассылке.")
 
+# --- ✅ ОБНОВЛЕННАЯ ЛОГИКА /force_notify ---
 
-async def force_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def force_notify_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Шаг 1: Запрашивает время для рассылки."""
     chat = update.effective_chat
-    if not chat or not await admin_only_handler(update, context): return
+    if not chat or not await admin_only_handler(update, context):
+        return ConversationHandler.END
+    
+    # Проверяем, было ли время передано сразу в команде
+    if context.args:
+        # Если да, сразу обрабатываем
+        return await _process_force_notify(update, context, context.args[0])
+    
+    # Если нет, запрашиваем
+    await chat.send_message("Пожалуйста, укажите время для рассылки (например, 09:00) или /cancel для отмены.")
+    return AWAIT_FORCE_NOTIFY_TIME
 
-    if not context.args:
-        await chat.send_message("Пожалуйста, укажите время для рассылки, например: /force_notify 09:00")
-        return
+async def force_notify_receive_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Шаг 2: Получает время и запускает рассылку."""
+    if not update.message or not update.message.text:
+        return ConversationHandler.END
+    time_str = update.message.text.strip()
+    return await _process_force_notify(update, context, time_str)
 
-    time_str = context.args[0]
+async def _process_force_notify(update: Update, context: ContextTypes.DEFAULT_TYPE, time_str: str):
+    """Общая логика обработки времени и запуска рассылки."""
+    chat = update.effective_chat
+    if not chat:
+        return ConversationHandler.END
+        
     try:
         hour, minute = map(int, time_str.split(':'))
         target_time = time(hour=hour, minute=minute)
     except ValueError:
-        await chat.send_message("Неверный формат времени. Используйте ЧЧ:ММ, например: /force_notify 09:00")
-        return
+        await chat.send_message("Неверный формат времени. Используйте ЧЧ:ММ. Попробуйте снова или /cancel.")
+        return AWAIT_FORCE_NOTIFY_TIME
 
     await chat.send_message(f"🚀 Принудительно запускаю рассылку для {time_str}...")
     
@@ -204,3 +202,20 @@ async def force_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"[force_notify] Ошибка при принудительной рассылке: {e}", exc_info=True)
         await chat.send_message(f"❌ Во время принудительной рассылки произошла ошибка. См. логи.")
+    
+    return ConversationHandler.END
+
+async def force_notify_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена диалога."""
+    if update.message:
+        await update.message.reply_text("Принудительная рассылка отменена.")
+    return ConversationHandler.END
+
+# Создаем ConversationHandler
+force_notify_conversation_handler = ConversationHandler(
+    entry_points=[CommandHandler("force_notify", force_notify_start)],
+    states={
+        AWAIT_FORCE_NOTIFY_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, force_notify_receive_time)],
+    },
+    fallbacks=[CommandHandler("cancel", force_notify_cancel)],
+)
