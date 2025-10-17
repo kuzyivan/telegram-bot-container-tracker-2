@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 import os
 from pathlib import Path
 
-from .panel import admin_only_handler
+from .utils import admin_only_handler # ✅ ИЗМЕНЕНИЕ ЗДЕСЬ
 from logger import get_logger
 from services.train_importer import import_train_from_excel, extract_train_code_from_filename
 from services.dislocation_importer import process_dislocation_file, DOWNLOAD_FOLDER as DISLOCATION_DOWNLOAD_FOLDER

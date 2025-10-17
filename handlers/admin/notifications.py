@@ -3,7 +3,7 @@ from datetime import time
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters
 
-from .panel import admin_only_handler
+from .utils import admin_only_handler # ✅ ИЗМЕНЕНИЕ ЗДЕСЬ
 from logger import get_logger
 from utils.send_tracking import create_excel_multisheet, get_vladivostok_filename
 from utils.email_sender import send_email
