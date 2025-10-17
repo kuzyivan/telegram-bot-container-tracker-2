@@ -21,15 +21,28 @@ class NotificationService:
         self.bot = bot
 
     async def send_scheduled_notifications(self, target_time: time):
+        """
+        Главный метод для отправки всех уведомлений по расписанию.
+        Включает улучшенную обработку ошибок.
+        """
         subscriptions = await get_subscriptions_for_time(target_time)
         logger.info(f"Найдено {len(subscriptions)} подписок для рассылки в {target_time.strftime('%H:%M')}.")
+        
+        if not subscriptions:
+            return
+
         tasks = [self._process_single_subscription(sub) for sub in subscriptions]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # ❗️ Новое: Проверяем результаты на наличие скрытых ошибок
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"❌ В процессе обработки подписки возникла скрытая ошибка: {result}", exc_info=result)
 
     async def _process_single_subscription(self, subscription):
         """
-        Обрабатывает одну подписку: получает данные, ПЕРЕСЧИТЫВАЕТ РАССТОЯНИЕ,
-        создает отчет и отправляет его.
+        Обрабатывает одну подписку: получает данные, пересчитывает расстояние,
+        создает отчет и отправляет его. Использует надежный доступ к данным.
         """
         user_id = subscription.user_telegram_id
         containers = list(subscription.containers)
@@ -48,27 +61,39 @@ class NotificationService:
                 logger.error(f"Не удалось уведомить пользователя {user_id} об отсутствии данных: {e}")
             return
 
-        # Создаем новый список данных с пересчитанными расстояниями
+        # ✅ Исправлено: Надежное формирование данных для Excel без "магических" индексов
         final_report_data = []
-        for row in report_data_from_db:
-            # Преобразуем Row в изменяемый список
-            row_list = list(row)
-            
-            # Вызываем сервис для пересчета расстояния
-            remaining_distance = await get_remaining_distance_on_route(
-                start_station=row.from_station,
-                end_station=row.to_station,
-                current_station=row.current_station
+        for db_row in report_data_from_db:
+            # Явно обращаемся к полям по их именам
+            km_left = db_row.km_left
+            forecast_days = db_row.forecast_days
+
+            # Пересчитываем расстояние
+            recalculated_distance = await get_remaining_distance_on_route(
+                start_station=db_row.from_station,
+                end_station=db_row.to_station,
+                current_station=db_row.current_station
             )
             
-            if remaining_distance is not None:
-                # Обновляем расстояние (индекс 7 в запросе get_tracking_data_for_containers)
-                row_list[7] = remaining_distance
-                # Обновляем прогноз (индекс 8)
-                forecast = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0
-                row_list[8] = forecast
-            
-            final_report_data.append(row_list)
+            if recalculated_distance is not None:
+                km_left = recalculated_distance
+                forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance > 0 else 0.0
+
+            # Собираем строку для Excel в правильном порядке, как в config.py
+            excel_row = [
+                db_row.container_number,
+                db_row.from_station,
+                db_row.to_station,
+                db_row.current_station,
+                db_row.operation,
+                db_row.operation_date,
+                db_row.waybill,
+                km_left,
+                forecast_days,
+                db_row.wagon_number,
+                db_row.operation_road,
+            ]
+            final_report_data.append(excel_row)
 
         # Используем обновленные данные для создания файла
         file_path = await asyncio.to_thread(create_excel_file, final_report_data, config.TRACKING_REPORT_COLUMNS)
