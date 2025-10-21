@@ -147,29 +147,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Логика для нескольких результатов (Excel)
         final_report_data = []
         
-        excel_columns = list(config.TRACKING_REPORT_COLUMNS)
+        # ⚠️ ФИНАЛЬНЫЙ СПИСОК ЗАГОЛОВКОВ (ДОЛЖЕН СОДЕРЖАТЬ 11 ЭЛЕМЕНТОВ!)
+        EXCEL_HEADERS = [
+            'Номер контейнера', 'Станция отправления', 'Станция назначения',
+            'Станция операции', 'Операция', 'Дата и время операции',
+            'Номер накладной', 'Расстояние оставшееся', 'Вагон', 
+            'Тип вагона', 'Дорога операции'
+        ]
         
-        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Синхронизация данных.
-        try:
-             # 1. Удаляем "Прогноз прибытия (дни)"
-             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)')) 
-
-             # 2. Удаляем "Номер вагона" (который мы заменяем на 2 поля)
-             wagon_index = excel_columns.index('Номер вагона')
-             excel_columns.pop(wagon_index) 
-             
-             # 3. Вставляем "Вагон" и "Тип вагона"
-             excel_columns.insert(wagon_index, 'Вагон')
-             excel_columns.insert(wagon_index + 1, 'Тип вагона')
-             
-             # 4. Добавляем "Прогноз прибытия (дни)" обратно в конец.
-             excel_columns.append('Прогноз прибытия (дни)')
-
-        except ValueError:
-             # Если что-то пошло не так, просто добавляем новые поля в конец
-             excel_columns.append('Тип вагона') 
-
-
+        excel_columns = EXCEL_HEADERS
+        
         for db_row in tracking_results:
             
             recalculated_distance = await get_remaining_distance_on_route(
@@ -187,7 +174,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 km_left = db_row.km_left
 
-            # Логирование (source_tag убран из данных, но остается в логе)
             source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
              
@@ -199,18 +185,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel. (13 элементов)
+            # ✅ ФОРМИРОВАНИЕ СТРОКИ ДАННЫХ (11 ЭЛЕМЕНТОВ, СООТВЕТСТВУЮТ EXCEL_HEADERS)
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
-                 db_row.waybill, km_left, # <- Источник данных удален
+                 db_row.waybill, km_left, 
                  wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
-                 forecast_days, # Прогноз в конце
-                 
-                 # ⚠️ Элемент, который мы не учли в заголовках, но который есть в данных:
-                 # В предыдущих версиях был source_tag, который теперь удален.
-                 # Если в excel_columns 12 элементов, а в excel_row 13, то excel_row содержит лишний элемент.
-                 # Я удалю Source_tag из данных окончательно, чтобы размерность сошлась.
+                 # Здесь было 13 элементов. Мы удалили source_tag и forecast_days.
              ]
             final_report_data.append(excel_row)
 
@@ -219,7 +200,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              file_path = await asyncio.to_thread(
                  create_excel_file,
                  final_report_data,
-                 excel_columns # Используем измененный список колонок
+                 excel_columns # Передаем 11 элементов
              )
              filename = get_vladivostok_filename(prefix="Дислокация")
 
