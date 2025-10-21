@@ -37,15 +37,6 @@ async def add_user_email(telegram_id: int, email: str) -> Optional[UserEmail]:
             logger.warning(f"Попытка добавить существующий email {email} для пользователя {telegram_id}")
             return None # Email уже существует у этого пользователя
             
-        # Проверка на существование email у ДРУГОГО пользователя (если email должны быть уникальны глобально)
-        # global_existing_email = await session.execute(
-        #     select(UserEmail).where(func.lower(UserEmail.email) == email_lower)
-        # )
-        # if global_existing_email.scalar_one_or_none():
-        #      logger.warning(f"Email {email} уже используется другим пользователем.")
-        #      # Здесь можно вернуть ошибку или специальное значение
-        #      return None # Email занят
-
         new_email = UserEmail(user_telegram_id=telegram_id, email=email_lower)
         session.add(new_email)
         try:
@@ -71,7 +62,6 @@ async def delete_user_email(email_id: int, user_telegram_id: int) -> bool:
             if email_to_delete:
                 # TODO: Нужно проверить, используется ли этот email в каких-либо подписках (SubscriptionEmail)
                 # и либо запретить удаление, либо отвязать его от подписок.
-                # Пока что просто удаляем.
                 await session.delete(email_to_delete)
                 await session.commit()
                 logger.info(f"Email с ID {email_id} успешно удален для пользователя {user_telegram_id}")
@@ -81,7 +71,6 @@ async def delete_user_email(email_id: int, user_telegram_id: int) -> bool:
                 return False
 
 
-# ✅ Переименовываем функцию для единообразия с вызовами
 async def register_user_if_not_exists(user: TelegramUser):
     """
     Добавляет пользователя в таблицу users, если его там нет.
@@ -93,20 +82,18 @@ async def register_user_if_not_exists(user: TelegramUser):
     last_name = user.last_name
     
     async with SessionLocal() as session:
-        # Пытаемся вставить нового пользователя
         stmt = pg_insert(User).values(
             telegram_id=telegram_id,
             username=username,
             first_name=first_name,
             last_name=last_name
-        ).on_conflict_do_update( # Если пользователь с таким telegram_id уже существует...
-            index_elements=['telegram_id'], # ...по ключу telegram_id...
-            # ...обновляем его данные
+        ).on_conflict_do_update( 
+            index_elements=['telegram_id'], 
             set_=dict(
                 username=username,
                 first_name=first_name,
                 last_name=last_name,
-                updated_at=func.now() # Обновляем время последнего визита/обновления
+                updated_at=func.now() 
             )
         )
         await session.execute(stmt)
@@ -114,7 +101,6 @@ async def register_user_if_not_exists(user: TelegramUser):
         logger.info(f"Пользователь {telegram_id} ({username}) зарегистрирован или обновлен.")
 
 
-# ✅ Добавляем недостающую функцию
 async def add_user_request(telegram_id: int, query_text: str):
     """
     Логирует текстовый запрос пользователя в таблицу user_requests.
@@ -131,3 +117,13 @@ async def add_user_request(telegram_id: int, query_text: str):
         except Exception as e:
             await session.rollback()
             logger.error(f"Ошибка логирования запроса от {telegram_id}: {e}", exc_info=True)
+
+# ✅ Функция для получения всех ID пользователей
+async def get_all_user_ids() -> List[int]:
+    """Возвращает список всех ID пользователей (telegram_id)."""
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(User.telegram_id)
+        )
+        user_ids = result.scalars().all()
+        return list(user_ids)
