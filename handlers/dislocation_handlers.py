@@ -29,11 +29,10 @@ def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     if wagon_number is None:
         return 'н/д'
     
-    # 1. Очищаем от '.0' и приводим к строке
     wagon_str = str(wagon_number).removesuffix('.0').strip()
     
     if not wagon_str or not wagon_str[0].isdigit():
-        return 'н/д'
+        return 'Прочий' # Изменено на 'Прочий' для логики Excel
     
     first_digit = wagon_str[0]
     
@@ -91,8 +90,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = tracking_results[0]
         
         # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ (ПРИОРИТЕТ: РАСЧЕТ) ---
-        
-        # 1. Всегда пытаемся рассчитать по прейскуранту
         remaining_distance = await get_remaining_distance_on_route(
             start_station=result.from_station,
             end_station=result.to_station,
@@ -101,34 +98,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         km_left_display = None
         forecast_days_display = 0.0
-        source_log_tag = "Н/Д" # Инициализация
-        distance_label = "Осталось км (БД):" # Лейбл по умолчанию
+        source_log_tag = "Н/Д"
+        distance_label = "Осталось км (БД):"
 
         if remaining_distance is not None:
-            # 2. Расчет успешен -> используем его
             source_log_tag = "РАСЧЕТ"
             km_left_display = remaining_distance
-            # Пересчитываем прогноз на основе нового расстояния
             forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
-            distance_label = "Тарифное расстояние:" # НОВЫЙ ЛЕЙБЛ
+            distance_label = "Тарифное расстояние:"
         else:
-            # 3. Расчет не успешен -> используем БД (Fallback)
             source_log_tag = "БД (Fallback)"
             km_left_display = result.km_left
             forecast_days_display = result.forecast_days or 0.0
-            distance_label = "Осталось км (БД):" # Возвращаем старый лейбл
+            distance_label = "Осталось км (БД):"
             
         logger.info(f"[dislocation] Контейнер {result.container_number}: Расстояние ({km_left_display} км) взято из источника: {source_log_tag}")
         # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
         
-        # Очистка номера вагона от ".0"
         wagon_number_raw = result.wagon_number
         wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else 'н/д'
         
-        # ✅ ОПРЕДЕЛЕНИЕ ТИПА ВАГОНА
         wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
         
-        # Применение сокращения ЖД
         railway_abbreviation = get_railway_abbreviation(result.operation_road)
 
         # ФОРМАТИРОВАНИЕ СООБЩЕНИЯ С ЭМОДЗИ
@@ -143,7 +134,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
             f"**Операция:** `{result.operation}`\n"
             f"**Дата/Время:** `{result.operation_date}`\n"
-            f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n" # ✅ ДОБАВЛЕН ТИП ВАГОНА
+            f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n"
             f"**Накладная:** `{result.waybill}`\n"
             f"═════════════════════\n"
             f"🛣️ *Прогноз:*\n"
@@ -158,16 +149,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         excel_columns = list(config.TRACKING_REPORT_COLUMNS)
         
-        # ИСПРАВЛЕНИЕ EXCEL: Гарантируем, что заголовки соответствуют 13 элементам данных.
+        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Изменяем заголовки, чтобы соответствовать 13 элементам данных.
         try:
              km_left_index = excel_columns.index('Расстояние оставшееся')
-             # Вставляем "Источник данных" после "Расстояние оставшееся"
-             excel_columns.insert(km_left_index + 1, 'Источник данных')
-             # Вставляем "Тип вагона"
              wagon_index = excel_columns.index('Вагон')
+             
+             # Вставляем "Источник данных"
+             excel_columns.insert(km_left_index + 1, 'Источник данных')
+
+             # Удаляем старый заголовок "Вагон"
+             excel_columns.pop(wagon_index)
+             
+             # Вставляем "Вагон" и "Тип вагона"
+             excel_columns.insert(wagon_index, 'Вагон')
              excel_columns.insert(wagon_index + 1, 'Тип вагона')
 
+             # Теперь у нас 14 заголовков, но в данных 13 элементов.
+             # УДАЛЯЕМ ОДНУ КОЛОНКУ ИЗ ЗАГОЛОВКОВ (например, "Прогноз прибытия (дни)"), 
+             # чтобы соответствовать 13 элементам данных.
+             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)'))
+             
+
         except ValueError:
+             # На случай, если какая-то колонка отсутствует, добавляем в конец
              excel_columns.append('Источник данных') 
              excel_columns.append('Тип вагона') 
 
@@ -198,18 +202,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             wagon_number_raw = db_row.wagon_number
             wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
             
-            # ✅ ОПРЕДЕЛЕНИЕ ТИПА ВАГОНА ДЛЯ EXCEL
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
 
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel.
+            # Формирование строки для Excel. (13 элементов)
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
-                 db_row.waybill, km_left, source_tag, forecast_days, 
-                 wagon_number_cleaned, wagon_type_for_excel, railway_display_name, # ✅ ДОБАВЛЕН ТИП ВАГОНА
+                 db_row.waybill, km_left, source_tag, 
+                 wagon_number_cleaned, wagon_type_for_excel, railway_display_name, 
+                 forecast_days, # ✅ ОСТАВЛЯЕМ ПРОГНОЗ В КОНЦЕ
              ]
             final_report_data.append(excel_row)
 
@@ -218,7 +222,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              file_path = await asyncio.to_thread(
                  create_excel_file,
                  final_report_data,
-                 excel_columns # Используем измененный список колонок
+                 excel_columns # Используем измененный список колонок (13 элементов)
              )
              filename = get_vladivostok_filename(prefix="Дислокация")
 
