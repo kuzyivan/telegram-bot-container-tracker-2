@@ -23,6 +23,8 @@ logger = get_logger(__name__)
 def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     """
     Определяет тип вагона по первой цифре номера, согласно предоставленной логике.
+    6xx... -> Полувагон
+    9xx... или 5xx... -> Платформа
     """
     if wagon_number is None:
         return 'н/д'
@@ -96,19 +98,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         km_left_display = None
         forecast_days_display = 0.0
-        source_log_tag = "Н/Д" 
-        distance_label = "Осталось км (БД):" 
+        source_log_tag = "Н/Д" # Инициализация
+        distance_label = "Осталось км (БД):" # Лейбл по умолчанию
 
         if remaining_distance is not None:
+            # 2. Расчет успешен -> используем его
             source_log_tag = "РАСЧЕТ"
             km_left_display = remaining_distance
             forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
-            distance_label = "Тарифное расстояние:"
+            distance_label = "Тарифное расстояние:" # НОВЫЙ ЛЕЙБЛ
         else:
+            # 3. Расчет не успешен -> используем БД (Fallback)
             source_log_tag = "БД (Fallback)"
             km_left_display = result.km_left
             forecast_days_display = result.forecast_days or 0.0
-            distance_label = "Осталось км (БД):"
+            distance_label = "Осталось км (БД):" # Возвращаем старый лейбл
             
         logger.info(f"[dislocation] Контейнер {result.container_number}: Расстояние ({km_left_display} км) взято из источника: {source_log_tag}")
         # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
@@ -149,21 +153,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Синхронизация 13 данных с 13 заголовками.
         try:
-             # Находим индексы для вставки и замены
              km_left_index = excel_columns.index('Расстояние оставшееся')
-             wagon_index = excel_columns.index('Вагон') # Предполагаем, что колонка называется 'Вагон'
+             wagon_index = excel_columns.index('Вагон') 
              
-             # 1. Заменяем "Прогноз прибытия (дни)" на "Источник данных"
-             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)'))
+             # 1. Вставляем "Источник данных"
              excel_columns.insert(km_left_index + 1, 'Источник данных')
 
-             # 2. Удаляем старый заголовок "Вагон" и вставляем два: "Вагон" и "Тип вагона"
-             excel_columns.pop(wagon_index) # Удаляем старый заголовок
-             excel_columns.insert(wagon_index, 'Вагон') # Вставляем его обратно
-             excel_columns.insert(wagon_index + 1, 'Тип вагона') # Вставляем новый заголовок
+             # 2. Удаляем старый заголовок "Вагон"
+             excel_columns.pop(wagon_index)
              
-             # 3. Добавляем "Прогноз прибытия (дни)" обратно в конец
-             excel_columns.append('Прогноз прибытия (дни)') 
+             # 3. Вставляем "Вагон" и "Тип вагона"
+             excel_columns.insert(wagon_index, 'Вагон')
+             excel_columns.insert(wagon_index + 1, 'Тип вагона')
+             
+             # 4. Удаляем "Прогноз прибытия (дни)" (был элемент 9 в данных)
+             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)')) 
+             
+             # 5. Добавляем "Прогноз прибытия (дни)" обратно в конец
+             excel_columns.append('Прогноз прибытия (дни)')
 
         except ValueError:
              # На случай, если какая-то колонка отсутствует, добавляем в конец
@@ -202,7 +209,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel. (Должно быть 14 элементов в строке данных)
+            # Формирование строки для Excel. (13 элементов)
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
@@ -217,7 +224,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              file_path = await asyncio.to_thread(
                  create_excel_file,
                  final_report_data,
-                 excel_columns # Используем измененный список колонок (Должно быть 14 элементов)
+                 excel_columns # Используем измененный список колонок
              )
              filename = get_vladivostok_filename(prefix="Дислокация")
 
