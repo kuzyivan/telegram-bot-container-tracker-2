@@ -72,17 +72,34 @@ def find_station_info(station_name: str, stations_df: pd.DataFrame):
     # Это ключевой шаг: удаляем все, что находится после открывающей скобки (включая саму скобку и код)
     cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', station_name).strip()
     
-    # Если очистка привела к пустой строке (что маловероятно), возвращаем исходное имя
+    # Если очистка привела к пустой строке, возвращаем исходное имя (на всякий случай)
     if not cleaned_name:
          cleaned_name = station_name.strip()
+    
+    cleaned_lower = cleaned_name.lower()
 
-    # 2. Ищем по очищенному имени, игнорируя регистр
-    # Используем str.strip() для очистки пробелов в DataFrame, чтобы совпадение было точным
-    station_data = stations_df[stations_df['station_name'].str.strip().str.lower() == cleaned_name.lower()]
+    # 2. Поиск 1: Точное совпадение по очищенному имени
+    # Используем str.strip().str.lower() для очистки пробелов и регистра
+    station_data = stations_df[
+        stations_df['station_name'].str.strip().str.lower() == cleaned_lower
+    ]
     
     if station_data.empty:
-        # Если не нашли по точной очистке, возвращаем None (здесь можно добавить fallback на нормализованное имя,
-        # но для тарифного расчета лучше требовать точного совпадения в 2-РП.csv)
+        # 3. Поиск 2: Нестрогий поиск по частичному совпадению (Fallback)
+        # Решает проблему, когда название в дислокации (НИЖНЕКАМСК) не совпадает с названием в справочнике (Нижнекамск-Восточный)
+        
+        # Берем первое слово для поиска
+        search_term = cleaned_lower.split(' ')[0]
+        
+        station_data = stations_df[
+            stations_df['station_name'].str.lower().str.contains(search_term, na=False)
+        ]
+        
+        # Если найдено несколько, берем первого кандидата
+        if len(station_data) > 1:
+            pass # Логика предупреждения будет в вызывающей функции
+
+    if station_data.empty:
         return None
         
     station_series = station_data.iloc[0]
