@@ -6,12 +6,13 @@ from sqlalchemy.orm import selectinload
 
 from config import ADMIN_CHAT_ID
 from db import SessionLocal
-from models import TrackingSubscription, Tracking, User
+# 1. ИСПРАВЛЕНИЕ: Импортируем 'Subscription' вместо 'TrackingSubscription'
+from models import Subscription, Tracking, User
 from logger import get_logger
 
 logger = get_logger(__name__)
 
-# ... (функции get_daily_stats, get_all_stats_for_export, get_all_tracking_subscriptions остаются без изменений) ...
+# ... (функции get_daily_stats, get_all_stats_for_export остаются без изменений) ...
 async def get_daily_stats() -> Sequence[Row]:
     async with SessionLocal() as session:
         query = text("""
@@ -36,10 +37,14 @@ async def get_all_stats_for_export() -> tuple[Sequence[Row] | None, list[str] | 
 
 async def get_all_tracking_subscriptions() -> tuple[Sequence[Row] | None, list[str] | None]:
     async with SessionLocal() as session:
+        # 2. ИСПРАВЛЕНИЕ: 
+        #    - Меняем 'tracking_subscriptions' на 'subscriptions'
+        #    - Меняем 'notify_time' на 'notification_time'
+        #    - Удаляем 'display_id' (его больше нет в модели)
         query = text("""
-            SELECT ts.id, ts.display_id, ts.subscription_name, u.telegram_id, u.username,
-                   ts.containers, ts.notify_time, ts.is_active
-            FROM tracking_subscriptions ts
+            SELECT ts.id, ts.subscription_name, u.telegram_id, u.username,
+                   ts.containers, ts.notification_time, ts.is_active
+            FROM subscriptions ts
             LEFT JOIN users u ON ts.user_telegram_id = u.telegram_id
             ORDER BY u.telegram_id, ts.id
         """)
@@ -52,8 +57,9 @@ async def get_data_for_test_notification() -> Dict[str, List[List[str]]]:
     logger.info("[test_notify_data] Начинаю сбор данных для тестовой рассылки.")
     data_per_user: Dict[str, List[List[str]]] = {}
     async with SessionLocal() as session:
+        # 3. ИСПРАВЛЕНИЕ: Меняем 'TrackingSubscription' на 'Subscription'
         result = await session.execute(
-            select(TrackingSubscription).options(selectinload(TrackingSubscription.user))
+            select(Subscription).options(selectinload(Subscription.user))
         )
         subscriptions = result.scalars().all()
         logger.info(f"[test_notify_data] Найдено {len(subscriptions)} активных подписок.")
@@ -61,7 +67,7 @@ async def get_data_for_test_notification() -> Dict[str, List[List[str]]]:
             if not sub.user:
                 logger.warning(f"[test_notify_data] У подписки ID {sub.id} нет связанного пользователя, пропущена.")
                 continue
-            user_label = f"{sub.user.username or sub.user_telegram_id} (id:{sub.user_telegram_id})"
+            user_label = f"{sub.user.username or sub.user.telegram_id} (id:{sub.user.telegram_id})"
             logger.info(f"[test_notify_data] Обрабатываю подписку '{sub.subscription_name}' для пользователя: {user_label}")
             rows = []
             if not sub.containers or len(sub.containers) == 0:
