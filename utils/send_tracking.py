@@ -7,10 +7,11 @@ from typing import List, Any
 import logging
 from pytz import timezone 
 import uuid 
-# Для работы с форматированием нам нужен openpyxl
 import openpyxl 
-# Также нам нужна временная копия io, чтобы Pandas мог корректно работать с openpyxl
-from pandas.io.formats.excel import ExcelWriter
+# ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем публичный API Pandas для ExcelWriter
+from pandas import ExcelWriter 
+# (Убедитесь, что импорт openpyxl.utils.get_column_letter остается, если вы его используете)
+import openpyxl.utils
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,11 @@ def create_excel_file(rows: List[List[Any]], columns: List[str]) -> str:
     temp_file_path = os.path.join('/tmp', f'tmp{uuid.uuid4().hex}.xlsx')
     
     try:
-        # Используем openpyxl для доступа к объектам рабочей книги
-        with pd.ExcelWriter(temp_file_path, engine='openpyxl') as writer:
+        # Используем pandas.ExcelWriter
+        with ExcelWriter(temp_file_path, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Дислокация')
             
-            # --- ✅ ЛОГИКА ФОРМАТИРОВАНИЯ ---
+            # --- ЛОГИКА ФОРМАТИРОВАНИЯ ---
             workbook = writer.book
             worksheet = writer.sheets['Дислокация']
             
@@ -50,16 +51,11 @@ def create_excel_file(rows: List[List[Any]], columns: List[str]) -> str:
                 
             # 4. Установка ширины столбцов
             for col_idx, column in enumerate(columns, 1):
-                # Ширина столбца = максимальная длина текста в заголовке + небольшой запас
                 max_length = len(column)
-                
-                # Получаем столбец по индексу (A, B, C, ...)
                 column_letter = openpyxl.utils.get_column_letter(col_idx)
                 
-                # Устанавливаем ширину (с запасом 20-30%)
                 adjusted_width = max_length * 1.5 + 5
                 
-                # Ограничиваем минимальную и максимальную ширину
                 worksheet.column_dimensions[column_letter].width = max(15, min(adjusted_width, 50))
 
             # --- КОНЕЦ ЛОГИКИ ФОРМАТИРОВАНИЯ ---
@@ -69,7 +65,6 @@ def create_excel_file(rows: List[List[Any]], columns: List[str]) -> str:
     
     except Exception as e:
         logger.error(f"❌ Ошибка при создании Excel-файла: {e}", exc_info=True)
-        # Переброс ошибки для логирования в основном обработчике
         raise ValueError(e)
 
 def get_vladivostok_filename(prefix: str) -> str:
