@@ -3,6 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
 import os
+from datetime import datetime
 
 from config import ADMIN_CHAT_ID
 from logger import get_logger
@@ -13,7 +14,8 @@ from queries.admin_queries import (
     get_data_for_test_notification, 
     get_admin_user_for_email
 )
-from utils.excel_writer import create_excel_file_from_rows
+# ✅ ИСПРАВЛЕНИЕ: Используем существующий модуль для создания Excel-файлов
+from utils.send_tracking import create_excel_file 
 from utils.notify import notify_admin
 
 logger = get_logger(__name__)
@@ -55,7 +57,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer("Формирую отчет...")
     
     try:
-        rows = await get_daily_stats() # Использует get_daily_stats
+        rows = await get_daily_stats() 
         if update.callback_query:
             await _send_stats_report(update, context, rows)
         else:
@@ -80,12 +82,15 @@ async def _send_excel_export(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """Вспомогательная функция для генерации и отправки Excel."""
     file_path = None
     try:
+        # ✅ ИСПРАВЛЕНИЕ: Используем create_excel_file
         file_path = await asyncio.to_thread(
-            create_excel_file_from_rows,
+            create_excel_file,
             rows,
             headers
         )
         
+        await update.callback_query.edit_message_text(f"⏳ Экспорт {filename_prefix}...")
+
         with open(file_path, 'rb') as f:
             await update.callback_query.bot.send_document(
                 chat_id=ADMIN_CHAT_ID,
@@ -110,7 +115,7 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer("Начинаю экспорт статистики...")
     
     try:
-        rows, headers = await get_all_stats_for_export() # Использует get_all_stats_for_export
+        rows, headers = await get_all_stats_for_export()
         if rows:
             await _send_excel_export(update, context, rows, headers, "user_requests_all")
         else:
@@ -128,7 +133,7 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer("Начинаю экспорт подписок...")
     
     try:
-        rows, headers = await get_all_tracking_subscriptions() # Использует get_all_tracking_subscriptions
+        rows, headers = await get_all_tracking_subscriptions()
         if rows:
             await _send_excel_export(update, context, rows, headers, "subscriptions_all")
         else:
