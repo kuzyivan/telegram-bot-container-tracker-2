@@ -10,7 +10,8 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from logger import get_logger
-from models import TerminalContainer
+# ✅ ИСПРАВЛЕНИЕ ЗДЕСЬ:
+from model.terminal_container import TerminalContainer
 from db import SessionLocal  # <-- ВАЖНО: используем SessionLocal (async sessionmaker)
 
 logger = get_logger(__name__)
