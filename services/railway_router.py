@@ -14,7 +14,7 @@ osm_service = OsmService()
 async def get_remaining_distance_on_route(start_station: str, end_station: str, current_station: str) -> int | None:
     """
     Рассчитывает оставшееся расстояние до станции назначения.
-    Приоритет: Тарифный справочник, затем OSM.
+    Приоритет: Тарифный справочник, затем OSM (отключен).
     """
     if not all([start_station, end_station, current_station]):
         logger.warning("Недостаточно данных для расчета расстояния (start, end или current пустые).")
@@ -38,34 +38,10 @@ async def get_remaining_distance_on_route(start_station: str, end_station: str, 
             logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {tariff_distance} км.")
             return tariff_distance
         else:
-            # Лог о том, что тариф не найден, уже есть внутри get_tariff_distance
              pass
     except Exception as e:
-        logger.error(f"⚠️ Ошибка при вызове тарифного сервиса, переключаюсь на OSM: {e}", exc_info=True)
+        logger.error(f"⚠️ Ошибка при вызове тарифного сервиса: {e}", exc_info=True)
 
-    # --- Запасной вариант: Расчет по OSM ---
-    logger.warning(f"Не удалось рассчитать по тарифу для '{current_station}' -> '{end_station}'. Переключаюсь на OSM.")
-    try:
-        current_coords = await osm_service.get_station_coordinates(current_station) 
-        end_coords = await osm_service.get_station_coordinates(end_station)
-
-        if current_coords and end_coords:
-            distance_km = haversine_distance(
-                lat1=current_coords.lat, lon1=current_coords.lon,
-                lat2=end_coords.lat, lon2=end_coords.lon
-            )
-            # Применяем коэффициент извилистости
-            final_distance = int(distance_km * RAILWAY_WINDING_FACTOR)
-            # Добавим проверку, чтобы не возвращать 0, если станции разные, но очень близко
-            if final_distance == 0 and distance_km > 0.1: # Если реальное расстояние больше 100м
-                 final_distance = 1 # Возвращаем хотя бы 1 км
-                 
-            logger.info(f"✅ Расчет по OSM: {distance_km:.2f} км * {RAILWAY_WINDING_FACTOR} = {final_distance} км.")
-            return final_distance
-        else:
-            logger.warning(f"Не удалось получить координаты OSM для '{current_station}' ({current_coords}) или '{end_station}' ({end_coords}).")
-            return None
-            
-    except Exception as e:
-        logger.error(f"❌ Ошибка при расчете расстояния через OSM: {e}", exc_info=True)
-        return None
+    # --- Запасной вариант: Отключен после внедрения тарифа ---
+    logger.info(f"Запасной расчет по OSM для '{current_station}' -> '{end_station}' отключен. Используется только тарифный сервис.")
+    return None
