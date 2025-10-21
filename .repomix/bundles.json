@@ -5,7 +5,8 @@
       "created": "2025-08-16T11:22:58.673Z",
       "lastUsed": "2025-08-16T11:22:58.673Z",
       "tags": [],
-      "files": []
+      "files": [],
+      "configPath": ".repomix/config/full_code_repomix-repomix.config.json"
     }
   }
 }
