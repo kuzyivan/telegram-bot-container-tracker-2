@@ -75,3 +75,23 @@
 2025-10-21 12:33:18,671 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
 2025-10-21 12:34:24,932 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
 2025-10-21 12:34:24,935 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': cannot import name 'Calculator' from 'core.calculator' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py)
+2025-10-21 14:01:02,835 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:01:02,837 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
+2025-10-21 14:06:15,622 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:06:15,623 ERROR [tariff_service:29] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/services/tariff_service.py", line 26, in <module>
+    from zdtarif_bot.rail_calculator import get_distance_sync
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/rail_calculator.py", line 20, in <module>
+    from zdtarif_bot.core.calculator import Calculator
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py", line 6, in <module>
+    from core.data_parser import find_station_info, normalize_station_name
+ModuleNotFoundError: No module named 'core'
+2025-10-21 14:09:28,134 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:09:28,137 ERROR [tariff_service:29] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': cannot import name 'Calculator' from 'zdtarif_bot.core.calculator' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py)
+Traceback (most recent call last):
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/services/tariff_service.py", line 26, in <module>
+    from zdtarif_bot.rail_calculator import get_distance_sync
+  File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/rail_calculator.py", line 20, in <module>
+    from zdtarif_bot.core.calculator import Calculator
+ImportError: cannot import name 'Calculator' from 'zdtarif_bot.core.calculator' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py)

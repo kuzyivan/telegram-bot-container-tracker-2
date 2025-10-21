@@ -3,7 +3,7 @@
 import pandas as pd
 import itertools
 import logging
-from core.data_parser import find_station_info, normalize_station_name
+from .data_parser import find_station_info, normalize_station_name
 
 logger = logging.getLogger(__name__)
 

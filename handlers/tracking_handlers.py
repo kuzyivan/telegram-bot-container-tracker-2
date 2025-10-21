@@ -8,11 +8,11 @@ from telegram.ext import (
 
 from logger import get_logger
 from db import SessionLocal
-from models import Subscription, UserEmail # Убедись, что UserEmail импортирован, если нужен для связи
-# ✅ УДАЛЯЕМ create_subscription из импорта
-from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details 
-from queries.user_queries import get_user_emails # Импортируем функцию для получения email
-from utils.keyboards import create_yes_no_keyboard, create_time_keyboard, create_email_keyboard
+from models import Subscription, UserEmail, SubscriptionEmail
+from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details
+from queries.user_queries import get_user_emails
+# ✅ Исправляем импорт клавиатуры
+from utils.keyboards import build_yes_no_keyboard, create_time_keyboard, create_email_keyboard
 
 logger = get_logger(__name__)
 
@@ -23,15 +23,13 @@ logger = get_logger(__name__)
 
 def normalize_containers(text: str) -> list[str]:
     """Извлекает и нормализует номера контейнеров из текста."""
-    # Находит все последовательности вида XXXU1234567
     found = re.findall(r'[A-Z]{3}U\d{7}', text.upper())
-    # Убирает дубликаты и сортирует
     return sorted(list(set(found)))
 
 async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога создания подписки."""
     logger.info(f"Пользователь {update.effective_user.id} начал создание подписки.")
-    context.user_data.clear() # Очищаем данные от предыдущих диалогов
+    context.user_data.clear()
     await update.message.reply_text("Введите название для новой подписки (например, 'Контейнеры для клиента А'):")
     return ASK_NAME
 
@@ -61,7 +59,6 @@ async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data[CONTAINERS] = containers
     logger.info(f"Пользователь {update.effective_user.id} ввел контейнеры: {containers}")
 
-    # Предлагаем выбрать время
     await update.message.reply_text("Выберите время для ежедневной рассылки:", reply_markup=create_time_keyboard())
     return ASK_TIME
 
@@ -71,43 +68,39 @@ async def ask_emails(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not query or not query.data or not query.data.startswith("time_"): return ConversationHandler.END
 
     await query.answer()
-    time_str = query.data.split("_")[1] # Извлекаем 'HH:MM'
+    time_str = query.data.split("_")[1]
     try:
         hour, minute = map(int, time_str.split(':'))
         selected_time = time(hour, minute)
         context.user_data[TIME] = selected_time
         logger.info(f"Пользователь {update.effective_user.id} выбрал время: {selected_time}")
 
-        # Получаем сохраненные email пользователя
         user_emails = await get_user_emails(update.effective_user.id)
         if user_emails:
-            context.user_data[EMAILS] = [] # Инициализируем список выбранных email
+            context.user_data[EMAILS] = []
             await query.edit_message_text(
-                "Выберите Email для рассылки по этой подписке (можно несколько). "
-                "Если не выбрать ни одного, рассылка будет только в Telegram.",
+                "Выберите Email для рассылки (можно несколько).",
                 reply_markup=create_email_keyboard(user_emails)
             )
             return ASK_EMAILS
         else:
-            # Если email нет, пропускаем этот шаг и идем к подтверждению
             context.user_data[EMAILS] = []
-            logger.info(f"У пользователя {update.effective_user.id} нет сохраненных email, пропускаем выбор.")
-            return await confirm_save(update, context) # Переходим сразу к подтверждению
+            logger.info(f"У пользователя {update.effective_user.id} нет email, пропускаем выбор.")
+            return await confirm_save(update, context)
 
     except ValueError:
         await query.edit_message_text("Некорректное время. Попробуйте еще раз.")
-        # Можно вернуть ASK_TIME или прервать диалог
         return ConversationHandler.END
 
 async def handle_email_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обрабатывает выбор email (добавление/удаление) или переход к подтверждению."""
+    """Обрабатывает выбор email или переход к подтверждению."""
     query = update.callback_query
     if not query or not query.data: return ConversationHandler.END
     await query.answer()
 
     action = query.data
-    user_emails = await get_user_emails(update.effective_user.id) # Получаем снова для обновления клавиатуры
-    selected_emails_ids = set(context.user_data.get(EMAILS, [])) # Работаем с ID
+    user_emails = await get_user_emails(update.effective_user.id)
+    selected_emails_ids = set(context.user_data.get(EMAILS, []))
 
     if action.startswith("email_"):
         email_id = int(action.split("_")[1])
@@ -116,20 +109,18 @@ async def handle_email_selection(update: Update, context: ContextTypes.DEFAULT_T
         else:
             selected_emails_ids.add(email_id)
         context.user_data[EMAILS] = list(selected_emails_ids)
-        # Обновляем клавиатуру с новыми отметками
         await query.edit_message_reply_markup(reply_markup=create_email_keyboard(user_emails, selected_emails_ids))
-        return ASK_EMAILS # Остаемся на шаге выбора email
+        return ASK_EMAILS
 
     elif action == "confirm_emails":
-        # Переход к подтверждению сохранения
         return await confirm_save(update, context)
 
-    return ASK_EMAILS # На случай непредвиденного callback_data
+    return ASK_EMAILS
 
 async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Показывает сводку и спрашивает подтверждение."""
-    query = update.callback_query # Может прийти из ask_emails или handle_email_selection
-    message = query.message if query else update.message # Откуда начать ответ
+    query = update.callback_query
+    message = query.message if query else update.message
     if not message: return ConversationHandler.END
 
     ud = context.user_data
@@ -142,22 +133,23 @@ async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if selected_email_ids:
          user_emails = await get_user_emails(update.effective_user.id)
          email_map = {e.id: e.email for e in user_emails}
-         email_texts = [email_map.get(eid, "Неизвестный Email") for eid in selected_email_ids]
+         email_texts = [email_map.get(eid, "?") for eid in selected_email_ids]
 
     summary = [
         f"**Название:** {name}",
         f"**Контейнеры ({len(containers)}):** {', '.join(containers)}",
-        f"**Время рассылки:** {selected_time.strftime('%H:%M')}",
-        f"**Рассылка на Email:** {', '.join(email_texts) if email_texts else 'Нет'}"
+        f"**Время:** {selected_time.strftime('%H:%M')}",
+        f"**Email:** {', '.join(email_texts) if email_texts else 'Нет'}"
     ]
+    text = "Проверьте данные:\n\n" + "\n".join(summary) + "\n\nСохранить?"
 
-    text = "Проверьте данные подписки:\n\n" + "\n".join(summary) + "\n\nСохранить?"
+    # ✅ Исправляем вызов клавиатуры
+    reply_markup = build_yes_no_keyboard("save_sub", "cancel_sub")
 
-    # Если пришли из колбэка, редактируем сообщение, иначе отвечаем на новое
     if query:
-         await query.edit_message_text(text, reply_markup=create_yes_no_keyboard("save_sub", "cancel_sub"), parse_mode="Markdown")
+         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await message.reply_text(text, reply_markup=create_yes_no_keyboard("save_sub", "cancel_sub"), parse_mode="Markdown")
+        await message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
     return CONFIRM_SAVE
 
@@ -173,7 +165,6 @@ async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         async with SessionLocal() as session:
             async with session.begin():
-                # Создаем объект подписки
                 new_subscription = Subscription(
                     user_telegram_id=user_id,
                     subscription_name=ud[NAME],
@@ -182,13 +173,10 @@ async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     is_active=True
                 )
                 session.add(new_subscription)
-                # Нужно получить ID созданной подписки для связи с email
-                await session.flush() # Получаем ID до коммита
+                await session.flush()
 
-                # Связываем выбранные email с подпиской
                 selected_email_ids = ud.get(EMAILS, [])
                 if selected_email_ids:
-                    # Получаем объекты UserEmail по ID
                     result = await session.execute(
                         select(UserEmail).filter(UserEmail.id.in_(selected_email_ids), UserEmail.user_telegram_id == user_id)
                     )
@@ -196,17 +184,14 @@ async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     for email_obj in emails_to_link:
                          sub_email_link = SubscriptionEmail(subscription_id=new_subscription.id, email_id=email_obj.id)
                          session.add(sub_email_link)
-                         # Или можно так, если настроена связь relationship:
-                         # new_subscription.target_emails.append(SubscriptionEmail(email=email_obj))
+                await session.commit()
 
-                await session.commit() # Сохраняем все изменения
-
-        logger.info(f"Пользователь {user_id} успешно сохранил подписку ID {new_subscription.id}")
-        await query.edit_message_text("✅ Подписка успешно создана!")
+        logger.info(f"Пользователь {user_id} сохранил подписку ID {new_subscription.id}")
+        await query.edit_message_text("✅ Подписка создана!")
 
     except Exception as e:
-        logger.error(f"Ошибка сохранения подписки для пользователя {user_id}: {e}", exc_info=True)
-        await query.edit_message_text("❌ Произошла ошибка при сохранении подписки.")
+        logger.error(f"Ошибка сохранения подписки для {user_id}: {e}", exc_info=True)
+        await query.edit_message_text("❌ Ошибка при сохранении.")
 
     context.user_data.clear()
     return ConversationHandler.END
@@ -214,17 +199,14 @@ async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 async def cancel_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отмена создания подписки."""
     context.user_data.clear()
-
     query = update.callback_query
     if query:
          await query.answer()
-         await query.edit_message_text("Создание подписки отменено.")
+         await query.edit_message_text("Отменено.")
     elif update.message:
-         await update.message.reply_text("Создание подписки отменено.")
-
+         await update.message.reply_text("Отменено.")
     logger.info(f"Пользователь {update.effective_user.id} отменил создание подписки.")
     return ConversationHandler.END
-
 
 def tracking_conversation_handler():
     """Возвращает ConversationHandler для создания подписки."""
