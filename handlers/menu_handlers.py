@@ -1,67 +1,68 @@
 # handlers/menu_handlers.py
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
-from telegram.constants import ParseMode
+
 from logger import get_logger
-from queries.user_queries import register_user
+# ✅ Исправляем импорт функции регистрации
+from queries.user_queries import register_user_if_not_exists 
+from utils.keyboards import main_menu_keyboard # Импортируем клавиатуру главного меню
 
 logger = get_logger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
-        return
-    
-    await register_user(
-        telegram_id=update.effective_user.id,
-        username=update.effective_user.username
-    )
-    
-    reply_keyboard = [
-        ["📦 Дислокация"],
-        ["📂 Мои подписки"],
-    ]
-    await update.message.reply_text(
-        "Привет! Я бот для отслеживания контейнеров 🚆\n\n"
-        "Для поиска введите номер контейнера. Для управления подписками нажмите кнопку или используйте команду /my_subscriptions.",
-        reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True),
-    )
-    try:
-        if update.effective_chat:
-            await context.bot.send_sticker(
-                chat_id=update.effective_chat.id,
-                sticker="CAACAgIAAxkBAAJBOGiisUho8mpdezoAATaKIfwKypCNVgACb2wAAmvzmUhmDoR2oiG-5jYE"
-            )
-    except Exception: pass
+    """Отправляет приветственное сообщение и главное меню."""
+    user = update.effective_user
+    message = update.message
 
-async def show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
+    if not user or not message:
+        logger.warning("Команда /start вызвана без пользователя или сообщения.")
+        return
+
+    # Регистрируем или обновляем пользователя при каждом /start
+    try:
+        # ✅ Исправляем вызов функции регистрации
+        await register_user_if_not_exists(user) 
+    except Exception as e:
+        logger.error(f"Ошибка при регистрации пользователя {user.id}: {e}", exc_info=True)
+        # Не прерываем выполнение, просто логируем ошибку
+
+    await message.reply_text(
+        f"Привет, {user.first_name}! 👋\n"
+        "Я бот для отслеживания контейнеров. Введите номер контейнера для поиска.",
+        reply_markup=main_menu_keyboard # Показываем главное меню
+    )
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return
-    text = update.message.text
-    if text == "📦 Дислокация":
-        await update.message.reply_text("Введите номер контейнера для поиска:")
-    elif text == "📂 Мои подписки":
-        from handlers.subscription_management_handler import my_subscriptions_command
-        await my_subscriptions_command(update, context)
+    """Обрабатывает нажатия кнопок главного меню (ReplyKeyboardMarkup)."""
+    message = update.message
+    user = update.effective_user
 
-async def menu_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query: return
-    query = update.callback_query
-    await query.answer()
-    if query.data == "start": await show_menu(update, context)
-    elif query.data == "dislocation": await query.edit_message_text("Введите номер контейнера для поиска:")
-    elif query.data == "track_request": await query.edit_message_text("Введите номер контейнера для слежения:")
+    if not message or not message.text or not user:
+        return
 
-async def dislocation_inline_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.callback_query: return
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("Введите номер контейнера для поиска:")
+    text = message.text
+
+    if text == "📦 Отслеживание": # Или "Дислокация"
+        await message.reply_text("Введите номер контейнера для поиска дислокации.")
+    elif text == "📄 Мои подписки":
+        # Здесь можно вызвать функцию, которая показывает список подписок
+        # Например, импортировать и вызвать list_subscriptions из subscription_management_handler.py
+        # await list_subscriptions(update, context) # Пример
+        await message.reply_text("Функция 'Мои подписки' пока не реализована через кнопки.")
+    elif text == "⚙️ Настройки":
+         # TODO: Показать меню настроек (например, с кнопками управления Email)
+         await message.reply_text("Раздел настроек (пока не реализован).")
+    elif text == "🔙 Главное меню":
+         await message.reply_text("Вы в главном меню.", reply_markup=main_menu_keyboard)
+    # Добавьте обработку других кнопок, если они есть
+    else:
+        # Если текст не соответствует кнопке, считаем, что это поиск контейнера
+        from .dislocation_handlers import handle_message # Локальный импорт для избежания цикла
+        await handle_message(update, context)
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user or not update.message.sticker: return
-    sticker = update.message.sticker
-    logger.info(f"Обработка стикера: пользователь {update.effective_user.id} прислал стикер {sticker.file_id}")
-    await update.message.reply_text(f"🆔 ID этого стикера:\n`{sticker.file_id}`", parse_mode=ParseMode.MARKDOWN)
-    await show_menu(update, context)
+     """Отвечает на стикеры."""
+     if update.message:
+        await update.message.reply_text("Классный стикер! 👍")
+
+# Можно добавить обработчики для других кнопок меню, если нужно
