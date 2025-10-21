@@ -1,19 +1,19 @@
 # handlers/dislocation_handlers.py
 import asyncio
-import os 
+import os
 from telegram import Update
 from telegram.ext import ContextTypes
 import re
 
 from logger import get_logger
 from db import SessionLocal
-from models import UserRequest, Tracking 
-# ✅ Окончательно возвращаем правильный импорт и вызов
-from queries.user_queries import add_user_request, register_user_if_not_exists 
-from queries.notification_queries import get_tracking_data_for_containers 
+from models import UserRequest, Tracking
+# ✅ Исправляем импорт и вызов на log_user_request
+from queries.user_queries import log_user_request, register_user_if_not_exists
+from queries.notification_queries import get_tracking_data_for_containers
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
-import config 
+import config
 
 logger = get_logger(__name__)
 
@@ -44,13 +44,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("Пожалуйста, введите номер контейнера или другой запрос.")
         return
 
-    query_text_log = ", ".join(search_terms) 
+    query_text_log = ", ".join(search_terms)
     logger.info(f"[dislocation] пользователь {user.id} ({user.username}) отправил текст для поиска: {query_text_log}")
 
     # Логируем запрос пользователя в базу данных
     try:
-        # ✅ Окончательно возвращаем правильный вызов функции
-        await add_user_request(telegram_id=user.id, query_text=query_text_log) 
+        # ✅ Исправляем вызов функции
+        await log_user_request(telegram_id=user.id, query_text=query_text_log)
     except Exception as log_err:
         logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
 
@@ -78,7 +78,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"**Текущая:** {result.current_station}\n"
             f"**Операция:** {result.operation}\n"
             f"**Дата/Время:** {result.operation_date}\n"
-            f"**Осталось км:** {km_left_display or 'н/д'}\n" 
+            f"**Осталось км:** {km_left_display or 'н/д'}\n"
             f"**Прогноз (дни):** {forecast_days_display:.1f}\n"
             f"**Накладная:** {result.waybill}\n"
             f"**Вагон:** {result.wagon_number}\n"
@@ -104,19 +104,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  db_row.wagon_number, db_row.operation_road,
              ]
              final_report_data.append(excel_row)
-        
-        file_path = None 
+
+        file_path = None
         try:
              file_path = await asyncio.to_thread(
-                 create_excel_file, 
-                 final_report_data, 
-                 config.TRACKING_REPORT_COLUMNS 
-             ) 
+                 create_excel_file,
+                 final_report_data,
+                 config.TRACKING_REPORT_COLUMNS
+             )
              filename = get_vladivostok_filename(prefix="Дислокация")
-        
+
              with open(file_path, "rb") as f:
                  await message.reply_document(
-                     document=f, 
+                     document=f,
                      filename=filename,
                      caption=f"Найдены данные по {len(final_report_data)} контейнерам."
                  )
