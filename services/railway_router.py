@@ -14,13 +14,15 @@ osm_service = OsmService()
 async def get_remaining_distance_on_route(start_station: str, end_station: str, current_station: str) -> int | None:
     """
     Рассчитывает оставшееся расстояние до станции назначения.
-    Приоритет: Тарифный справочник, затем OSM (отключен).
+    Приоритет: Тарифный справочник (Прейскурант 10-01).
     """
     if not all([start_station, end_station, current_station]):
         logger.warning("Недостаточно данных для расчета расстояния (start, end или current пустые).")
         return None
     
     # Нормализуем названия станций на всякий случай (убираем лишние пробелы)
+    # ПРИМЕЧАНИЕ: Очистка кода в скобках (940608) происходит в ядре zdtarif_bot.
+    # Мы передаем полные имена.
     start_station = start_station.strip()
     end_station = end_station.strip()
     current_station = current_station.strip()
@@ -31,9 +33,11 @@ async def get_remaining_distance_on_route(start_station: str, end_station: str, 
 
     logger.info(f"Начинаю расчет расстояния от '{current_station}' до '{end_station}'...")
     
-    # --- Попытка расчета по тарифному справочнику ---
+    # --- Попытка расчета по тарифному справочнику (Аналог логики /distance) ---
     try:
+        # ✅ ПЕРЕДАЕМ CURRENT_STATION и END_STATION (полностью, как они есть)
         tariff_distance = await get_tariff_distance(current_station, end_station)
+        
         if tariff_distance is not None:
             logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {tariff_distance} км.")
             return tariff_distance
