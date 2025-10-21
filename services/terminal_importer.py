@@ -1,13 +1,14 @@
 # services/terminal_importer.py
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from typing import List, Tuple, Optional, Dict, Any
 import pandas as pd
 from sqlalchemy import select, update, insert
 from sqlalchemy.exc import SQLAlchemyError
-import asyncio # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ
+from datetime import datetime
 
 from logger import get_logger
 from model.terminal_container import TerminalContainer
@@ -19,7 +20,6 @@ imap_service = ImapService()
 DOWNLOAD_DIR_TERMINAL = "downloads/terminal" 
 
 # ✅ КРИТИЧЕСКИЙ СЛОВАРЬ СОПОСТАВЛЕНИЯ для A-Terminal
-# Переводит заголовки Excel в имена полей модели TerminalContainer
 TERMINAL_COLUMN_MAPPING = {
     'номер контейнера': 'container_number',
     'клиент': 'client',
@@ -31,7 +31,7 @@ TERMINAL_COLUMN_MAPPING = {
     # Добавьте другие поля, существующие в вашей TerminalContainer модели
 }
 
-# --- Вспомогательные функции ---
+# --- Вспомогательные функции (остаются прежними) ---
 
 def extract_train_code_from_filename(filename: str) -> str | None:
     """Извлекаем код поезда из имени файла."""
@@ -76,9 +76,26 @@ def normalize_client_name(value) -> str | None:
 
 
 def _read_terminal_excel_data(filepath: str) -> Optional[pd.DataFrame]:
-    """Считывает данные из Excel-файла отчета A-Terminal."""
+    """Считывает данные из Excel-файла отчета A-Terminal, ища лист 'Loaded...'."""
     try:
-        df = pd.read_excel(filepath, header=0) 
+        xl = pd.ExcelFile(filepath)
+        sheet_names = xl.sheet_names
+        target_sheet_name = None
+
+        # 1. Поиск листа, начинающегося с "Loaded"
+        for name in sheet_names:
+            if name.strip().lower().startswith('loaded'):
+                target_sheet_name = name
+                break
+                
+        if not target_sheet_name:
+            logger.warning(f"[Terminal Report] Лист, начинающийся с 'Loaded', не найден в файле {os.path.basename(filepath)}. Пропускаю.")
+            return None
+
+        # 2. Считывание данных с найденного листа
+        df = pd.read_excel(xl, sheet_name=target_sheet_name, header=0) 
+        
+        # 3. Очистка и обработка колонок
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         df = df.dropna(how='all')
         
@@ -97,7 +114,6 @@ async def process_terminal_report_file(filepath: str) -> Dict[str, int]:
     """
     logger.info(f"[Terminal Report] Начало обработки файла: {os.path.basename(filepath)}")
     
-    # ✅ ИСПРАВЛЕНИЕ: Используем asyncio.to_thread для чтения Excel
     df = await asyncio.to_thread(_read_terminal_excel_data, filepath)
     if df is None or df.empty:
         logger.warning(f"[Terminal Report] Файл {os.path.basename(filepath)} пуст или не содержит данных.")
@@ -129,6 +145,7 @@ async def process_terminal_report_file(filepath: str) -> Dict[str, int]:
                 
                 if not cleaned_record: continue 
                 
+                # 1. Попытка обновить (UPDATE)
                 update_stmt = update(TerminalContainer).where(
                     TerminalContainer.container_number == container_number
                 ).values(**cleaned_record)
@@ -138,6 +155,7 @@ async def process_terminal_report_file(filepath: str) -> Dict[str, int]:
                 if result.rowcount > 0:
                     updated_count += 1
                 else:
+                    # 2. Если не обновили, вставляем новую запись (INSERT)
                     insert_stmt = insert(TerminalContainer).values(container_number=container_number, **cleaned_record)
                     await session.execute(insert_stmt)
                     added_count += 1
@@ -147,8 +165,10 @@ async def process_terminal_report_file(filepath: str) -> Dict[str, int]:
     return {'updated': updated_count, 'added': added_count}
 
 
+# --- Функции, оставшиеся в файле для целостности ---
+
 async def _collect_containers_from_excel(file_path: str) -> Dict[str, str]:
-    # ... (функция _collect_containers_from_excel остается прежней) ...
+    # ... (код остается прежним) ...
     xl = pd.ExcelFile(file_path)
     container_client_map: Dict[str, str] = {}
     
@@ -178,7 +198,7 @@ async def _collect_containers_from_excel(file_path: str) -> Dict[str, str]:
 
 
 async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
-    # ... (функция import_train_from_excel остается прежней) ...
+    """Проставляет номер поезда и клиента в terminal_containers."""
     train_code = extract_train_code_from_filename(src_file_path)
     if not train_code:
         raise ValueError(f"Не удалось извлечь номер поезда из имени файла: {os.path.basename(src_file_path)}")
