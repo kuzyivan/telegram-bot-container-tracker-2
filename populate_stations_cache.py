@@ -1,127 +1,107 @@
 # populate_stations_cache.py
 import asyncio
-import re
-from sqlalchemy import select
+from sqlalchemy import select, func, distinct
+from sqlalchemy.dialects.postgresql import insert
+
 from db import SessionLocal
-from models import Tracking, RailwayStation
-from services.osm_service import fetch_station_coords, get_canonical_name
+# ✅ Исправляем импорт RailwayStation -> StationsCache
+from models import Tracking, StationsCache 
+from services.osm_service import OsmService
 from logger import get_logger
+import config
 
-logger = get_logger("station_cacher")
-
-def generate_name_variations(station_name: str) -> list[str]:
-    """
-    Генерирует список возможных вариантов написания названия станции для поиска в OSM.
-    """
-    # 1. Базовая очистка от ЛЮБОГО текста в скобках
-    name = re.sub(r'\s*\([^)]*\)', '', station_name).strip()
-    
-    suffixes_to_remove = [
-        "ТОВАРНЫЙ", "ПАССАЖИРСКИЙ", "СОРТИРОВОЧНЫЙ", "СЕВЕРНЫЙ", "ЮЖНЫЙ",
-        "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ", "ПАРК"
-    ]
-    base_name = name
-    for suffix in suffixes_to_remove:
-        base_name = re.sub(r'[\s-]+' + re.escape(suffix) + r'\b', '', base_name, flags=re.IGNORECASE)
-    base_name = base_name.strip()
-
-    variations = {base_name}
-
-    match = re.search(r'(.+?)[\s-]*((?:[IVX]+)|(?:[0-9]+))$', base_name)
-    if match:
-        name_part, num_part = match.group(1).strip(), match.group(2)
-        
-        arabic, roman = "", ""
-        if num_part.isdigit():
-            arabic = num_part
-            roman_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
-            roman = roman_map.get(arabic, "")
-        else:
-            roman = num_part
-            roman_map_rev = {'I': '1', 'II': '2', 'III': '3', 'IV': '4'}
-            arabic = roman_map_rev.get(roman, "")
-
-        variations.add(name_part)
-        if arabic:
-            variations.add(f"{name_part}-{arabic}")
-            variations.add(f"{name_part} {arabic}")
-        if roman:
-            variations.add(f"{name_part}-{roman}")
-            variations.add(f"{name_part} {roman}")
-
-    return sorted(list(variations), key=len, reverse=True)
-
+logger = get_logger(__name__)
 
 async def get_unique_stations_from_tracking() -> set[str]:
-    """Собирает все уникальные названия станций из таблицы дислокации."""
+    """Получает уникальные названия станций (отправления, назначения, текущие) из таблицы tracking."""
     unique_stations = set()
     async with SessionLocal() as session:
-        from_stations_result = await session.execute(select(Tracking.from_station).distinct())
-        to_stations_result = await session.execute(select(Tracking.to_station).distinct())
-        current_stations_result = await session.execute(select(Tracking.current_station).distinct())
-
-        for row in from_stations_result.scalars().all():
-            if row: unique_stations.add(row)
-        for row in to_stations_result.scalars().all():
-            if row: unique_stations.add(row)
-        for row in current_stations_result.scalars().all():
-            if row: unique_stations.add(row)
-            
+        # Выбираем уникальные непустые значения из трех колонок
+        columns_to_check = [Tracking.from_station, Tracking.to_station, Tracking.current_station]
+        for column in columns_to_check:
+            result = await session.execute(select(distinct(column)).where(column != None, column != ''))
+            stations = result.scalars().all()
+            unique_stations.update(stations)
+    # Убираем None или пустые строки, если они как-то попали
+    unique_stations = {s for s in unique_stations if s} 
     logger.info(f"Найдено {len(unique_stations)} уникальных станций в таблице 'tracking'.")
     return unique_stations
 
-async def job_populate_stations_cache():
-    """Основная логика кеширования с предварительной проверкой кеша и перебором вариантов."""
-    logger.info("--- 🏁 Запуск процесса кеширования станций (с перебором вариантов) ---")
-    
-    all_stations_from_db = await get_unique_stations_from_tracking()
-    
+async def get_existing_cached_stations() -> set[str]:
+    """Получает множество оригинальных имен станций, уже имеющихся в кеше."""
     async with SessionLocal() as session:
-        result = await session.execute(select(RailwayStation.name))
-        stations_in_cache = {row[0] for row in result}
-    logger.info(f"В кеше уже есть {len(stations_in_cache)} станций.")
+        result = await session.execute(select(StationsCache.original_name)) # ✅ Используем StationsCache
+        existing_names = set(result.scalars().all())
+        logger.info(f"В кеше уже есть {len(existing_names)} станций.")
+        return existing_names
 
-    stations_to_find = []
-    for station_name in all_stations_from_db:
-        canonical_name = get_canonical_name(station_name)
-        if canonical_name not in stations_in_cache:
-            stations_to_find.append(station_name)
-    
-    logger.info(f"Нужно найти {len(stations_to_find)} новых станций.")
+async def populate_stations_cache_job():
+    """Основная задача: находит новые станции и кеширует их координаты из OSM."""
+    logger.info("--- 🏁 Запуск процесса кеширования станций ---")
 
-    if not stations_to_find:
-        logger.info("Нет станций для поиска. Завершение.")
-        return
+    try:
+        unique_station_names = await get_unique_stations_from_tracking()
+        existing_cached_names = await get_existing_cached_stations()
 
-    success_count = 0
-    fail_count = 0
-    
-    stations_to_find_sorted = sorted(stations_to_find)
-    for i, original_name in enumerate(stations_to_find_sorted):
-        logger.info(f"--- Обработка {i+1}/{len(stations_to_find_sorted)}: '{original_name}' ---")
-        
-        name_variations = generate_name_variations(original_name)
-        logger.info(f"Сгенерированы варианты: {name_variations}")
-        
-        coords = None
-        for name_variant in name_variations:
-            coords = await fetch_station_coords(name_variant, original_name)
-            if coords:
-                logger.info(f"✅ Найдено по варианту: '{name_variant}'")
-                break 
-            await asyncio.sleep(1)
-        
-        if coords:
-            success_count += 1
-        else:
-            logger.warning(f"❌ [Cacher] Не удалось найти координаты для станции: {original_name} (проверены все варианты)")
-            fail_count += 1
-        
-        await asyncio.sleep(2)
+        new_station_names = list(unique_station_names - existing_cached_names)
 
-    logger.info("--- ✅ Процесс кеширования станций завершен ---")
-    logger.info(f"  - Успешно обработано: {success_count}")
-    logger.info(f"  - Не удалось найти: {fail_count}")
+        if not new_station_names:
+            logger.info("--- ✅ Новых станций для кеширования не найдено ---")
+            return
 
-if __name__ == "__main__":
-    asyncio.run(job_populate_stations_cache())
+        logger.info(f"Нужно найти {len(new_station_names)} новых станций.")
+
+        osm_service = OsmService()
+        processed_count = 0
+        not_found_count = 0
+
+        async with SessionLocal() as session:
+            for i, station_name in enumerate(new_station_names):
+                logger.info(f"--- Обработка {i+1}/{len(new_station_names)}: '{station_name}' ---")
+
+                coords = await osm_service.get_station_coordinates(station_name) # Эта функция уже кеширует результат
+
+                if coords:
+                    processed_count += 1
+                    # Дополнительно убедимся, что запись создана, если get_station_coordinates не сделала это
+                    # (хотя она должна была)
+                    insert_stmt = insert(StationsCache).values( # ✅ Используем StationsCache
+                        original_name=station_name,
+                        # found_name - устанавливается внутри get_station_coordinates
+                        latitude=coords.lat,
+                        longitude=coords.lon
+                    ).on_conflict_do_nothing(index_elements=['original_name']) # Не перезаписываем, если уже есть
+                    await session.execute(insert_stmt)
+
+                else:
+                    not_found_count += 1
+                    # Создаем запись в кеше без координат, чтобы не искать повторно
+                    insert_stmt = insert(StationsCache).values( # ✅ Используем StationsCache
+                        original_name=station_name,
+                        found_name=None,
+                        latitude=None,
+                        longitude=None
+                    ).on_conflict_do_nothing(index_elements=['original_name'])
+                    await session.execute(insert_stmt)
+                    logger.warning(f"   -> Координаты для '{station_name}' не найдены.")
+
+                await session.commit() # Коммит после каждой станции
+                await asyncio.sleep(1) # Небольшая пауза
+
+        logger.info("--- ✅ Процесс кеширования станций завершен ---")
+        logger.info(f"   - Успешно обработано: {processed_count}")
+        logger.info(f"   - Не удалось найти: {not_found_count}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в процессе кеширования станций: {e}", exc_info=True)
+
+# Функция для вызова из scheduler.py
+async def job_populate_stations_cache():
+    if config.STATIONS_CACHE_CRON_SCHEDULE: # Проверяем, включена ли задача в конфиге
+         await populate_stations_cache_job()
+    else:
+        logger.info("Плановое кеширование станций отключено в конфигурации.")
+
+# # Для ручного запуска:
+# if __name__ == "__main__":
+#     asyncio.run(populate_stations_cache_job())

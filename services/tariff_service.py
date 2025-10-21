@@ -3,18 +3,19 @@ import re
 import asyncio
 from logger import get_logger
 
+# ✅ Логгер теперь определяется здесь, ДО блока try...except
+logger = get_logger(__name__) 
+
 # --- Шаг 1: Импорт вашего калькулятора ---
 try:
     # Python будет искать этот файл по пути: ./zdtarif_bot/rail_calculator.py
     from zdtarif_bot.rail_calculator import get_distance_sync
     
     logger.info("✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.")
-    # Примечание: При этом импорте zdtarif_bot автоматически загрузит все CSV-файлы в память.
 except ImportError as e:
+    # Теперь logger здесь доступен
     logger.error(f"❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': {e}")
     get_distance_sync = None
-
-logger = get_logger(__name__)
 
 def _extract_station_code(station_name: str | None) -> str | None:
     """

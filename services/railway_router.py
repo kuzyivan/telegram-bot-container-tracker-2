@@ -2,7 +2,7 @@
 from logger import get_logger
 # ❗️--- ИСПРАВЬТЕ ИМПОРТ ЗДЕСЬ, если имя класса другое ---❗️
 from services.osm_service import OsmService 
-from utils.distance_calculator import haversine_distance
+from services.distance_calculator import haversine_distance
 from config import RAILWAY_WINDING_FACTOR
 from services.tariff_service import get_tariff_distance
 

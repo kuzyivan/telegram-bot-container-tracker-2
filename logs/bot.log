@@ -60,3 +60,18 @@
 2025-10-21 11:47:04,696 INFO [osm_service:12] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
 2025-10-21 11:51:31,221 INFO [osm_service:12] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
 2025-10-21 11:51:36,155 INFO [osm_service:12] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:20:42,014 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:21:55,127 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:22:57,916 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:24:47,903 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:24:47,905 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': cannot import name 'DataLoader' from 'zdtarif_bot.core.data_loader' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/data_loader.py)
+2025-10-21 12:27:54,410 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:27:54,412 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
+2025-10-21 12:30:46,842 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:30:46,844 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
+2025-10-21 12:32:01,585 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:32:01,586 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
+2025-10-21 12:33:18,669 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:33:18,671 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': No module named 'core'
+2025-10-21 12:34:24,932 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 12:34:24,935 ERROR [tariff_service:17] ❌ [Tariff] НЕ УДАЛОСЬ импортировать 'zdtarif_bot.rail_calculator': cannot import name 'Calculator' from 'core.calculator' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py)

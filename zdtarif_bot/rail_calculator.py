@@ -1,107 +1,89 @@
 # zdtarif_bot/rail_calculator.py
 import os
+import sys 
 import logging
-from core.data_loader import DataLoader
-from core.calculator import Calculator
 
-# --- Basic Logging Setup (adjust as needed) ---
-# It's good practice to set up logging here in case this module is run independently
-# or if the main bot's logging isn't configured early enough.
+# --- Добавляем путь к ПАПКЕ ПРОЕКТА (AtermTrackBot), чтобы Python нашел zdtarif_bot ---
+# Определяем путь к текущему файлу
+current_file_path = os.path.abspath(__file__)
+# Находим папку zdtarif_bot
+zdtarif_bot_dir = os.path.dirname(current_file_path)
+# Находим корень проекта (папку выше zdtarif_bot)
+project_root_dir = os.path.dirname(zdtarif_bot_dir)
+# Добавляем корень проекта в sys.path, если его там нет
+if project_root_dir not in sys.path:
+    sys.path.insert(0, project_root_dir)
+    # logger.debug(f"Добавлен {project_root_dir} в sys.path") # Для отладки
+
+# ✅ Используем АБСОЛЮТНЫЕ импорты от корня проекта
+from zdtarif_bot.core.data_loader import load_kniga_2_rp, load_kniga_3_matrices 
+from zdtarif_bot.core.calculator import Calculator 
+
+# --- Basic Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__) # Use standard Python logger
+logger = logging.getLogger(__name__)
 
 # --- Global Calculator Initialization ---
-data_loader = None
 calculator = None
 
 try:
-    # Get the absolute path to the directory where THIS file (rail_calculator.py) is located
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Construct the absolute path to the 'data' directory (assuming it's next to this file)
-    data_dir_path = os.path.join(current_dir, 'data')
-    
+    # Путь к 'data' теперь определяется относительно ЭТОГО файла
+    data_dir_path = os.path.join(zdtarif_bot_dir, 'data') 
     logger.info(f"Initializing DataLoader with data path: {data_dir_path}")
 
-    # Pass the absolute path to the DataLoader
-    data_loader = DataLoader(data_dir_path) 
-    calculator = Calculator(data_loader)
-    
-    logger.info("✅ DataLoader and Calculator initialized successfully in rail_calculator.")
+    stations_df = load_kniga_2_rp(data_dir_path)
+    distance_matrices = load_kniga_3_matrices(data_dir_path)
+
+    if stations_df is not None and distance_matrices:
+        calculator = Calculator(stations_df, distance_matrices) 
+        logger.info("✅ Calculator инициализирован успешно.")
+    else:
+        logger.error("💥 CRITICAL: Не удалось загрузить данные станций или матриц.")
+        calculator = None 
 
 except FileNotFoundError as e:
-    logger.error(f"💥 CRITICAL: Data directory or file not found during initialization: {e}", exc_info=True)
-    logger.error(f"   Attempted data directory path: {data_dir_path}")
-    # Set calculator to None to prevent usage
+    logger.error(f"💥 CRITICAL: Папка данных или файл не найдены: {e}", exc_info=True)
+    logger.error(f"   Проверялся путь: {data_dir_path}")
     calculator = None 
-    # Optionally re-raise if you want the main bot import to fail hard
-    # raise 
 except Exception as e:
-    logger.error(f"💥 CRITICAL: Failed to initialize DataLoader or Calculator: {e}", exc_info=True)
+    logger.error(f"💥 CRITICAL: Ошибка при инициализации калькулятора: {e}", exc_info=True)
     calculator = None
-    # Optionally re-raise
-    # raise
 
 # --- Main Function for External Use ---
 def get_distance_sync(station_code_1: str, station_code_2: str) -> int | None:
     """
-    Calculates the tariff distance using the initialized calculator.
-    Returns distance in km or None if not found or on error.
-    
-    This is the function intended to be imported by other services.
+    Рассчитывает тарифное расстояние с помощью инициализированного калькулятора.
     """
-    if not calculator: # Check if initialization failed
-        logger.error("❌ Calculator not initialized, cannot calculate distance.")
+    if not calculator: 
+        logger.error("❌ Калькулятор не инициализирован, расчет невозможен.")
         return None
-        
+
     if not station_code_1 or not station_code_2:
-        logger.warning("Received empty station code(s). Cannot calculate.")
+        logger.warning("Получен пустой код станции. Расчет невозможен.")
         return None
 
     try:
-        # Assuming calculator.get_distance handles internal errors and returns None if needed
         distance = calculator.get_distance(str(station_code_1), str(station_code_2))
-        
-        # Ensure the calculator returns None or a number > 0
+
         if distance is not None:
             distance_int = int(distance)
             if distance_int > 0:
-                logger.debug(f"Distance calculated: {station_code_1} -> {station_code_2} = {distance_int} km")
+                logger.debug(f"Расстояние рассчитано: {station_code_1} -> {station_code_2} = {distance_int} км")
                 return distance_int
             else:
-                # Handle cases where calculator might return 0 if stations are the same or adjacent with 0 distance
-                logger.info(f"Calculator returned 0 or negative distance for {station_code_1} -> {station_code_2}.")
-                return None # Treat 0 as 'not found' unless 0 is a valid tariff distance
+                logger.info(f"Калькулятор вернул 0 или отрицательное расстояние для {station_code_1} -> {station_code_2}.")
+                return None 
         else:
-            logger.info(f"Distance not found by calculator for {station_code_1} -> {station_code_2}.")
+            logger.info(f"Расстояние не найдено калькулятором для {station_code_1} -> {station_code_2}.")
             return None
-            
+
     except Exception as e:
-        logger.error(f"❌ Unexpected error during distance calculation for {station_code_1}-{station_code_2}: {e}", exc_info=True)
+        logger.error(f"❌ Неожиданная ошибка при расчете расстояния для {station_code_1}-{station_code_2}: {e}", exc_info=True)
         return None
 
-# --- Example Usage (Optional - for testing this file directly) ---
+# --- Example Usage (Optional) ---
 if __name__ == '__main__':
-    # This block runs only if you execute `python zdtarif_bot/rail_calculator.py`
     if calculator:
-        logger.info("Running test calculations...")
-        # Replace with actual codes for testing
-        code1 = "181102" # Example: Селятино
-        code2 = "850007" # Example: Инская
-        
-        dist = get_distance_sync(code1, code2)
-        if dist:
-            logger.info(f"Test: Distance between {code1} and {code2} = {dist} km")
-        else:
-            logger.warning(f"Test: Distance between {code1} and {code2} could not be calculated.")
-            
-        # Test non-existent route
-        code3 = "999999" 
-        dist_none = get_distance_sync(code1, code3)
-        if not dist_none:
-            logger.info(f"Test: Correctly handled non-existent route {code1} -> {code3}.")
-        else:
-             logger.error(f"Test FAILED: Expected None for non-existent route {code1} -> {code3}, got {dist_none}.")
-             
+        pass # Код для тестов           
     else:
-        logger.error("Cannot run tests because Calculator failed to initialize.")
+        logger.error("Невозможно запустить тесты, так как калькулятор не инициализирован.")
