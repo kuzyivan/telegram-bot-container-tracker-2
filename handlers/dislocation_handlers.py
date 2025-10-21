@@ -8,7 +8,6 @@ import re
 from logger import get_logger
 from db import SessionLocal
 from models import UserRequest, Tracking
-# ✅ Окончательно возвращаем правильный импорт и вызов
 from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
 from services.railway_router import get_remaining_distance_on_route
@@ -49,7 +48,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Логируем запрос пользователя в базу данных
     try:
-        # ✅ Окончательно возвращаем правильный вызов функции
         await add_user_request(telegram_id=user.id, query_text=query_text_log)
     except Exception as log_err:
         logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
@@ -64,24 +62,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(tracking_results) == 1:
         result = tracking_results[0]
         
-        # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
-        source_log_tag = "БД"
-        km_left_display = result.km_left
-        forecast_days_display = result.forecast_days or 0.0
+        # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ (ПРИОРИТЕТ: РАСЧЕТ) ---
         
-        # Проверяем, нужно ли пересчитывать, если в БД нет или расчет важнее
-        if km_left_display is None or km_left_display == 0:
-            remaining_distance = await get_remaining_distance_on_route(
-                start_station=result.from_station,
-                end_station=result.to_station,
-                current_station=result.current_station
-            )
-            
-            if remaining_distance is not None:
-                source_log_tag = "РАСЧЕТ"
-                km_left_display = remaining_distance
-                # Пересчитываем прогноз на основе нового расстояния
-                forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
+        # 1. Всегда пытаемся рассчитать по прейскуранту
+        remaining_distance = await get_remaining_distance_on_route(
+            start_station=result.from_station,
+            end_station=result.to_station,
+            current_station=result.current_station
+        )
+        
+        km_left_display = None
+        forecast_days_display = 0.0
+        
+        if remaining_distance is not None:
+            # 2. Расчет успешен -> используем его
+            source_log_tag = "РАСЧЕТ"
+            km_left_display = remaining_distance
+            # Пересчитываем прогноз на основе нового расстояния
+            forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
+        else:
+            # 3. Расчет не успешен -> используем БД (Fallback)
+            source_log_tag = "БД (Fallback)"
+            km_left_display = result.km_left
+            forecast_days_display = result.forecast_days or 0.0
             
         logger.info(f"[dislocation] Контейнер {result.container_number}: Расстояние ({km_left_display} км) взято из источника: {source_log_tag}")
         # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
@@ -103,24 +106,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_markdown(response_text)
 
     else:
+        # Логика для нескольких результатов (Excel)
         final_report_data = []
         for db_row in tracking_results:
-            source_log_tag = "БД"
-            km_left = db_row.km_left
-            forecast_days = db_row.forecast_days or 0.0
+            
+            # 1. Всегда пытаемся рассчитать по прейскуранту
+            recalculated_distance = await get_remaining_distance_on_route(
+                start_station=db_row.from_station,
+                end_station=db_row.to_station,
+                current_station=db_row.current_station
+            )
+            
+            km_left = None
+            forecast_days = 0.0
+            
+            if recalculated_distance is not None:
+                # 2. Расчет успешен -> используем его
+                source_log_tag = "РАСЧЕТ"
+                km_left = recalculated_distance
+                forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance > 0 else 0.0
+            else:
+                # 3. Расчет не успешен -> используем БД (Fallback)
+                source_log_tag = "БД (Fallback)"
+                km_left = db_row.km_left
+                forecast_days = db_row.forecast_days or 0.0
 
-            # Проверяем, нужно ли пересчитывать
-            if km_left is None or km_left == 0:
-                 recalculated_distance = await get_remaining_distance_on_route(
-                     start_station=db_row.from_station,
-                     end_station=db_row.to_station,
-                     current_station=db_row.current_station
-                 )
-                 
-                 if recalculated_distance is not None:
-                     source_log_tag = "РАСЧЕТ"
-                     km_left = recalculated_distance
-                     forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance > 0 else 0.0
 
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_log_tag}")
              
