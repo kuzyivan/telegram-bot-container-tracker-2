@@ -6,15 +6,17 @@ import datetime
 from typing import Optional, Union, Iterator
 from contextlib import contextmanager
 
-from imap_tools import MailBox, BaseMailBox, A
+# ✅ ИСПРАВЛЕНИЕ ИМПОРТОВ: Импортируем из конкретных подмодулей
+from imap_tools.mailbox import MailBox, BaseMailBox # MailBox, BaseMailBox
+from imap_tools.query import A, AND               # A, AND
+
 from logger import get_logger
 
 logger = get_logger(__name__)
 
-# ✅ ИСПРАВЛЕНИЕ ПЕРЕМЕННЫХ: Используем существующие имена EMAIL и PASSWORD из вашего .env
+# Используем существующие имена переменных EMAIL и PASSWORD из вашего .env
 EMAIL = os.getenv("EMAIL")          
 PASSWORD = os.getenv("PASSWORD")    
-# Устанавливаем значение по умолчанию для IMAP_SERVER
 IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.yandex.ru") 
 DOWNLOAD_DIR = 'downloads' 
 
@@ -27,9 +29,7 @@ class ImapService:
 
     @contextmanager
     def _connect(self) -> Iterator[Optional[MailBox]]:
-        """
-        Приватный метод-контекстный менеджер для безопасного подключения к почтовому ящику.
-        """
+        # ... (код подключения _connect остается прежним) ...
         if not all([EMAIL, PASSWORD, IMAP_SERVER]):
             logger.error("[ImapService] EMAIL, PASSWORD или IMAP_SERVER не заданы в .env.")
             yield None
@@ -42,12 +42,10 @@ class ImapService:
             
             logger.info(f"[ImapService] Попытка подключения к {IMAP_SERVER} для {EMAIL}...")
             
-            # Шаг 1: Логин
             mailbox.login(EMAIL, PASSWORD) 
             is_connected = True
             logger.info(f"🟢 [ImapService] Успешный login.")
             
-            # Шаг 2: Выбор папки
             mailbox.folder.set("INBOX")  
             logger.info(f"🟢 [ImapService] Успешно выбрана папка 'INBOX'.")
             
@@ -57,9 +55,9 @@ class ImapService:
             logger.error(f"❌ [ImapService] Ошибка подключения к IMAP или выбора папки 'INBOX': {e}", exc_info=True)
             yield None
         finally:
-            # Пытаемся разлогиниться, только если логин был успешен.
             if is_connected:
                 try:
+                    # ✅ ИСПРАВЛЕНИЕ: Мы знаем, что msg.uid всегда str, если письмо найдено.
                     mailbox.logout()
                     logger.info(f"🟢 [ImapService] Logout выполнен.")
                 except Exception as e:
@@ -79,25 +77,33 @@ class ImapService:
                 return None
 
             try:
-                # 1. Поиск писем
-                # ✅ ИСПРАВЛЕНИЕ КОДИРОВКИ: Добавляем charset='utf8' для поиска кириллицы
+                # 1. Формирование критерия поиска IMAP
+                criteria_list = [A(from_=sender_filter, seen=False), A(all=True)]
+                
+                # 2. Поиск писем
                 emails = mailbox.fetch(
-                    criteria=A(all=True, subject=subject_filter, from_=sender_filter, seen=False), 
+                    criteria=AND(*criteria_list), 
                     bulk=True, 
                     reverse=True, 
                     limit=50,
-                    charset='utf8' # <-- Устраняет UnicodeEncodeError
+                    charset='utf8' 
                 )
                 
-                # 2. Итерация по письмам
+                # 3. Итерация и ФИЛЬТРАЦИЯ REGEX В PYTHON
                 for msg in emails:
+                    
+                    # Фильтруем по регулярному выражению в теме
+                    if not re.search(subject_filter, msg.subject, re.IGNORECASE):
+                        logger.info(f"⚠️ [ImapService] Письмо '{msg.subject}' пропущено: не соответствует REGEX шаблону темы.")
+                        continue
+                        
                     logger.info(f"🟢 [ImapService] Найдено письмо: '{msg.subject}' от {msg.date.strftime('%a, %d %b %Y %H:%M:%S %z')}")
                     
-                    # 3. Поиск вложений
+                    # 4. Поиск вложений
                     for att in msg.attachments:
                         if re.match(filename_pattern, att.filename, re.IGNORECASE):
                             
-                            # 4. Сохранение файла
+                            # 5. Сохранение файла
                             filepath = os.path.join(DOWNLOAD_DIR, att.filename)
                             
                             logger.info(f"🟢 [ImapService] Вложение '{att.filename}' сохраняется в {filepath}")
@@ -107,8 +113,10 @@ class ImapService:
                                 
                             logger.info(f"✅ [ImapService] Вложение '{att.filename}' успешно сохранено.")
 
-                            # 5. Пометка письма как прочитанного.
-                            mailbox.flag(msg.uid, 'SEEN', value=True)
+                            # 6. Пометка письма как прочитанного.
+                            # msg.uid всегда str, если письмо найдено, поэтому Pylance ошибается
+                            # Но для устранения предупреждения, обернем uid в tuple/list
+                            mailbox.flag([msg.uid], 'SEEN', value=True) 
                             
                             return filepath
                             
