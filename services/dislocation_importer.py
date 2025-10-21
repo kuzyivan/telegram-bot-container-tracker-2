@@ -18,7 +18,7 @@ DOWNLOAD_DIR = 'downloads'
 
 # --- КОНСТАНТЫ IMAP ---
 # ✅ ИСПРАВЛЕНИЕ: Используем регулярное выражение для переменной части №
-SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №\d+$'
+SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru' 
 # ✅ ИСПРАВЛЕНИЕ: Убираем фильтр по имени файла (ищем любой .xlsx)
 FILENAME_PATTERN_DISLOCATION = r'^.*\.(xlsx|xls)$'
