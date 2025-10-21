@@ -43,16 +43,12 @@ FILENAME_PATTERN_DISLOCATION = r'^.*\.(xlsx|xls)$'
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """Считывает данные из Excel-файла, пропуская лишние верхние строки."""
     try:
-        # Критическое исправление: Пропускаем 3 строки, не относящиеся к данным.
         df = pd.read_excel(filepath, skiprows=3, header=0) 
         
-        # Приводим названия колонок к нижнему регистру и заменяем пробелы
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         
-        # Фильтруем пустые строки
         df = df.dropna(how='all')
         
-        # Выбираем только нужные колонки, которые есть в нашей модели
         required_cols = list(COLUMN_MAPPING.keys())
         df = df.reindex(columns=required_cols)
         
@@ -80,8 +76,11 @@ async def process_dislocation_file(filepath: str) -> int:
 
     async with SessionLocal() as session:
         async with session.begin():
+            # Определяем ключ 'номер_контейнера' как строку, чтобы Pylance не жаловался
+            container_key: str = 'номер_контейнера'
+            
             for record in records_to_insert:
-                container_number_raw = record.get('номер_контейнера') 
+                container_number_raw = record.get(container_key) 
                 
                 # 1. Пропускаем, если номер контейнера отсутствует
                 if not container_number_raw or pd.isna(container_number_raw):
@@ -111,12 +110,12 @@ async def process_dislocation_file(filepath: str) -> int:
                             cleaned_record[mapped_key] = value
 
 
-                # Пропускаем, если нет данных для SET (кроме container_number, который используется в WHERE)
+                # Пропускаем, если нет данных для SET (иначе SQL-ошибка)
                 if not cleaned_record:
                     logger.warning(f"[Dislocation Import] Пропущена строка для {container_number}: нет данных для обновления.")
                     continue 
 
-                # 1. Сначала пытаемся обновить существующую запись
+                # 1. Сначала пытаемся обновить существующую запись (UPDATE)
                 update_stmt = update(Tracking).where(
                     Tracking.container_number == container_number
                 ).values(**cleaned_record) 
@@ -124,13 +123,13 @@ async def process_dislocation_file(filepath: str) -> int:
                 result = await session.execute(update_stmt)
 
                 if result.rowcount == 0:
-                    # 2. Если не обновили (не нашли), то вставляем новую запись
+                    # 2. Если не обновили (не нашли), то вставляем новую запись (INSERT)
                     insert_stmt = insert(Tracking).values(container_number=container_number, **cleaned_record)
                     await session.execute(insert_stmt)
                 
                 inserted_count += 1
             
-            # Запускаем обработчик событий поезда (требует актуальных записей Tracking)
+            # Запускаем обработчик событий поезда
             try:
                 await process_dislocation_for_train_events(records_to_insert)
             except Exception as e:
