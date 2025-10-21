@@ -60,7 +60,7 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
             # Получаем все контейнеры с терминала, у которых есть номер поезда
             result = await session.execute(
                 select(TerminalContainer)
-                .options(selectinload(TerminalContainer.user)) # Загружаем пользователя, если нужно
+                # УДАЛЯЕМ selectinload(TerminalContainer.user) - это источник ошибки
                 .filter(TerminalContainer.train != None, TerminalContainer.train != '')
             )
             terminal_containers_map = {tc.container_number: tc for tc in result.scalars().all()}
@@ -113,8 +113,7 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
         logger.info("Новых событий по поездам в данных дислокации не найдено.")
     else:
          logger.info(f"Анализ событий поезда завершен. Залогировано {processed_count} новых событий.")
-
-
+         
 async def get_unsent_train_events() -> list[TrainEventLog]:
     """Получает все незаотправленные события по поездам."""
     async with SessionLocal() as session:
