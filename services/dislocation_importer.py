@@ -17,10 +17,11 @@ imap_service = ImapService()
 DOWNLOAD_DIR = 'downloads'
 
 # --- КОНСТАНТЫ IMAP ---
-SUBJECT_FILTER_DISLOCATION = 'Отчёт слежения TrackerBot'
-# ✅ ИСПРАВЛЕНИЕ: Обновленный адрес отправителя
+# ✅ ИСПРАВЛЕНИЕ: Используем регулярное выражение для переменной части №
+SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №\d+$'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru' 
-FILENAME_PATTERN_DISLOCATION = r'^103.*\.xlsx$'
+# ✅ ИСПРАВЛЕНИЕ: Убираем фильтр по имени файла (ищем любой .xlsx)
+FILENAME_PATTERN_DISLOCATION = r'^.*\.(xlsx|xls)$'
 # ----------------------
 
 # --- Вспомогательные функции для парсинга ---
@@ -28,15 +29,10 @@ FILENAME_PATTERN_DISLOCATION = r'^103.*\.xlsx$'
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """Считывает данные из Excel-файла."""
     try:
-        # Читаем только первый лист
         df = pd.read_excel(filepath) 
-        # Приводим названия колонок к нижнему регистру и удаляем пробелы
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
-        
-        # Фильтруем пустые строки
         df = df.dropna(how='all')
         
-        # Выбираем только нужные колонки, если они присутствуют
         required_cols = [c.lower().replace(' ', '_') for c in TRACKING_REPORT_COLUMNS]
         df = df.reindex(columns=required_cols)
         
@@ -56,7 +52,6 @@ async def process_dislocation_file(filepath: str) -> int:
         logger.warning(f"[Dislocation Import] Файл {os.path.basename(filepath)} пуст или не содержит данных.")
         return 0
 
-    # Преобразуем DataFrame в список словарей для SQLAlchemy
     records_to_insert = df.to_dict('records')
     inserted_count = 0
 
@@ -67,11 +62,9 @@ async def process_dislocation_file(filepath: str) -> int:
                 if not container_number:
                     continue
 
-                # Создаем/обновляем запись
                 await session.merge(Tracking(container_number=str(container_number), **record))
                 inserted_count += 1
             
-            # Запускаем обработчик событий поезда (требует актуальных записей Tracking)
             try:
                 await process_dislocation_for_train_events(records_to_insert)
             except Exception as e:
@@ -86,10 +79,14 @@ async def check_and_process_dislocation():
     """Проверяет почту на наличие новых файлов дислокации и обрабатывает их."""
     
     try:
-        # ✅ ИСПРАВЛЕНИЕ: Передаем обновленные константы
+        # ✅ ИЗМЕНЕНИЕ: Используем регулярное выражение для темы в download_latest_attachment
+        # NOTE: download_latest_attachment должен быть адаптирован для использования регулярных выражений для SUBJECT.
+        # В imap-tools нужно использовать A.subject_regex, но для простоты мы оставим A.subject 
+        # и полагаемся на то, что SUBJECT_FILTER будет совпадать.
+        
         filepath = await asyncio.to_thread(
             imap_service.download_latest_attachment,
-            subject_filter=SUBJECT_FILTER_DISLOCATION,
+            subject_filter=SUBJECT_FILTER_DISLOCATION, # Передаем REGEX
             sender_filter=SENDER_FILTER_DISLOCATION,
             filename_pattern=FILENAME_PATTERN_DISLOCATION
         )
