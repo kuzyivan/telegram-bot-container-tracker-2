@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List, Tuple
-
+from typing import List, Tuple, Dict, Any
 import pandas as pd
 from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from logger import get_logger
-# ✅ ИСПРАВЛЕНИЕ: Используем актуальный путь к модели
 from model.terminal_container import TerminalContainer
 from db import SessionLocal 
 
@@ -19,96 +17,97 @@ logger = get_logger(__name__)
 TRAIN_FOLDER = "/root/AtermTrackBot/download_train"
 os.makedirs(TRAIN_FOLDER, exist_ok=True)
 
+# Индекс колонки Клиента (L-колонка = 11-й индекс, т.к. индексация с 0)
+CLIENT_COLUMN_INDEX = 11 
+
+# --- Вспомогательные функции ---
 
 def extract_train_code_from_filename(filename: str) -> str | None:
-    """
-    Извлекаем код поезда из имени файла вида: 'КП К25-073 Селятино.xlsx' -> 'К25-073'
-    """
+    """Извлекаем код поезда из имени файла."""
     if not filename: return None
     base = os.path.basename(filename)
     name, _ = os.path.splitext(base)
-    # Ищем K или К, 2 цифры, дефис/пробел, 3 цифры
     m = re.search(r"([КK]\s*\d{2}[-–— ]?\s*\d{3})", name, flags=re.IGNORECASE)
-    if not m:
-        return None
-    # Нормализуем формат: К25-073
+    if not m: return None
     code = m.group(1).upper().replace("K", "К").replace(" ", "").replace("–", "-").replace("—", "-")
     return code
 
 
 def normalize_container(value) -> str | None:
-    """
-    Нормализует номер контейнера, обрабатывая float и удаляя лишние символы.
-    """
-    if pd.isna(value) or value is None:
-        return None
-    
+    """Нормализует номер контейнера, обрабатывая float."""
+    if pd.isna(value) or value is None: return None
     s = str(value).strip().upper()
-    
-    # ✅ ИСПРАВЛЕНИЕ: Удаляем '.0' и прочие знаки, если Pandas прочитал как float
-    if s.endswith('.0'):
-        s = s[:-2]
-        
+    if s.endswith('.0'): s = s[:-2]
     return s if s else None
 
 
 def find_container_column(df: pd.DataFrame) -> str | None:
-    """
-    Пытаемся найти колонку с номерами контейнеров в Excel-файле поезда.
-    """
-    # ✅ ИСПРАВЛЕНИЕ: ДОБАВЛЕНЫ ВСЕ НЕОБХОДИМЫЕ КАНДИДАТЫ, включая 'Контейнер' и 'Container No.'
-    candidates = [
-        "контейнер", "container", "container no", "container no.", "номер контейнера", 
-        "№ контейнера", "контейнера", "номенклатура"
-    ]
-    
-    # Приводим заголовки DataFrame к нижнему регистру для поиска
+    """Пытаемся найти колонку с номерами контейнеров."""
+    candidates = ["контейнер", "container", "container no", "container no.", 
+                  "номер контейнера", "№ контейнера", "номенклатура"]
     cols_norm = {str(c).strip().lower(): c for c in df.columns}
     
     for cand in candidates:
-        if cand in cols_norm:
-            return cols_norm[cand]
+        if cand in cols_norm: return cols_norm[cand]
     
-    # Fallback: пробуем по подстроке
     for col in df.columns:
         name = str(col).strip().lower()
-        if name.startswith("contain") or "контейнер" in name: 
-            return col
+        if name.startswith("contain") or "контейнер" in name: return col
             
     return None
 
+def normalize_client_name(value) -> str | None:
+    """Нормализует имя клиента."""
+    if pd.isna(value) or value is None: return None
+    s = str(value).strip()
+    return s if s else None
 
-async def _collect_containers_from_excel(file_path: str) -> List[str]:
+
+async def _collect_containers_from_excel(file_path: str) -> Dict[str, str]:
     """
-    Читает Excel с контейнерами, возвращает список номеров контейнеров.
+    Читает Excel и возвращает словарь {container_number: client_name}.
     """
     xl = pd.ExcelFile(file_path)
-    containers: set[str] = set()
+    container_client_map: Dict[str, str] = {}
+    
+    # ⚠️ ПРЕДПОЛОЖЕНИЕ: Заголовки находятся в первой строке (header=0) после skiprows=0
+    # и CLIENT_COLUMN_INDEX (11) указывает на колонку с клиентом.
 
     for sheet in xl.sheet_names:
         try:
-            # ✅ ИСПРАВЛЕНИЕ: Читаем Excel без пропуска строк (для файлов поезда)
+            # Читаем Excel, предполагая, что первая строка содержит заголовки
             df = pd.read_excel(xl, sheet_name=sheet) 
             df.columns = [str(c).strip() for c in df.columns]
             
-            col = find_container_column(df)
-            if not col:
+            # Находим заголовок для контейнера
+            container_col_header = find_container_column(df)
+            
+            # Находим заголовок для клиента (используем индекс 11 - L)
+            if CLIENT_COLUMN_INDEX >= len(df.columns):
+                logger.warning(f"[train_importer] На листе '{sheet}' нет колонки {CLIENT_COLUMN_INDEX} (Клиент). Пропускаю.")
+                continue
+                
+            client_col_header = df.columns[CLIENT_COLUMN_INDEX]
+
+            if not container_col_header:
                 logger.warning(f"[train_importer] На листе '{sheet}' не найдена колонка контейнеров. Пропускаю.")
                 continue
 
             for _, row in df.iterrows():
-                num = normalize_container(row.get(col))
-                if num:
-                    containers.add(num)
+                cn = normalize_container(row.get(container_col_header))
+                client = normalize_client_name(row.get(client_col_header))
+                
+                if cn and client:
+                    container_client_map[cn] = client
         except Exception as e:
             logger.error(f"[train_importer] Ошибка при чтении листа '{sheet}': {e}", exc_info=True)
 
-    return sorted(containers)
+    return container_client_map
 
 
 async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
     """
-    Проставляет номер поезда в terminal_containers.train для всех контейнеров из файла.
+    Проставляет номер поезда и клиента в terminal_containers.
     """
     train_code = extract_train_code_from_filename(src_file_path)
     if not train_code:
@@ -116,8 +115,8 @@ async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
             f"Не удалось извлечь номер поезда из имени файла: {os.path.basename(src_file_path)}"
         )
 
-    containers = await _collect_containers_from_excel(src_file_path)
-    total_in_file = len(containers)
+    container_client_map = await _collect_containers_from_excel(src_file_path)
+    total_in_file = len(container_client_map)
 
     if total_in_file == 0:
         logger.warning(f"[train_importer] В файле нет распознанных контейнеров: {os.path.basename(src_file_path)}")
@@ -127,14 +126,16 @@ async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
     try:
         async with SessionLocal() as session:
             
-            for cn in containers:
-                # Обновляем поле 'train'
+            for cn, client_name in container_client_map.items():
+                
+                # ✅ ИСПРАВЛЕНИЕ: Обновляем и 'train', и 'client'
                 update_stmt = update(TerminalContainer).where(
                     TerminalContainer.container_number == cn
-                ).values(train=train_code)
+                ).values(
+                    train=train_code,
+                    client=client_name  # <-- ДОБАВЛЕНО ПОЛЕ КЛИЕНТ
+                )
                 
-                # NOTE: Здесь нет проверки, существует ли контейнер, 
-                # но UPDATE с WHERE(container_number == cn) сам вернет rowcount=0, если его нет.
                 result = await session.execute(update_stmt)
                 updated += result.rowcount
 
