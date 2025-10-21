@@ -63,13 +63,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Формирование ответа ---
     if len(tracking_results) == 1:
         result = tracking_results[0]
-        remaining_distance = await get_remaining_distance_on_route(
-            start_station=result.from_station,
-            end_station=result.to_station,
-            current_station=result.current_station
-        )
-        km_left_display = remaining_distance if remaining_distance is not None else result.km_left
-        forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance is not None and remaining_distance > 0 else (result.forecast_days or 0.0)
+        
+        # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
+        source_log_tag = "БД"
+        km_left_display = result.km_left
+        forecast_days_display = result.forecast_days or 0.0
+        
+        # Проверяем, нужно ли пересчитывать, если в БД нет или расчет важнее
+        if km_left_display is None or km_left_display == 0:
+            remaining_distance = await get_remaining_distance_on_route(
+                start_station=result.from_station,
+                end_station=result.to_station,
+                current_station=result.current_station
+            )
+            
+            if remaining_distance is not None:
+                source_log_tag = "РАСЧЕТ"
+                km_left_display = remaining_distance
+                # Пересчитываем прогноз на основе нового расстояния
+                forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
+            
+        logger.info(f"[dislocation] Контейнер {result.container_number}: Расстояние ({km_left_display} км) взято из источника: {source_log_tag}")
+        # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
+
 
         response_text = (
             f"**Контейнер:** {result.container_number}\n"
@@ -89,21 +105,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         final_report_data = []
         for db_row in tracking_results:
-             recalculated_distance = await get_remaining_distance_on_route(
-                 start_station=db_row.from_station,
-                 end_station=db_row.to_station,
-                 current_station=db_row.current_station
-             )
-             km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
-             forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance is not None and recalculated_distance > 0 else (db_row.forecast_days or 0.0)
+            source_log_tag = "БД"
+            km_left = db_row.km_left
+            forecast_days = db_row.forecast_days or 0.0
 
-             excel_row = [
+            # Проверяем, нужно ли пересчитывать
+            if km_left is None or km_left == 0:
+                 recalculated_distance = await get_remaining_distance_on_route(
+                     start_station=db_row.from_station,
+                     end_station=db_row.to_station,
+                     current_station=db_row.current_station
+                 )
+                 
+                 if recalculated_distance is not None:
+                     source_log_tag = "РАСЧЕТ"
+                     km_left = recalculated_distance
+                     forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance > 0 else 0.0
+
+            logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_log_tag}")
+             
+            excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
                  db_row.waybill, km_left, forecast_days,
                  db_row.wagon_number, db_row.operation_road,
              ]
-             final_report_data.append(excel_row)
+            final_report_data.append(excel_row)
 
         file_path = None
         try:
