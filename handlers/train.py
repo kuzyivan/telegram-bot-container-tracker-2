@@ -11,7 +11,9 @@ from telegram.ext import (
 
 from config import ADMIN_CHAT_ID
 from logger import get_logger
-from queries.train_queries import get_train_summary, get_train_latest_status
+# 1. ИЗМЕНЕННЫЕ ИМПОРТЫ
+from queries.train_queries import get_train_client_summary_by_code, get_first_container_in_train
+from queries.containers import get_latest_tracking_data
 import re
 
 logger = get_logger(__name__)
@@ -91,27 +93,39 @@ async def train_ask_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def _respond_train_report(message, train_no: str):
     logger.info("[/train] train_no(normalized)=%s", train_no)
     try:
-        summary_rows = await get_train_summary(train_no)
-        if not summary_rows:
+        # 2. ИЗМЕНЕННАЯ ЛОГИКА (часть 1)
+        # 1. Используем новую функцию для сводки
+        summary_rows_dict = await get_train_client_summary_by_code(train_no)
+        if not summary_rows_dict:
             await message.reply_html(f"Поезд «<b>{train_no}</b>» не найден в базе.")
             logger.info("[/train] no rows for train=%s", train_no)
             return ConversationHandler.END
 
-        latest = await get_train_latest_status(train_no)
+        # 2. Используем новую логику для получения дислокации
+        latest = None
+        example_ctn = await get_first_container_in_train(train_no)
+        if example_ctn:
+            # Находим последнюю запись дислокации для этого контейнера
+            latest_tracking_list = await get_latest_tracking_data(example_ctn)
+            if latest_tracking_list:
+                latest = latest_tracking_list[0] # Берем самую свежую запись
+        
         logger.debug("[/train] latest_status=%s", latest)
 
+        # 3. ИЗМЕНЕННАЯ ЛОГИКА (часть 2)
         lines = [f"🚆 Поезд: <b>{train_no}</b>", "───", "<b>Сводка по клиентам:</b>"]
-        for client, cnt in summary_rows:
+        # 1. Итерируемся по словарю .items()
+        for client, cnt in summary_rows_dict.items():
             lines.append(f"• {client or 'Без клиента'} — <b>{cnt}</b>")
 
         if latest:
-            ctn, operation, station, op_date, wagon, road = latest
-            lines += ["───", "<b>Дислокация поезда (по одному из контейнеров):</b>", f"Контейнер: <code>{ctn}</code>"]
-            if operation: lines.append(f"Операция: {operation}")
-            if station: lines.append(f"Станция: {station}")
-            if op_date: lines.append(f"Дата/время: {op_date}")
-            if wagon: lines.append(f"Номер вагона: {str(wagon).removesuffix('.0')}")
-            if road: lines.append(f"Дорога: {road}")
+            # 2. Обращаемся к атрибутам объекта latest, а не к индексам
+            lines += ["───", "<b>Дислокация поезда (по одному из контейнеров):</b>", f"Контейнер: <code>{latest.container_number}</code>"]
+            if latest.operation: lines.append(f"Операция: {latest.operation}")
+            if latest.current_station: lines.append(f"Станция: {latest.current_station}")
+            if latest.operation_date: lines.append(f"Дата/время: {latest.operation_date}")
+            if latest.wagon_number: lines.append(f"Номер вагона: {str(latest.wagon_number).removesuffix('.0')}")
+            if latest.operation_road: lines.append(f"Дорога: {latest.operation_road}")
 
         await message.reply_html("\n".join(lines), disable_web_page_preview=True)
         logger.info("[/train] reply sent for train=%s", train_no)
