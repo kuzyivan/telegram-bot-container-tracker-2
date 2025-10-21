@@ -96,7 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         km_left_display = None
         forecast_days_display = 0.0
-        source_log_tag = "Н/Д"
+        source_log_tag = "Н/Д" 
         distance_label = "Осталось км (БД):" 
 
         if remaining_distance is not None:
@@ -147,27 +147,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         excel_columns = list(config.TRACKING_REPORT_COLUMNS)
         
-        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Изменяем заголовки, чтобы соответствовать 13 элементам данных.
+        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Синхронизация 13 данных с 13 заголовками.
         try:
+             # Находим индексы для вставки и замены
              km_left_index = excel_columns.index('Расстояние оставшееся')
-             wagon_index = excel_columns.index('Вагон')
+             wagon_index = excel_columns.index('Вагон') # Предполагаем, что колонка называется 'Вагон'
              
-             # 1. Вставляем "Источник данных"
+             # 1. Заменяем "Прогноз прибытия (дни)" на "Источник данных"
+             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)'))
              excel_columns.insert(km_left_index + 1, 'Источник данных')
 
-             # 2. Удаляем старый заголовок "Вагон"
-             excel_columns.pop(wagon_index)
+             # 2. Удаляем старый заголовок "Вагон" и вставляем два: "Вагон" и "Тип вагона"
+             excel_columns.pop(wagon_index) # Удаляем старый заголовок
+             excel_columns.insert(wagon_index, 'Вагон') # Вставляем его обратно
+             excel_columns.insert(wagon_index + 1, 'Тип вагона') # Вставляем новый заголовок
              
-             # 3. Вставляем "Вагон" и "Тип вагона"
-             excel_columns.insert(wagon_index, 'Вагон')
-             excel_columns.insert(wagon_index + 1, 'Тип вагона')
-             
-             # 4. Удаляем "Прогноз прибытия (дни)"
-             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)'))
-             
-             # 5. Добавляем "Прогноз прибытия (дни)" в конец (чтобы сохранить 13 элементов)
-             excel_columns.append('Прогноз прибытия (дни)')
-
+             # 3. Добавляем "Прогноз прибытия (дни)" обратно в конец
+             excel_columns.append('Прогноз прибытия (дни)') 
 
         except ValueError:
              # На случай, если какая-то колонка отсутствует, добавляем в конец
@@ -206,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel. (13 элементов)
+            # Формирование строки для Excel. (Должно быть 14 элементов в строке данных)
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
@@ -221,7 +217,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              file_path = await asyncio.to_thread(
                  create_excel_file,
                  final_report_data,
-                 excel_columns # Используем измененный список колонок (13 элементов)
+                 excel_columns # Используем измененный список колонок (Должно быть 14 элементов)
              )
              filename = get_vladivostok_filename(prefix="Дислокация")
 
