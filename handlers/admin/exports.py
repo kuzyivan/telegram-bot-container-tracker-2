@@ -14,14 +14,14 @@ from queries.admin_queries import (
     get_data_for_test_notification, 
     get_admin_user_for_email
 )
-# ✅ ИСПРАВЛЕНИЕ: Используем существующий модуль для создания Excel-файлов
-from utils.send_tracking import create_excel_file 
+from utils.send_tracking import create_excel_file # Используем импорт для одного листа
 from utils.notify import notify_admin
 
 logger = get_logger(__name__)
 
 async def _send_stats_report(update: Update, context: ContextTypes.DEFAULT_TYPE, rows):
     """Форматирует и отправляет отчет о суточной статистике."""
+    # ... (логика форматирования отчета статистики остается прежней) ...
     if not rows:
         await update.callback_query.edit_message_text("За последние 24 часа нет запросов (кроме запросов администратора).")
         return
@@ -31,20 +31,50 @@ async def _send_stats_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
              "|---|---|---|---|"]
     
     for i, row in enumerate(rows):
-        # row: (user_telegram_id, username, request_count, containers_str)
         user_id, username, count, containers = row
-        # Обрезаем список контейнеров, чтобы поместиться в сообщение
         if len(containers) > 50:
              containers = containers[:47] + "..."
         
         lines.append(f"| {i+1} | {username} | {count} | {containers} |")
         
-    # Разбиваем сообщение на части, так как оно может быть слишком большим
     response = "\n".join(lines)
     if len(response) > 4000:
          response = response[:4000] + "\n..."
          
     await update.callback_query.edit_message_text(response, parse_mode='Markdown')
+
+# --- Функции экспорта ---
+
+async def _send_excel_export(update: Update, context: ContextTypes.DEFAULT_TYPE, rows, headers, filename_prefix: str):
+    """Вспомогательная функция для генерации и отправки Excel."""
+    file_path = None
+    try:
+        await update.callback_query.answer("Начинаю экспорт...")
+        await update.callback_query.edit_message_text(f"⏳ Формирую Excel-файл для {filename_prefix}...")
+
+        # Генерация файла
+        file_path = await asyncio.to_thread(
+            create_excel_file,
+            rows,
+            headers
+        )
+        
+        # ✅ ИСПРАВЛЕНИЕ: Используем context.bot для отправки
+        with open(file_path, 'rb') as f:
+            await context.bot.send_document(
+                chat_id=ADMIN_CHAT_ID,
+                document=f,
+                filename=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                caption=f"✅ Экспорт: {filename_prefix}"
+            )
+        await update.callback_query.edit_message_text(f"✅ Экспорт {filename_prefix} завершен и отправлен.")
+        
+    except Exception as e:
+        logger.error(f"[Export] Ошибка экспорта {filename_prefix}: {e}", exc_info=True)
+        await update.callback_query.edit_message_text(f"❌ Ошибка экспорта {filename_prefix}: {e}")
+    finally:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /stats (статистика за 24 часа)."""
@@ -61,7 +91,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.callback_query:
             await _send_stats_report(update, context, rows)
         else:
-             # Если вызвано как команда, отправляем сообщение
              response = "Нет запросов за последние 24 часа (кроме администратора)."
              if rows:
                  response = "📊 Сводка запросов за 24 часа:\n"
@@ -76,47 +105,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(f"❌ Ошибка: Не удалось получить статистику.")
 
-# --- Функции экспорта ---
-
-async def _send_excel_export(update: Update, context: ContextTypes.DEFAULT_TYPE, rows, headers, filename_prefix: str):
-    """Вспомогательная функция для генерации и отправки Excel."""
-    file_path = None
-    try:
-        # ✅ ИСПРАВЛЕНИЕ: Используем create_excel_file
-        file_path = await asyncio.to_thread(
-            create_excel_file,
-            rows,
-            headers
-        )
-        
-        await update.callback_query.edit_message_text(f"⏳ Экспорт {filename_prefix}...")
-
-        with open(file_path, 'rb') as f:
-            await update.callback_query.bot.send_document(
-                chat_id=ADMIN_CHAT_ID,
-                document=f,
-                filename=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                caption=f"✅ Экспорт: {filename_prefix}"
-            )
-        await update.callback_query.edit_message_text(f"✅ Экспорт {filename_prefix} завершен и отправлен.")
-        
-    except Exception as e:
-        logger.error(f"[Export] Ошибка экспорта {filename_prefix}: {e}", exc_info=True)
-        await update.callback_query.edit_message_text(f"❌ Ошибка экспорта {filename_prefix}: {e}")
-    finally:
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
-
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Коллбэк: Экспорт всех записей статистики (user_requests)."""
     if update.effective_user.id != ADMIN_CHAT_ID or not update.callback_query:
         return
     
-    await update.callback_query.answer("Начинаю экспорт статистики...")
-    
     try:
         rows, headers = await get_all_stats_for_export()
-        if rows:
+        if rows and headers:
+            # ✅ ИСПРАВЛЕНИЕ: Передаем headers
             await _send_excel_export(update, context, rows, headers, "user_requests_all")
         else:
              await update.callback_query.edit_message_text("Нет данных для экспорта статистики.")
@@ -130,11 +127,10 @@ async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID or not update.callback_query:
         return
     
-    await update.callback_query.answer("Начинаю экспорт подписок...")
-    
     try:
         rows, headers = await get_all_tracking_subscriptions()
-        if rows:
+        if rows and headers:
+            # ✅ ИСПРАВЛЕНИЕ: Передаем headers
             await _send_excel_export(update, context, rows, headers, "subscriptions_all")
         else:
              await update.callback_query.edit_message_text("Нет данных для экспорта подписок.")

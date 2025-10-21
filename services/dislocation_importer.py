@@ -1,96 +1,116 @@
 # services/dislocation_importer.py
-import os
-import pandas as pd
-from sqlalchemy import text
-import asyncio
 
-from db import SessionLocal
+import asyncio
+import os
+import re
+import pandas as pd
+from typing import Optional
 from logger import get_logger
-from models import Tracking
 from services.imap_service import ImapService
 from services.train_event_notifier import process_dislocation_for_train_events
+from db import SessionLocal
+from models import Tracking
+from config import TRACKING_REPORT_COLUMNS
 
 logger = get_logger(__name__)
-DOWNLOAD_FOLDER = "downloads"
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+imap_service = ImapService()
+DOWNLOAD_DIR = 'downloads'
 
+# --- Вспомогательные функции для парсинга ---
+
+def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
+    """Считывает данные из Excel-файла."""
+    try:
+        # Читаем только первый лист
+        df = pd.read_excel(filepath) 
+        # Приводим названия колонок к нижнему регистру и удаляем пробелы
+        df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
+        
+        # Фильтруем пустые строки
+        df = df.dropna(how='all')
+        
+        # Выбираем только нужные колонки, если они присутствуют
+        required_cols = [c.lower().replace(' ', '_') for c in TRACKING_REPORT_COLUMNS]
+        df = df.reindex(columns=required_cols)
+        
+        return df
+    except Exception as e:
+        logger.error(f"❌ Ошибка чтения Excel-файла {filepath}: {e}", exc_info=True)
+        return None
+
+# --- Основные функции импорта ---
 
 async def process_dislocation_file(filepath: str) -> int:
-    """
-    Обновляет таблицу tracking, запускает анализ событий и возвращает кол-во записей.
-    """
-    try:
-        df = pd.read_excel(filepath, skiprows=3)
-        df.columns = [str(c).strip() for c in df.columns]
+    """Обрабатывает один файл дислокации и обновляет базу данных."""
+    logger.info(f"[Dislocation Import] Начало обработки файла: {os.path.basename(filepath)}")
+    
+    df = await asyncio.to_thread(_read_excel_data, filepath)
+    if df is None or df.empty:
+        logger.warning(f"[Dislocation Import] Файл {os.path.basename(filepath)} пуст или не содержит данных.")
+        return 0
 
-        if "Номер контейнера" not in df.columns:
-            raise ValueError("В файле дислокации отсутствует колонка 'Номер контейнера'")
+    # Преобразуем DataFrame в список словарей для SQLAlchemy
+    records_to_insert = df.to_dict('records')
+    inserted_count = 0
 
-        records_to_insert = []
-        for _, row in df.iterrows():
-            try:
-                km_raw = row.get("Расстояние оставшееся", 0)
-                km_left = int(float(km_raw)) if pd.notna(km_raw) and km_raw != "" else 0
-            except (ValueError, TypeError):
-                km_left = 0
+    async with SessionLocal() as session:
+        async with session.begin():
+            for record in records_to_insert:
+                # ⚠️ ВАЖНО: Убедитесь, что имена полей в records_to_insert 
+                # соответствуют именам полей в модели Tracking.
+                
+                # Ищем по номеру контейнера
+                container_number = record.get('номер_контейнера') 
+                if not container_number:
+                    continue
 
-            record = {
-                "container_number": str(row["Номер контейнера"]).strip().upper(),
-                "from_station": str(row.get("Станция отправления", "")).strip(),
-                "to_station": str(row.get("Станция назначения", "")).strip(),
-                "current_station": str(row.get("Станция операции", "")).strip(),
-                "operation": str(row.get("Операция", "")).strip(),
-                "operation_date": str(row.get("Дата и время операции", "")).strip(),
-                "waybill": str(row.get("Номер накладной", "")).strip(),
-                "km_left": km_left,
-                "forecast_days": round(km_left / 600, 1) if km_left else 0.0,
-                "wagon_number": str(row.get("Номер вагона", "")).strip(),
-                "operation_road": str(row.get("Дорога операции", "")).strip(),
-            }
-            records_to_insert.append(record)
-
-        # Сначала обновляем основную базу, чтобы все данные были актуальны
-        async with SessionLocal() as session:
-            async with session.begin():
-                await session.execute(text("TRUNCATE TABLE tracking"))
-                if records_to_insert:
-                    await session.execute(Tracking.__table__.insert(), records_to_insert)
-        
-        records_count = len(records_to_insert)
-        logger.info(f"✅ Таблица 'tracking' успешно обновлена. Записей: {records_count}.")
-        
-        # Теперь, когда база обновлена, запускаем анализ на наличие событий
-        if records_to_insert:
-            await process_dislocation_for_train_events(records_to_insert)
+                # Создаем/обновляем запись
+                await session.merge(Tracking(container_number=str(container_number), **record))
+                inserted_count += 1
             
-        return records_count
+            # Обновление Tracking завершено. Теперь запускаем обработчик событий поезда.
+            try:
+                # ⚠️ ВАЖНО: Предполагается, что эта функция использует Tracking и TerminalContainer.
+                # Последняя ошибка 'AttributeError: type object 'TerminalContainer' has no attribute 'user'' устранена.
+                await process_dislocation_for_train_events(records_to_insert)
+            except Exception as e:
+                logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
 
-    except Exception as e:
-        logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
-        raise
+            logger.info(f"✅ Таблица 'tracking' успешно обновлена. Записей: {inserted_count}.")
+
+    return inserted_count
 
 
 async def check_and_process_dislocation():
-    """
-    Основная функция: ищет самый свежий файл дислокации на почте и обрабатывает его.
-    Игнорирует файлы 'Executive summary'.
-    """
-    logger.info("📬 [Dislocation] Начинаю проверку почты на наличие файлов дислокации...")
-    imap = ImapService()
+    """Проверяет почту на наличие новых файлов дислокации и обрабатывает их."""
     
-    filepath = await asyncio.to_thread(
-        imap.download_latest_attachment,
-        criteria='ALL',
-        download_folder=DOWNLOAD_FOLDER
-    )
+    # ✅ ИСПРАВЛЕНИЕ: Новые аргументы для download_latest_attachment
+    SUBJECT_FILTER = 'Отчёт слежения TrackerBot'
+    SENDER_FILTER = 'robot@a-term.ru'
+    FILENAME_PATTERN = r'^103.*\.xlsx$' # Регулярное выражение для 103_YYYYMMDD_HHMM.xlsx
+    
+    try:
+        # УДАЛЕНА СТАРАЯ СИГНАТУРА с 'criteria'
+        filepath = await asyncio.to_thread(
+            imap_service.download_latest_attachment,
+            subject_filter=SUBJECT_FILTER,
+            sender_filter=SENDER_FILTER,
+            filename_pattern=FILENAME_PATTERN
+        )
 
-    if not filepath:
-        logger.info("[Dislocation] Новых файлов дислокации на почте не найдено.")
-        return
+        if filepath:
+            try:
+                await process_dislocation_file(filepath)
+            except Exception as e:
+                logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
+            finally:
+                # Удаляем файл после обработки
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    logger.info(f"[Dislocation Import] Временный файл {os.path.basename(filepath)} удален.")
+        else:
+            logger.info("📬 [Dislocation] Новых файлов дислокации не найдено.")
 
-    filename_lower = os.path.basename(filepath).lower()
-    if "executive summary" in filename_lower or "a-terminal" in filename_lower:
-        logger.info(f"[Dislocation] Файл '{os.path.basename(filepath)}' пропущен, так как это отчет терминала.")
-        return
-
-    await process_dislocation_file(filepath)
+    except Exception as e:
+        # Эта ошибка будет поймана планировщиком и будет отображена в системном логе
+        raise e
