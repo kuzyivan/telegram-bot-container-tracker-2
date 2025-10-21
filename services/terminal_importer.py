@@ -1,63 +1,148 @@
-# services/terminal_importer.py
+# services/train_importer.py
+from __future__ import annotations
+
 import os
-import asyncio
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-from imap_tools.query import AND
+import re
+from typing import List, Tuple
+import pandas as pd
+from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
 
 from logger import get_logger
-from services.imap_service import ImapService
-from services.container_importer import import_loaded_and_dispatch_from_excel
+from model.terminal_container import TerminalContainer
+from db import SessionLocal 
 
 logger = get_logger(__name__)
-TERMINAL_DOWNLOAD_FOLDER = "/root/AtermTrackBot/download_container"
 
-def _get_vladivostok_date_str(days_offset: int = 0) -> str:
-    """Возвращает дату во Владивостоке в формате ДД.ММ.ГГГГ."""
-    tz = ZoneInfo("Asia/Vladivostok")
-    target_date = datetime.now(tz) - timedelta(days=abs(days_offset))
-    return target_date.strftime("%d.%m.%Y")
+TRAIN_FOLDER = "/root/AtermTrackBot/download_train"
+os.makedirs(TRAIN_FOLDER, exist_ok=True)
 
-async def check_and_process_terminal_report() -> dict | None:
+
+def extract_train_code_from_filename(filename: str) -> str | None:
     """
-    Основная логика: ищет и импортирует отчет "Executive summary".
-    Сначала ищет отчет за сегодня, если не находит - за вчера.
-    Возвращает словарь со статистикой импорта или None.
+    Извлекаем код поезда из имени файла вида: 'КП К25-073 Селятино.xlsx' -> 'К25-073'
     """
-    imap = ImapService()
-    filepath = None
+    if not filename: return None
+    base = os.path.basename(filename)
+    name, _ = os.path.splitext(base)
+    # Ищет K или К, 2 цифры, дефис/пробел, 3 цифры
+    m = re.search(r"([КK]\s*\d{2}[-–— ]?\s*\d{3})", name, flags=re.IGNORECASE)
+    if not m:
+        return None
+    # Нормализуем формат: К25-073
+    code = m.group(1).upper().replace("K", "К").replace(" ", "").replace("–", "-").replace("—", "-")
+    return code
 
-    # 1. Попытка найти отчет за сегодня
-    today_str = _get_vladivostok_date_str(0)
-    logger.info(f"📥 [Terminal] Ищу 'Executive summary' за сегодня ({today_str})...")
-    criteria = AND(from_="aterminal@effex.ru", subject=f"Executive summary {today_str}")
-    filepath = await asyncio.to_thread(
-        imap.download_latest_attachment, criteria, TERMINAL_DOWNLOAD_FOLDER
-    )
 
-    # 2. Если за сегодня нет, попытка найти за вчера
-    if not filepath:
-        yesterday_str = _get_vladivostok_date_str(1)
-        logger.info(f"[Terminal] Отчет за сегодня не найден. Ищу за вчера ({yesterday_str})...")
-        criteria = AND(from_="aterminal@effex.ru", subject=f"Executive summary {yesterday_str}")
-        filepath = await asyncio.to_thread(
-            imap.download_latest_attachment, criteria, TERMINAL_DOWNLOAD_FOLDER
+def normalize_container(value) -> str | None:
+    """
+    Нормализует номер контейнера, удаляя лишние символы и .0, 
+    и обрабатывая числа (float) как строки.
+    """
+    if pd.isna(value) or value is None:
+        return None
+    
+    s = str(value).strip().upper()
+    
+    # ✅ ИСПРАВЛЕНИЕ: Удаляем '.0' и прочие знаки, если Pandas прочитал как float
+    if s.endswith('.0'):
+        s = s[:-2]
+        
+    # Фильтруем пустые строки после очистки
+    return s if s else None
+
+
+def find_container_column(df: pd.DataFrame) -> str | None:
+    """
+    Пытаемся найти колонку с номерами контейнеров в Excel-файле поезда.
+    """
+    # ✅ ИСПРАВЛЕНИЕ: ДОБАВЛЕНЫ ВАРИАНТЫ CONTAINER NO.
+    candidates = [
+        "номер контейнера", "контейнер", "container", 
+        "№ контейнера", "контейнера", "container no", "номер_контейнера",
+        "container no.", "container no" 
+    ]
+    cols_norm = {str(c).strip().lower(): c for c in df.columns}
+    
+    for cand in candidates:
+        if cand in cols_norm:
+            return cols_norm[cand]
+    
+    # Fallback: пробуем по подстроке
+    for col in df.columns:
+        name = str(col).strip().lower()
+        if name.startswith("contain") or "контейнер" in name: 
+            return col
+            
+    return None
+
+
+async def _collect_containers_from_excel(file_path: str) -> List[str]:
+    """
+    Читает Excel с контейнерами, возвращает список номеров контейнеров (строки в верхнем регистре).
+    """
+    xl = pd.ExcelFile(file_path)
+    containers: set[str] = set()
+
+    for sheet in xl.sheet_names:
+        try:
+            # ✅ ИСПРАВЛЕНИЕ: Пропускаем 3 строки, если это стандартный отчет
+            df = pd.read_excel(xl, sheet_name=sheet, skiprows=3, header=0) 
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            col = find_container_column(df)
+            if not col:
+                logger.warning(f"[train_importer] На листе '{sheet}' не найдена колонка контейнеров. Пропускаю.")
+                continue
+
+            for _, row in df.iterrows():
+                num = normalize_container(row.get(col))
+                if num:
+                    containers.add(num)
+        except Exception as e:
+            logger.error(f"[train_importer] Ошибка при чтении листа '{sheet}': {e}", exc_info=True)
+
+    return sorted(containers)
+
+
+async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
+    """
+    Проставляет номер поезда в terminal_containers.train для всех контейнеров из файла.
+    Возвращает (обновлено_строк, всего_контейнеров_в_файле, train_code)
+    """
+    train_code = extract_train_code_from_filename(src_file_path)
+    if not train_code:
+        raise ValueError(
+            f"Не удалось извлечь номер поезда из имени файла: {os.path.basename(src_file_path)}"
         )
 
-    if not filepath:
-        logger.info("[Terminal] Актуальный файл 'Executive summary' не найден.")
-        return None
+    containers = await _collect_containers_from_excel(src_file_path)
+    total_in_file = len(containers)
 
-    # 3. Если файл найден, запускаем импорт
+    if total_in_file == 0:
+        logger.warning(f"[train_importer] В файле нет распознанных контейнеров: {os.path.basename(src_file_path)}")
+        return 0, 0, train_code
+
+    updated = 0
     try:
-        added, sheets = await import_loaded_and_dispatch_from_excel(filepath)
-        stats = {
-            "file_name": os.path.basename(filepath),
-            "total_added": added,
-            "sheets_processed": sheets,
-        }
-        logger.info(f"[Terminal] Импорт из '{os.path.basename(filepath)}' завершен. Добавлено: {added}, листов: {sheets}.")
-        return stats
-    except Exception as e:
-        logger.error(f"❌ Ошибка при импорте файла терминала '{filepath}': {e}", exc_info=True)
+        async with SessionLocal() as session:
+            
+            for cn in containers:
+                # 1. Обновляем поле 'train'
+                update_stmt = update(TerminalContainer).where(
+                    TerminalContainer.container_number == cn
+                ).values(train=train_code)
+                
+                result = await session.execute(update_stmt)
+                updated += result.rowcount
+
+            await session.commit()
+
+        logger.info(
+            f"✅ [train_importer] Поезд {train_code}: обновлено {updated} из {total_in_file} контейнеров."
+        )
+        return updated, total_in_file, train_code
+
+    except SQLAlchemyError as e:
+        logger.error(f"[train_importer] Ошибка БД при импорте поезда: {e}", exc_info=True)
         raise
