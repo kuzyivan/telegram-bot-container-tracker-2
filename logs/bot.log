@@ -113,3 +113,7 @@ ImportError: cannot import name 'Calculator' from 'zdtarif_bot.core.calculator' 
 2025-10-21 15:19:05,747 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
 2025-10-21 15:21:04,374 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
 2025-10-21 15:21:04,407 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 15:24:43,431 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 15:24:43,462 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 15:27:34,981 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 15:27:35,012 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
