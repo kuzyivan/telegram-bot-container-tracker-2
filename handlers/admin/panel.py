@@ -4,9 +4,9 @@ from telegram.ext import ContextTypes
 from config import ADMIN_CHAT_ID
 from logger import get_logger
 
-# ✅ ИСПРАВЛЕНИЕ: Удаляем несуществующий импорт 'export_menu'
-from .exports import stats, tracking, exportstats # Оставляем только существующие функции
-from .notifications import force_notify_cmd, test_notify_cmd
+# ✅ ИСПРАВЛЕНИЕ: Удаляем несуществующие импорты 'force_notify_cmd' и 'test_notify_cmd'
+from .exports import stats, tracking, exportstats 
+# from .notifications import force_notify_cmd, test_notify_cmd # <-- УДАЛЯЕМ ЭТУ СТРОКУ
 
 logger = get_logger(__name__)
 
@@ -26,6 +26,8 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("📤 Экспорт запросов", callback_data='admin_exportstats'),
             InlineKeyboardButton("📦 Экспорт подписок", callback_data='admin_tracking')
         ],
+        # ✅ ИСПРАВЛЕНИЕ: Кнопки теперь будут вызывать команду, зарегистрированную в bot.py, 
+        # или использовать колбэки, если они есть.
         [
             InlineKeyboardButton("🔔 Принудительная рассылка", callback_data='admin_force_notify'),
             InlineKeyboardButton("🧪 Тестовое уведомление", callback_data='admin_test_notify')
@@ -39,7 +41,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text, 
             reply_markup=reply_markup, 
             parse_mode='Markdown',
-            reply_to_message_id=update.message.message_id # Отвечаем на сообщение, если оно есть
+            reply_to_message_id=update.message.message_id 
         )
     elif update.callback_query:
          await update.callback_query.message.edit_text(
@@ -62,16 +64,17 @@ async def admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     data = query.data
     
     if data == 'admin_stats':
-        await stats(update, context) # Вызов stats из exports.py
+        await stats(update, context) 
     elif data == 'admin_exportstats':
-        await exportstats(update, context) # Вызов exportstats из exports.py
+        await exportstats(update, context)
     elif data == 'admin_tracking':
-        await tracking(update, context) # Вызов tracking из exports.py
+        await tracking(update, context)
     elif data == 'admin_force_notify':
-        await force_notify_cmd(update, context) # Вызов команды принудительной рассылки
+        # ✅ ИСПРАВЛЕНИЕ: Вместо вызова несуществующей команды, 
+        # уведомляем пользователя, что нужно использовать команду /force_notify
+        await query.message.reply_text("Для принудительной рассылки используйте команду /broadcast или /force_notify")
     elif data == 'admin_test_notify':
-        await test_notify_cmd(update, context) # Вызов команды тестового уведомления
+        # ✅ ИСПРАВЛЕНИЕ: Аналогично, уведомляем о команде /test_notify
+        await query.message.reply_text("Для тестового уведомления используйте команду /test_notify")
     elif data == 'admin_hide':
         await query.message.delete()
-        
-    # Добавьте другие обработчики для новых функций по мере необходимости
