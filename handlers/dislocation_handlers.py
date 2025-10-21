@@ -18,6 +18,32 @@ import config
 
 logger = get_logger(__name__)
 
+# --- НОВАЯ ЛОГИКА: ОПРЕДЕЛЕНИЕ ТИПА ВАГОНА ---
+
+def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
+    """
+    Определяет тип вагона по первой цифре номера, согласно предоставленной логике.
+    6xx... -> Полувагон
+    9xx... или 5xx... -> Платформа
+    """
+    if wagon_number is None:
+        return 'н/д'
+    
+    # 1. Очищаем от '.0' и приводим к строке
+    wagon_str = str(wagon_number).removesuffix('.0').strip()
+    
+    if not wagon_str or not wagon_str[0].isdigit():
+        return 'н/д'
+    
+    first_digit = wagon_str[0]
+    
+    if first_digit == '6':
+        return 'Полувагон'
+    elif first_digit == '9' or first_digit == '5':
+        return 'Платформа'
+    else:
+        return 'Прочий'
+
 # --- Основной обработчик сообщений ---
 
 def normalize_text_input(text: str) -> list[str]:
@@ -96,7 +122,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
         
         # Очистка номера вагона от ".0"
-        wagon_number_cleaned = str(result.wagon_number).removesuffix('.0') if result.wagon_number else 'н/д'
+        wagon_number_raw = result.wagon_number
+        wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else 'н/д'
+        
+        # ✅ ОПРЕДЕЛЕНИЕ ТИПА ВАГОНА
+        wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
         
         # Применение сокращения ЖД
         railway_abbreviation = get_railway_abbreviation(result.operation_road)
@@ -113,7 +143,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
             f"**Операция:** `{result.operation}`\n"
             f"**Дата/Время:** `{result.operation_date}`\n"
-            f"**Вагон:** `{wagon_number_cleaned}`\n"
+            f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n" # ✅ ДОБАВЛЕН ТИП ВАГОНА
             f"**Накладная:** `{result.waybill}`\n"
             f"═════════════════════\n"
             f"🛣️ *Прогноз:*\n"
@@ -128,13 +158,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         excel_columns = list(config.TRACKING_REPORT_COLUMNS)
         
-        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Гарантируем, что заголовки соответствуют 12 элементам данных.
+        # ИСПРАВЛЕНИЕ EXCEL: Гарантируем, что заголовки соответствуют 13 элементам данных.
         try:
              km_left_index = excel_columns.index('Расстояние оставшееся')
              # Вставляем "Источник данных" после "Расстояние оставшееся"
              excel_columns.insert(km_left_index + 1, 'Источник данных')
+             # Вставляем "Тип вагона"
+             wagon_index = excel_columns.index('Вагон')
+             excel_columns.insert(wagon_index + 1, 'Тип вагона')
+
         except ValueError:
-             excel_columns.append('Источник данных') # На случай, если "Расстояние оставшееся" отсутствует
+             excel_columns.append('Источник данных') 
+             excel_columns.append('Тип вагона') 
 
 
         for db_row in tracking_results:
@@ -160,17 +195,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
              
-            wagon_number_cleaned = str(db_row.wagon_number).removesuffix('.0') if db_row.wagon_number else None
+            wagon_number_raw = db_row.wagon_number
+            wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
             
+            # ✅ ОПРЕДЕЛЕНИЕ ТИПА ВАГОНА ДЛЯ EXCEL
+            wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
+
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel. (Должно быть 12 элементов, включая source_tag)
+            # Формирование строки для Excel.
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
-                 db_row.waybill, km_left, source_tag, forecast_days, # <- Вставлен source_tag
-                 wagon_number_cleaned, railway_display_name, 
+                 db_row.waybill, km_left, source_tag, forecast_days, 
+                 wagon_number_cleaned, wagon_type_for_excel, railway_display_name, # ✅ ДОБАВЛЕН ТИП ВАГОНА
              ]
             final_report_data.append(excel_row)
 
@@ -179,7 +218,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              file_path = await asyncio.to_thread(
                  create_excel_file,
                  final_report_data,
-                 excel_columns # Используем измененный список колонок (12 элементов)
+                 excel_columns # Используем измененный список колонок
              )
              filename = get_vladivostok_filename(prefix="Дислокация")
 
