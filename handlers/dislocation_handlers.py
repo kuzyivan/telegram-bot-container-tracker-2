@@ -8,8 +8,8 @@ import re
 from logger import get_logger
 from db import SessionLocal
 from models import UserRequest, Tracking 
-# ✅ Возвращаем правильный импорт add_user_request
-from queries.user_queries import add_user_request, register_user_if_not_exists 
+# ✅ Финальное исправление импорта и вызова
+from queries.user_queries import log_user_request, register_user_if_not_exists 
 from queries.notification_queries import get_tracking_data_for_containers 
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
@@ -49,8 +49,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Логируем запрос пользователя в базу данных
     try:
-        # ✅ Возвращаем правильный вызов функции
-        await add_user_request(telegram_id=user.id, query_text=query_text_log) 
+        # ✅ Финальное исправление вызова функции
+        await log_user_request(telegram_id=user.id, query_text=query_text_log) 
     except Exception as log_err:
         logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
 
