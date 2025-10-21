@@ -1,55 +1,55 @@
 # services/railway_router.py
-from typing import Optional
-from services.osm_service import fetch_station_coords, generate_name_variations
-from services.distance_calculator import haversine_distance, RAILWAY_WINDING_FACTOR
 from logger import get_logger
+from services.osm_service import get_station_coordinates
+from utils.distance_calculator import haversine_distance
+from config import RAILWAY_WINDING_FACTOR
+
+# ✅ Шаг 1: Импортируем новый сервис
+from services.tariff_service import get_tariff_distance
 
 logger = get_logger(__name__)
 
-async def _find_station_coords_with_variations(original_name: str) -> Optional[dict]:
+async def get_remaining_distance_on_route(start_station: str, end_station: str, current_station: str) -> int | None:
     """
-    Ищет координаты станции, перебирая все возможные варианты её названия.
-    """
-    # Генерируем все возможные варианты написания
-    name_variations = generate_name_variations(original_name)
-    logger.info(f"Для '{original_name}' сгенерированы варианты для поиска: {name_variations}")
+    Рассчитывает оставшееся расстояние до станции назначения.
     
-    # Последовательно пробуем найти по каждому варианту
-    for name_variant in name_variations:
-        # Передаем вариант для поиска и оригинал для кеширования
-        coords = await fetch_station_coords(name_variant, original_name)
-        if coords:
-            # Если нашли, сразу возвращаем результат
-            return coords
-            
-    # Если ни один вариант не сработал
-    return None
-
-async def get_remaining_distance_on_route(
-    start_station: str,
-    end_station: str,
-    current_station: str
-) -> Optional[int]:
+    Приоритет 1: Тарифный справочник (точно).
+    Приоритет 2: Расчет по координатам OSM (приблизительно).
     """
-    Расчет расстояния с использованием "умного" перебора вариантов названий станций.
-    """
-    logger.info(f"Начинаю прямой расчет расстояния от '{current_station}' до '{end_station}'.")
-    
-    # Ищем координаты, перебирая все варианты
-    current_coords = await _find_station_coords_with_variations(current_station)
-    end_coords = await _find_station_coords_with_variations(end_station)
-    
-    if not current_coords or not end_coords:
-        logger.error(f"Не удалось получить координаты для одной из станций: '{current_station}' или '{end_station}'.")
+    if not all([start_station, end_station, current_station]):
         return None
+    
+    # Если текущая станция и есть станция назначения - расстояние 0
+    if current_station == end_station:
+        return 0
 
-    # Рассчитываем расстояние
-    direct_distance = haversine_distance(
-        current_coords['lat'], current_coords['lon'],
-        end_coords['lat'], end_coords['lon']
-    )
-    
-    estimated_distance = int(direct_distance * RAILWAY_WINDING_FACTOR)
-    logger.info(f"Расчетное расстояние по прямой с коэффициентом: {estimated_distance} км.")
-    
-    return estimated_distance
+    # ✅ Шаг 2: Сначала пытаемся рассчитать по тарифному справочнику
+    logger.info(f"Начинаю расчет расстояния от '{current_station}' до '{end_station}'...")
+    try:
+        tariff_distance = await get_tariff_distance(current_station, end_station)
+        if tariff_distance is not None:
+            logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {tariff_distance} км.")
+            return tariff_distance
+    except Exception as e:
+        logger.error(f"Ошибка при вызове тарифного сервиса, переключаюсь на OSM: {e}", exc_info=True)
+
+    # ✅ Шаг 3: Если тарифный сервис не помог, используем OSM как запасной вариант
+    logger.warning(f"Не удалось рассчитать по тарифу. Переключаюсь на запасной метод (OSM).")
+    try:
+        current_coords = await get_station_coordinates(current_station)
+        end_coords = await get_station_coordinates(end_station)
+
+        if current_coords and end_coords:
+            distance_km = haversine_distance(
+                lat1=current_coords.lat, lon1=current_coords.lon,
+                lat2=end_coords.lat, lon2=end_coords.lon
+            )
+            final_distance = int(distance_km * RAILWAY_WINDING_FACTOR)
+            logger.info(f"✅ Расчет по OSM: {distance_km:.2f} км * {RAILWAY_WINDING_FACTOR} = {final_distance} км.")
+            return final_distance
+        else:
+            logger.warning(f"Не удалось получить координаты для одной из станций: '{current_station}' или '{end_station}'.")
+            return None
+    except Exception as e:
+        logger.error(f"Ошибка при расчете расстояния через OSM: {e}", exc_info=True)
+        return None
