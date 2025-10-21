@@ -47,11 +47,12 @@ except Exception as e:
 
 
 # --- Main Function for External Use ---
+# ✅ ИСПРАВЛЕНО: Принимаем station_name_1/2, как ожидается в services/tariff_service.py
 def get_distance_sync(station_name_1: str, station_name_2: str) -> int | None:
     """
     Рассчитывает тарифное расстояние, используя загруженные данные и функцию calculate_distance.
     
-    ПРИМЕЧАНИЕ: Принимает ПОЛНЫЕ НАЗВАНИЯ СТАНЦИЙ, так как calculate_distance ожидает их.
+    ПРИМЕЧАНИЕ: Принимает ПОЛНЫЕ НАЗВАНИЯ СТАНЦИЙ, которые включают код (например, 'СЕЛЯТИНО (181102)').
     """
     if initialization_error:
         logger.error(f"❌ Данные не были загружены ({initialization_error}), расчет невозможен.")
@@ -65,11 +66,11 @@ def get_distance_sync(station_name_1: str, station_name_2: str) -> int | None:
         return None
 
     try:
-        # ✅ ИСПРАВЛЕНИЕ: Передаем station_name_1 и station_name_2 как позиционные аргументы,
-        # чтобы они совпали с ожидаемыми station_a_name и station_b_name
+        # ✅ ИСПРАВЛЕНИЕ: Вызываем calculate_distance с позиционными аргументами,
+        # которые соответствуют station_a_name и station_b_name в zdtarif_bot/core/calculator.py
         result = calculate_distance(
-            station_name_1, # Это будет station_a_name
-            station_name_2, # Это будет station_b_name
+            station_name_1, # <--- ПЕРВЫЙ ПОЗИЦИОННЫЙ (соответствует station_a_name в ядре)
+            station_name_2, # <--- ВТОРОЙ ПОЗИЦИОННЫЙ (соответствует station_b_name в ядре)
             stations_df=stations_data, 
             matrices=distance_matrices_data 
         )
