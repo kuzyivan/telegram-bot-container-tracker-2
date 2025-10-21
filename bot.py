@@ -15,7 +15,7 @@ from config import TOKEN, ADMIN_CHAT_ID
 from scheduler import start_scheduler
 
 # --- Пользовательские обработчики ---
-from handlers.menu_handlers import start, reply_keyboard_handler, handle_sticker
+from handlers.menu_handlers import start, reply_keyboard_handler, handle_sticker # ✅ reply_keyboard_handler
 from handlers.email_management_handler import get_email_conversation_handler, get_email_command_handlers
 from handlers.subscription_management_handler import get_subscription_management_handlers
 from handlers.tracking_handlers import tracking_conversation_handler
@@ -30,10 +30,6 @@ from handlers.distance_handlers import distance_conversation_handler
 from handlers.admin.panel import admin_panel, admin_panel_callback
 from handlers.admin.uploads import upload_file_command, handle_admin_document
 from handlers.admin.exports import stats, exportstats, tracking
-
-# ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Мы удалили импорт несуществующих объектов
-# from handlers.admin.notifications import force_notify_conversation_handler, test_notify # <-- Удален из bot.py
-# (предполагая, что регистрация происходит внутри get_notification_handlers или напрямую в bot.py)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Обработка всех необработанных ошибок."""
@@ -93,12 +89,18 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
     
     # 5. Обработчики сообщений
-    application.add_handler(MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), reply_keyboard_handler))
+    # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ REGEX: Упрощаем до ключевых слов для надежности
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
+        reply_keyboard_handler
+    ))
+    
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     application.add_handler(MessageHandler(
         filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
         handle_admin_document
     ))
+    # Общий обработчик текста идет последним
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     application.add_error_handler(error_handler)
@@ -106,10 +108,8 @@ def main():
     async def post_init(app: Application):
         await set_bot_commands(app)
         
-        # ✅ ЗАПУСКАЕМ ПЛАНИРОВЩИК И ПОЛУЧАЕМ ФУНКЦИЮ ПРОВЕРКИ
         dislocation_check_on_start_func = start_scheduler(app.bot)
         
-        # ✅ ВЫПОЛНЯЕМ ПЕРВОНАЧАЛЬНУЮ ПРОВЕРКУ СРАЗУ ПОСЛЕ ЗАПУСКА
         if dislocation_check_on_start_func:
             logger.info("⚡️ Запуск немедленной проверки дислокации после старта...")
             await dislocation_check_on_start_func()

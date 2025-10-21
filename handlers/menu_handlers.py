@@ -1,68 +1,85 @@
 # handlers/menu_handlers.py
-from telegram import Update, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
-
 from logger import get_logger
-# ✅ Исправляем импорт функции регистрации
-from queries.user_queries import register_user_if_not_exists 
-from utils.keyboards import main_menu_keyboard # Импортируем клавиатуру главного меню
+import re
 
 logger = get_logger(__name__)
 
+# --- Вспомогательные функции ---
+
+# Клавиатура главного меню
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("📦 Дислокация"), KeyboardButton("🚆 Мои поезда")],
+        [KeyboardButton("📂 Мои подписки")],
+        [KeyboardButton("⚙️ Настройки")]
+    ],
+    resize_keyboard=True
+)
+
+# --- Обработчики команд ---
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет приветственное сообщение и главное меню."""
-    user = update.effective_user
-    message = update.message
-
-    if not user or not message:
-        logger.warning("Команда /start вызвана без пользователя или сообщения.")
+    """Обрабатывает команду /start, выводя главное меню."""
+    if not update.message:
         return
-
-    # Регистрируем или обновляем пользователя при каждом /start
-    try:
-        # ✅ Исправляем вызов функции регистрации
-        await register_user_if_not_exists(user) 
-    except Exception as e:
-        logger.error(f"Ошибка при регистрации пользователя {user.id}: {e}", exc_info=True)
-        # Не прерываем выполнение, просто логируем ошибку
-
-    await message.reply_text(
-        f"Привет, {user.first_name}! 👋\n"
-        "Я бот для отслеживания контейнеров. Введите номер контейнера для поиска.",
-        reply_markup=main_menu_keyboard # Показываем главное меню
+    
+    # Введите здесь логику регистрации пользователя, если она не в register_user_if_not_exists
+    
+    await update.message.reply_text(
+        "Здравствуйте! Выберите действие в меню:",
+        reply_markup=MAIN_KEYBOARD
     )
 
-async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает нажатия кнопок главного меню (ReplyKeyboardMarkup)."""
-    message = update.message
-    user = update.effective_user
-
-    if not message or not message.text or not user:
-        return
-
-    text = message.text
-
-    if text == "📦 Отслеживание": # Или "Дислокация"
-        await message.reply_text("Введите номер контейнера для поиска дислокации.")
-    elif text == "📄 Мои подписки":
-        # Здесь можно вызвать функцию, которая показывает список подписок
-        # Например, импортировать и вызвать list_subscriptions из subscription_management_handler.py
-        # await list_subscriptions(update, context) # Пример
-        await message.reply_text("Функция 'Мои подписки' пока не реализована через кнопки.")
-    elif text == "⚙️ Настройки":
-         # TODO: Показать меню настроек (например, с кнопками управления Email)
-         await message.reply_text("Раздел настроек (пока не реализован).")
-    elif text == "🔙 Главное меню":
-         await message.reply_text("Вы в главном меню.", reply_markup=main_menu_keyboard)
-    # Добавьте обработку других кнопок, если они есть
-    else:
-        # Если текст не соответствует кнопке, считаем, что это поиск контейнера
-        from .dislocation_handlers import handle_message # Локальный импорт для избежания цикла
-        await handle_message(update, context)
-
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-     """Отвечает на стикеры."""
-     if update.message:
-        await update.message.reply_text("Классный стикер! 👍")
+    """Обрабатывает стикеры."""
+    if update.message:
+        await update.message.reply_text("Спасибо за стикер!")
 
-# Можно добавить обработчики для других кнопок меню, если нужно
+# --- Обработчик кнопок ReplyKeyboard ---
+
+async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатия кнопок ReplyKeyboard."""
+    text = update.message.text.strip()
+    user = update.effective_user
+    
+    logger.info(f"[Menu] Пользователь {user.id} нажал кнопку: {text}")
+
+    # Логика для кнопки "📦 Дислокация"
+    if "Дислокация" in text:
+        await update.message.reply_text("Введите номер контейнера или вагона для поиска:")
+        
+    # Логика для кнопки "📂 Мои подписки"
+    elif "подписки" in text:
+        # Вызываем команду /my_subscriptions (она должна быть зарегистрирована в bot.py)
+        await context.application.update_queue.put(
+             Update(
+                 update_id=update.update_id,
+                 message=update.message.effective_message,
+                 callback_query=None,
+                 my_chat_member=None,
+                 edited_message=None,
+                 channel_post=None,
+                 edited_channel_post=None,
+                 inline_query=None,
+                 chosen_inline_result=None,
+                 shipping_query=None,
+                 pre_checkout_query=None,
+                 poll=None,
+                 poll_answer=None,
+                 chat_member=None,
+                 chat_join_request=None
+             )
+        )
+        await update.message.reply_text("Запущена команда /my_subscriptions...")
+    
+    # Логика для кнопки "🚆 Мои поезда"
+    elif "поезда" in text:
+        await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
+        
+    # Логика для кнопки "⚙️ Настройки"
+    elif "Настройки" in text:
+         await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
+
+    return
