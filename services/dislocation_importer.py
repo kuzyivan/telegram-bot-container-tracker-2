@@ -12,16 +12,32 @@ from db import SessionLocal
 from models import Tracking
 from sqlalchemy import update, insert 
 from config import TRACKING_REPORT_COLUMNS
+from datetime import datetime
 
 logger = get_logger(__name__)
 imap_service = ImapService()
 DOWNLOAD_DIR = 'downloads'
 
+# ✅ КРИТИЧЕСКИЙ СЛОВАРЬ СОПОСТАВЛЕНИЯ
+# Переводит заголовки Excel (после обработки Pandas) в имена полей модели Tracking.
+COLUMN_MAPPING = {
+    'номер_контейнера': 'container_number',
+    'станция_отправления': 'from_station',
+    'станция_назначения': 'to_station',
+    'станция_операции': 'current_station',  # ВАЖНО: Текущая станция
+    'операция': 'operation',
+    'дата_и_время_операции': 'operation_date',
+    'номер_накладной': 'waybill',
+    'расстояние_оставшееся': 'km_left',
+    'номер_вагона': 'wagon_number',
+    'дорога_операции': 'operation_road',
+    # Добавьте другие поля, если они есть
+    # Например: 'прогноз_прибытия_(дней)': 'forecast_days', 
+}
+
 # --- КОНСТАНТЫ IMAP ---
-# Используем REGEX для гибкости темы
 SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru' 
-# Мягкий фильтр для расширения (.xlsx или .xls)
 FILENAME_PATTERN_DISLOCATION = r'^.*\.(xlsx|xls)$'
 # ----------------------
 
@@ -30,17 +46,17 @@ FILENAME_PATTERN_DISLOCATION = r'^.*\.(xlsx|xls)$'
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """Считывает данные из Excel-файла, пропуская лишние верхние строки."""
     try:
-        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Пропускаем 3 строки, не относящиеся к данным.
+        # Критическое исправление: Пропускаем 3 строки, не относящиеся к данным.
         df = pd.read_excel(filepath, skiprows=3, header=0) 
         
-        # Приводим названия колонок к нижнему регистру и удаляем пробелы/заменяем их на подчеркивания
+        # Приводим названия колонок к нижнему регистру и заменяем пробелы
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         
         # Фильтруем пустые строки
         df = df.dropna(how='all')
         
-        # Выбираем только нужные колонки, если они присутствуют
-        required_cols = [c.lower().replace(' ', '_') for c in TRACKING_REPORT_COLUMNS]
+        # Выбираем только нужные колонки, которые есть в нашей модели
+        required_cols = list(COLUMN_MAPPING.keys())
         df = df.reindex(columns=required_cols)
         
         return df
@@ -70,17 +86,24 @@ async def process_dislocation_file(filepath: str) -> int:
             for record in records_to_insert:
                 container_number = record.get('номер_контейнера') 
                 
-                # 1. Пропускаем, если номер контейнера отсутствует или не число
+                # 1. Пропускаем, если номер контейнера отсутствует
                 if not container_number or pd.isna(container_number):
                     continue
 
-                # Очищаем словарь для безопасного использования в kwargs
-                cleaned_record = {
-                    str(k): v for k, v in record.items() if pd.notna(v)
-                }
+                # ✅ ИСПРАВЛЕНИЕ: Переводим русские ключи в английские имена модели
+                cleaned_record = {}
+                for key_ru, value in record.items():
+                    if pd.notna(value) and key_ru in COLUMN_MAPPING:
+                        
+                        # ⚠️ Дополнительное исправление: Удаляем timezone из datetime
+                        if isinstance(value, datetime) and value.tzinfo is not None:
+                             value = value.replace(tzinfo=None)
+                             
+                        cleaned_record[COLUMN_MAPPING[key_ru]] = value
                 
-                # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Пропускаем, если нет данных для SET (иначе SQL-ошибка)
+                # Пропускаем, если нет данных для SET (иначе SQL-ошибка)
                 if not cleaned_record:
+                    logger.warning(f"[Dislocation Import] Пропущена строка для {container_number}: нет данных для обновления.")
                     continue 
 
                 # 1. Сначала пытаемся обновить существующую запись (по container_number)
