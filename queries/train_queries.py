@@ -7,8 +7,8 @@ from sqlalchemy.orm import aliased
 
 from db import SessionLocal
 # ✅ Исправляем импорт TerminalContainer
-from models import Tracking # Импортируем Tracking из models.py
-from model.terminal_container import TerminalContainer # Импортируем TerminalContainer из его файла
+from models import Tracking
+from model.terminal_container import TerminalContainer
 from logger import get_logger
 
 logger = get_logger(__name__)
