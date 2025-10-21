@@ -47,9 +47,11 @@ except Exception as e:
 
 
 # --- Main Function for External Use ---
-def get_distance_sync(station_code_1: str, station_code_2: str) -> int | None:
+def get_distance_sync(station_name_1: str, station_name_2: str) -> int | None:
     """
     Рассчитывает тарифное расстояние, используя загруженные данные и функцию calculate_distance.
+    
+    ПРИМЕЧАНИЕ: Принимает ПОЛНЫЕ НАЗВАНИЯ СТАНЦИЙ, так как calculate_distance ожидает их.
     """
     if initialization_error:
         logger.error(f"❌ Данные не были загружены ({initialization_error}), расчет невозможен.")
@@ -58,41 +60,42 @@ def get_distance_sync(station_code_1: str, station_code_2: str) -> int | None:
          logger.error("❌ Данные станций или матриц не загружены, расчет невозможен.")
          return None
 
-    if not station_code_1 or not station_code_2:
-        logger.warning("Получен пустой код станции. Расчет невозможен.")
+    if not station_name_1 or not station_name_2:
+        logger.warning("Получено пустое имя станции. Расчет невозможен.")
         return None
 
     try:
-        # ✅ Вызываем импортированную функцию calculate_distance, передавая ей данные
-        distance = calculate_distance(
-            station_code_1=str(station_code_1),
-            station_code_2=str(station_code_2),
-            stations_df=stations_data, # Передаем загруженный DataFrame станций
-            distance_matrices=distance_matrices_data # Передаем загруженные матрицы
+        # ✅ ИСПРАВЛЕНИЕ: Передаем station_name_1 и station_name_2 как позиционные аргументы,
+        # чтобы они совпали с ожидаемыми station_a_name и station_b_name
+        result = calculate_distance(
+            station_name_1, # Это будет station_a_name
+            station_name_2, # Это будет station_b_name
+            stations_df=stations_data, 
+            matrices=distance_matrices_data 
         )
 
-        if distance is not None:
-            distance_int = int(distance)
+        if result and result['status'] == 'success':
+            distance_int = result['route']['total_distance']
             if distance_int > 0:
-                logger.debug(f"Расстояние рассчитано: {station_code_1} -> {station_code_2} = {distance_int} км")
+                logger.debug(f"Расстояние рассчитано: {station_name_1} -> {station_name_2} = {distance_int} км")
                 return distance_int
             else:
-                logger.info(f"Функция calculate_distance вернула 0 или <0 для {station_code_1} -> {station_code_2}.")
-                return None
+                logger.info(f"Функция calculate_distance вернула 0 или <0 для {station_name_1} -> {station_name_2}.")
+                return 0
         else:
-            logger.info(f"Расстояние не найдено функцией calculate_distance для {station_code_1} -> {station_code_2}.")
+            logger.info(f"Расстояние не найдено функцией calculate_distance для {station_name_1} -> {station_name_2}. Сообщение: {result.get('message') if result else 'Неизвестно'}")
             return None
 
     except Exception as e:
-        logger.error(f"❌ Неожиданная ошибка при вызове calculate_distance для {station_code_1}-{station_code_2}: {e}", exc_info=True)
+        logger.error(f"❌ Неожиданная ошибка при вызове calculate_distance для {station_name_1}-{station_name_2}: {e}", exc_info=True)
         return None
 
 # --- Example Usage (Optional) ---
 if __name__ == '__main__':
     if not initialization_error:
         logger.info("Запуск тестовых расчетов...")
-        code1 = "181102" # Селятино
-        code2 = "850007" # Инская
+        code1 = "Селятино (181102)" 
+        code2 = "Инская (850007)" 
         dist = get_distance_sync(code1, code2)
         # ... остальной тестовый код ...
     else:
