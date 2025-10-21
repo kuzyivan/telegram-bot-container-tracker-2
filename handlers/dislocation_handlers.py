@@ -96,7 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Очистка номера вагона от ".0"
         wagon_number_cleaned = str(result.wagon_number).removesuffix('.0') if result.wagon_number else 'н/д'
         
-        # ФОРМАТИРОВАНИЕ СООБЩЕНИЯ С ЭМОДЗИ
+        # ФОРМАТИРОВАНИЕ СООБЩЕНИЯ С ЭМОДЗИ (НОВЫЙ ПОРЯДОК)
         response_text = (
             f"📦 **Статус контейнера: {result.container_number}**\n"
             f"═════════════════════\n"
@@ -105,16 +105,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Назн: `{result.to_station}`\n"
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
-            f"Станция: **{result.current_station}**\n"
-            f"Операция: `{result.operation}`\n"
-            f"Дата/Время: `{result.operation_date}`\n"
-            f"Вагон: `{wagon_number_cleaned}`\n"
-            f"Дорога: `{result.operation_road}`\n"
-            f"Накладная: `{result.waybill}`\n"
+            f"**Станция:** {result.current_station} (Дорога: `{result.operation_road}`)\n" # ✅ ИЗМЕНЕНИЕ 1: Объединение станции и дороги
+            f"**Операция:** `{result.operation}`\n"
+            f"**Дата/Время:** `{result.operation_date}`\n"
+            f"**Вагон:** `{wagon_number_cleaned}`\n"
+            f"**Накладная:** `{result.waybill}`\n"
             f"═════════════════════\n"
             f"🛣️ *Прогноз:*\n"
             f"**{distance_label}** **{km_left_display or 'н/д'} км**\n" 
             f"**Прогноз (дни):** `{forecast_days_display:.1f} дн.`"
+            # ✅ УДАЛЕНО: строка "Дорога: `{result.operation_road}`"
         )
         await message.reply_markdown(response_text)
 
