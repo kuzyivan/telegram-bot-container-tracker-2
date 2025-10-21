@@ -10,6 +10,8 @@ from services.imap_service import ImapService
 from services.train_event_notifier import process_dislocation_for_train_events
 from db import SessionLocal
 from models import Tracking
+# ✅ НОВЫЕ ИМПОРТЫ: Для явного UPDATE и INSERT
+from sqlalchemy import update, insert 
 from config import TRACKING_REPORT_COLUMNS
 
 logger = get_logger(__name__)
@@ -49,7 +51,10 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
 # --- Основные функции импорта ---
 
 async def process_dislocation_file(filepath: str) -> int:
-    """Обрабатывает один файл дислокации и обновляет базу данных."""
+    """
+    Обрабатывает один файл дислокации, используя UPDATE/INSERT 
+    для обновления самой свежей записи по container_number.
+    """
     logger.info(f"[Dislocation Import] Начало обработки файла: {os.path.basename(filepath)}")
     
     df = await asyncio.to_thread(_read_excel_data, filepath)
@@ -67,14 +72,25 @@ async def process_dislocation_file(filepath: str) -> int:
                 if not container_number:
                     continue
 
-                # ✅ ИСПРАВЛЕНИЕ PYLANCE: Очищаем словарь для безопасного использования в kwargs
-                # Преобразуем ключи в str и удаляем NaN/None, которые могут быть в данных
+                # Очищаем словарь для безопасного использования в kwargs
                 cleaned_record = {
                     str(k): v for k, v in record.items() if pd.notna(v)
                 }
+                
+                # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ЛОГИКИ ОБНОВЛЕНИЯ: UPDATE/INSERT
+                
+                # 1. Сначала пытаемся обновить существующую запись (используя container_number)
+                update_stmt = update(Tracking).where(
+                    Tracking.container_number == str(container_number)
+                ).values(**cleaned_record)
+                
+                result = await session.execute(update_stmt)
 
-                # Создаем/обновляем запись
-                await session.merge(Tracking(container_number=str(container_number), **cleaned_record))
+                if result.rowcount == 0:
+                    # 2. Если не обновили (не нашли), то вставляем новую запись
+                    insert_stmt = insert(Tracking).values(container_number=str(container_number), **cleaned_record)
+                    await session.execute(insert_stmt)
+                
                 inserted_count += 1
             
             # Запускаем обработчик событий поезда (требует актуальных записей Tracking)
@@ -102,6 +118,7 @@ async def check_and_process_dislocation():
 
         if filepath:
             try:
+                # ✅ ИСПРАВЛЕНИЕ: Вызываем process_dislocation_file (который обновляет базу)
                 await process_dislocation_file(filepath)
             except Exception as e:
                 logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
