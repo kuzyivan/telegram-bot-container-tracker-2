@@ -11,8 +11,8 @@ from db import SessionLocal
 from models import Subscription, UserEmail, SubscriptionEmail
 from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details
 from queries.user_queries import get_user_emails
-# ✅ Исправляем импорт клавиатуры
-from utils.keyboards import build_yes_no_keyboard, create_time_keyboard, create_email_keyboard
+# ✅ Возвращаем правильный импорт клавиатуры
+from utils.keyboards import create_yes_no_keyboard, create_time_keyboard, create_email_keyboard 
 
 logger = get_logger(__name__)
 
@@ -143,8 +143,8 @@ async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     ]
     text = "Проверьте данные:\n\n" + "\n".join(summary) + "\n\nСохранить?"
 
-    # ✅ Исправляем вызов клавиатуры
-    reply_markup = build_yes_no_keyboard("save_sub", "cancel_sub")
+    # ✅ Возвращаем правильный вызов клавиатуры
+    reply_markup = create_yes_no_keyboard("save_sub", "cancel_sub")
 
     if query:
          await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")

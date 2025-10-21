@@ -95,3 +95,5 @@ Traceback (most recent call last):
   File "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/rail_calculator.py", line 20, in <module>
     from zdtarif_bot.core.calculator import Calculator
 ImportError: cannot import name 'Calculator' from 'zdtarif_bot.core.calculator' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py)
+2025-10-21 14:22:49,150 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:22:49,183 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
