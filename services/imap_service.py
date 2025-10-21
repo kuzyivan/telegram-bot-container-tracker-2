@@ -9,13 +9,14 @@ from contextlib import contextmanager
 from imap_tools import MailBox, BaseMailBox, A
 from logger import get_logger
 
-# --- Конфигурация из .env ---
-EMAIL = os.getenv("IMAP_EMAIL")
-PASSWORD = os.getenv("IMAP_PASSWORD")
-IMAP_SERVER = os.getenv("IMAP_SERVER")
-DOWNLOAD_DIR = 'downloads'
 logger = get_logger(__name__)
-# ----------------------------
+
+# ✅ ИСПРАВЛЕНИЕ: Используем существующие имена переменных из вашего .env
+EMAIL = os.getenv("EMAIL")          
+PASSWORD = os.getenv("PASSWORD")    
+# Устанавливаем значение по умолчанию, если в .env нет IMAP_SERVER
+IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.yandex.ru") 
+DOWNLOAD_DIR = 'downloads' 
 
 class ImapService:
     """Сервис для работы с IMAP (почтой) для скачивания вложений."""
@@ -28,9 +29,9 @@ class ImapService:
     def _connect(self) -> Iterator[Optional[MailBox]]:
         """
         Приватный метод-контекстный менеджер для безопасного подключения к почтовому ящику.
-        УСТРАНЕНА ОШИБКА 'is_logged_in'.
         """
         if not all([EMAIL, PASSWORD, IMAP_SERVER]):
+            # ✅ ЛОГИРОВАНИЕ: Критическая ошибка конфигурации
             logger.error("[ImapService] EMAIL, PASSWORD или IMAP_SERVER не заданы в .env.")
             yield None
             return
@@ -54,6 +55,7 @@ class ImapService:
             yield mailbox
             
         except Exception as e:
+            # ✅ ЛОГИРОВАНИЕ: Ошибка подключения/выбора папки
             logger.error(f"❌ [ImapService] Ошибка подключения к IMAP или выбора папки 'INBOX': {e}", exc_info=True)
             yield None
         finally:
@@ -82,7 +84,7 @@ class ImapService:
                 # 1. Поиск писем
                 # Используем критерий A(ALL) для поиска по всем письмам, затем сортируем
                 emails = mailbox.fetch(
-                    criteria=A(all=True, subject=subject_filter, from_=sender_filter), 
+                    criteria=A(all=True, subject=subject_filter, from_=sender_filter, seen=False), 
                     bulk=True, 
                     reverse=True, # Самые новые в начале
                     limit=50 # Ограничиваем количество
@@ -106,12 +108,14 @@ class ImapService:
                                 
                             logger.info(f"✅ [ImapService] Вложение '{att.filename}' успешно сохранено.")
 
-                            # 5. Важно: Пометка письма как прочитанного. Это предотвратит повторную загрузку.
+                            # 5. Важно: Пометка письма как прочитанного.
                             mailbox.flag(msg.uid, 'SEEN', value=True)
                             
                             return filepath
                             
-                logger.info(f"⚠️ [ImapService] Не найдено ни одного подходящего вложения по паттерну '{filename_pattern}'.")
+                    logger.info(f"⚠️ [ImapService] Письмо '{msg.subject}' пропущено: нет подходящих вложений.")
+
+                logger.info(f"❌ [ImapService] Не найдено ни одного подходящего вложения за последние 50 писем.")
                 return None
 
             except Exception as e:
