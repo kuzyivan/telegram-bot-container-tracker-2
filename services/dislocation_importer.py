@@ -16,6 +16,13 @@ logger = get_logger(__name__)
 imap_service = ImapService()
 DOWNLOAD_DIR = 'downloads'
 
+# --- КОНСТАНТЫ IMAP ---
+SUBJECT_FILTER_DISLOCATION = 'Отчёт слежения TrackerBot'
+# ✅ ИСПРАВЛЕНИЕ: Обновленный адрес отправителя
+SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru' 
+FILENAME_PATTERN_DISLOCATION = r'^103.*\.xlsx$'
+# ----------------------
+
 # --- Вспомогательные функции для парсинга ---
 
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
@@ -56,10 +63,6 @@ async def process_dislocation_file(filepath: str) -> int:
     async with SessionLocal() as session:
         async with session.begin():
             for record in records_to_insert:
-                # ⚠️ ВАЖНО: Убедитесь, что имена полей в records_to_insert 
-                # соответствуют именам полей в модели Tracking.
-                
-                # Ищем по номеру контейнера
                 container_number = record.get('номер_контейнера') 
                 if not container_number:
                     continue
@@ -68,10 +71,8 @@ async def process_dislocation_file(filepath: str) -> int:
                 await session.merge(Tracking(container_number=str(container_number), **record))
                 inserted_count += 1
             
-            # Обновление Tracking завершено. Теперь запускаем обработчик событий поезда.
+            # Запускаем обработчик событий поезда (требует актуальных записей Tracking)
             try:
-                # ⚠️ ВАЖНО: Предполагается, что эта функция использует Tracking и TerminalContainer.
-                # Последняя ошибка 'AttributeError: type object 'TerminalContainer' has no attribute 'user'' устранена.
                 await process_dislocation_for_train_events(records_to_insert)
             except Exception as e:
                 logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
@@ -84,18 +85,13 @@ async def process_dislocation_file(filepath: str) -> int:
 async def check_and_process_dislocation():
     """Проверяет почту на наличие новых файлов дислокации и обрабатывает их."""
     
-    # ✅ ИСПРАВЛЕНИЕ: Новые аргументы для download_latest_attachment
-    SUBJECT_FILTER = 'Отчёт слежения TrackerBot'
-    SENDER_FILTER = 'robot@a-term.ru'
-    FILENAME_PATTERN = r'^103.*\.xlsx$' # Регулярное выражение для 103_YYYYMMDD_HHMM.xlsx
-    
     try:
-        # УДАЛЕНА СТАРАЯ СИГНАТУРА с 'criteria'
+        # ✅ ИСПРАВЛЕНИЕ: Передаем обновленные константы
         filepath = await asyncio.to_thread(
             imap_service.download_latest_attachment,
-            subject_filter=SUBJECT_FILTER,
-            sender_filter=SENDER_FILTER,
-            filename_pattern=FILENAME_PATTERN
+            subject_filter=SUBJECT_FILTER_DISLOCATION,
+            sender_filter=SENDER_FILTER_DISLOCATION,
+            filename_pattern=FILENAME_PATTERN_DISLOCATION
         )
 
         if filepath:
@@ -104,7 +100,6 @@ async def check_and_process_dislocation():
             except Exception as e:
                 logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
             finally:
-                # Удаляем файл после обработки
                 if os.path.exists(filepath):
                     os.remove(filepath)
                     logger.info(f"[Dislocation Import] Временный файл {os.path.basename(filepath)} удален.")
@@ -112,5 +107,4 @@ async def check_and_process_dislocation():
             logger.info("📬 [Dislocation] Новых файлов дислокации не найдено.")
 
     except Exception as e:
-        # Эта ошибка будет поймана планировщиком и будет отображена в системном логе
         raise e
