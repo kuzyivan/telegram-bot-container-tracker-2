@@ -1,132 +1,176 @@
 # services/osm_service.py
-import asyncio
 import re
 import httpx
-from logger import get_logger
+import asyncio
+from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
+
 from db import SessionLocal
-from models import RailwayStation
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from models import StationCache
+from logger import get_logger
+from config import OVERPASS_API_URL
 
 logger = get_logger(__name__)
 logger.info("<<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>")
 
-OVERPASS_API_URL = "https://overpass-api.de/api/interpreter"
+# Структура для хранения координат
+class StationCoords:
+    def __init__(self, lat: float, lon: float):
+        self.lat = lat
+        self.lon = lon
 
-def get_canonical_name(station_name: str) -> str:
-    name = re.sub(r'\s*\([^)]*\)', '', station_name).strip()
-    suffixes_to_remove = [
-        "ТОВАРНЫЙ", "ПАССАЖИРСКИЙ", "СОРТИРОВОЧНЫЙ", "СЕВЕРНЫЙ", "ЮЖНЫЙ",
-        "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ", "ПАРК"
-    ]
-    for suffix in suffixes_to_remove:
-        name = re.sub(r'[\s-]+' + re.escape(suffix) + r'\b', '', name, flags=re.IGNORECASE)
+# ❗️--- ПРОВЕРЬТЕ ТОЧНОЕ ИМЯ КЛАССА ЗДЕСЬ ---❗️
+class OsmService: 
+    def __init__(self):
+        self.client = httpx.AsyncClient(timeout=30.0)
 
-    name = re.sub(r'\s+I$', ' 1', name, flags=re.IGNORECASE)
-    name = re.sub(r'\s+II$', ' 2', name, flags=re.IGNORECASE)
-    name = re.sub(r'\s+III$', ' 3', name, flags=re.IGNORECASE)
-    name = re.sub(r'[\s-]+\s*([1-9])$', r'-\1', name)
-    
-    return name.strip().upper()
-
-# --- ИСПРАВЛЕНИЕ: ВОЗВРАЩАЕМ ФУНКЦИЮ НА МЕСТО ---
-def generate_name_variations(station_name: str) -> list[str]:
-    """
-    Генерирует список возможных вариантов написания названия станции для поиска в OSM.
-    """
-    name = re.sub(r'\s*\([^)]*\)', '', station_name).strip()
-    suffixes_to_remove = ["ТОВАРНЫЙ", "ПАССАЖИРСКИЙ", "СОРТИРОВОЧНЫЙ", "СЕВЕРНЫЙ", "ЮЖНЫЙ", "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ", "ЭКСП", "ПАРК"]
-    base_name = name
-    for suffix in suffixes_to_remove:
-        base_name = re.sub(r'[\s-]+' + re.escape(suffix) + r'\b', '', base_name, flags=re.IGNORECASE)
-    base_name = base_name.strip()
-    variations = {base_name}
-    match = re.search(r'(.+?)[\s-]*((?:[IVX]+)|(?:[0-9]+))$', base_name)
-    if match:
-        name_part, num_part = match.group(1).strip(), match.group(2)
-        arabic, roman = "", ""
-        if num_part.isdigit():
-            arabic = num_part
-            roman_map = {'1': 'I', '2': 'II', '3': 'III', '4': 'IV'}
-            roman = roman_map.get(arabic, "")
-        else:
-            roman = num_part
-            roman_map_rev = {'I': '1', 'II': '2', 'III': '3', 'IV': '4'}
-            arabic = roman_map_rev.get(roman, "")
-        variations.add(name_part)
-        if arabic:
-            variations.add(f"{name_part}-{arabic}")
-            variations.add(f"{name_part} {arabic}")
-        if roman:
-            variations.add(f"{name_part}-{roman}")
-            variations.add(f"{name_part} {roman}")
-    return sorted(list(variations), key=len, reverse=True)
-
-async def _make_overpass_request(query: str) -> dict | None:
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    async def _query_overpass(self, query: str) -> dict | None:
+        """Отправляет запрос к Overpass API и возвращает JSON."""
         try:
-            response = await client.post(OVERPASS_API_URL, data={'data': query})
+            response = await self.client.post(OVERPASS_API_URL, data=query)
             response.raise_for_status()
             return response.json()
-        except Exception:
+        except httpx.RequestError as e:
+            logger.error(f"Ошибка сети при запросе к Overpass API: {e}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Ошибка статуса HTTP от Overpass API: {e.response.status_code}")
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка при запросе к Overpass API: {e}", exc_info=True)
+        return None
+
+    def generate_name_variations(self, station_name_with_code: str) -> list[str]:
+        """Генерирует варианты названия станции для поиска в OSM."""
+        
+        # 1. Извлекаем чистое имя и код (если есть)
+        name_part = station_name_with_code
+        code_part = None
+        match_code = re.search(r'\s*\((\d+)\)\s*$', name_part)
+        if match_code:
+            name_part = name_part[:match_code.start()].strip()
+            code_part = match_code.group(1)
+
+        # 2. Базовая очистка от скобок и лишних пробелов
+        name = re.sub(r'\s*\([^)]*\)', '', name_part).strip()
+        name = re.sub(r'\s+', ' ', name) # Убираем двойные пробелы
+
+        variations = {name} # Начинаем с исходного очищенного имени
+
+        # 3. Расширенный список суффиксов (из конфига или заданный здесь)
+        # TODO: Перенести в config.py
+        suffixes_to_remove = [
+            "ТОВАРНЫЙ", "ПАССАЖИРСКИЙ", "СОРТИРОВОЧНЫЙ", "СЕВЕРНЫЙ", "ЮЖНЫЙ",
+            "ЗАПАДНЫЙ", "ВОСТОЧНЫЙ", "ЦЕНТРАЛЬНЫЙ", "ГЛАВНЫЙ", "ЭКСПОРТ", "ПРИСТАНЬ",
+            "ПАРК", "ЭКСП", "ГОРКА", "ПРИЧАЛ",
+            # Добавим числовые варианты, чтобы убирать их как суффиксы
+             "I", "II", "III", "IV", "V", "1", "2", "3", "4", "5"
+        ]
+        
+        base_name = name
+        for suffix in suffixes_to_remove:
+            # Ищем суффикс как отдельное слово или через дефис, регистронезависимо
+            # Добавлено \b чтобы не удалять часть слова (например, "ПОРТ" из "ПОРТОВАЯ")
+            pattern = r'[\s-]+' + re.escape(suffix) + r'\b'
+            new_base_name = re.sub(pattern, '', base_name, flags=re.IGNORECASE).strip()
+            # Убираем возможные оставшиеся дефисы на конце
+            new_base_name = new_base_name.rstrip('- ') 
+            if new_base_name != base_name:
+                variations.add(new_base_name) # Добавляем вариант без суффикса
+                base_name = new_base_name # Обновляем базовое имя для следующих итераций
+
+        # 4. Обработка числовых окончаний (после удаления суффиксов)
+        # Ищет римские (I-V) или арабские (1-5) цифры в конце, отделенные пробелом или дефисом
+        match_num = re.search(r'(.+?)[\s-]+([IVX1-5]+)$', base_name, flags=re.IGNORECASE)
+        if match_num:
+            name_without_num = match_num.group(1).strip()
+            variations.add(name_without_num) # Добавляем вариант без номера
+
+        # 5. Добавляем исходное имя (до очистки суффиксов) если оно отличается
+        variations.add(name)
+
+        # Сортируем от самого длинного к короткому для приоритетного поиска
+        sorted_variations = sorted(list(filter(None, variations)), key=len, reverse=True)
+        
+        # logger.debug(f"Для '{station_name_with_code}' сгенерированы варианты: {sorted_variations}")
+        return sorted_variations
+
+
+    async def get_station_coordinates(self, station_name_with_code: str) -> StationCoords | None:
+        """
+        Ищет координаты станции сначала в кеше, потом в OSM по вариантам названия.
+        Кеширует результат при успехе.
+        """
+        if not station_name_with_code:
             return None
 
-async def get_station_from_cache(canonical_name: str) -> RailwayStation | None:
-    async with SessionLocal() as session:
-        result = await session.execute(select(RailwayStation).where(RailwayStation.name == canonical_name))
-        return result.scalar_one_or_none()
+        async with SessionLocal() as session:
+            # 1. Поиск в кеше по полному имени с кодом
+            result = await session.execute(
+                select(StationCache).filter(StationCache.original_name == station_name_with_code)
+            )
+            cached = result.scalar_one_or_none()
+            if cached and cached.latitude and cached.longitude:
+                logger.info(f"Станция '{station_name_with_code}' найдена в кеше по полному имени.")
+                return StationCoords(lat=cached.latitude, lon=cached.longitude)
 
-async def save_station_to_cache(canonical_name: str, lat: float, lon: float):
-    async with SessionLocal() as session:
-        stmt = pg_insert(RailwayStation).values(name=canonical_name, latitude=lat, longitude=lon).on_conflict_do_nothing(index_elements=['name'])
-        await session.execute(stmt)
-        await session.commit()
+            # 2. Генерируем варианты и ищем в кеше по ним
+            variations = self.generate_name_variations(station_name_with_code)
+            # logger.info(f"Для '{station_name_with_code}' сгенерированы варианты: {variations}") # Для отладки
 
-async def fetch_station_coords(station_name_for_search: str, original_station_name: str) -> dict | None:
-    canonical_name = get_canonical_name(original_station_name)
-    cached_station = await get_station_from_cache(canonical_name)
-    if cached_station:
-        logger.info(f"Станция '{original_station_name}' найдена в кеше по имени '{canonical_name}'.")
-        return {"lat": cached_station.latitude, "lon": cached_station.longitude}
+            for name_variant in variations:
+                 # Поиск в кеше по варианту имени
+                 result_variant = await session.execute(
+                     select(StationCache).filter(StationCache.found_name == name_variant)
+                 )
+                 cached_variant = result_variant.scalar_one_or_none()
+                 if cached_variant and cached_variant.latitude and cached_variant.longitude:
+                     logger.info(f"Станция '{station_name_with_code}' найдена в кеше по варианту '{name_variant}'.")
+                     # Обновим кеш, связав оригинальное имя с найденными координатами
+                     if not cached:
+                         cached = StationCache(original_name=station_name_with_code)
+                         session.add(cached)
+                     cached.found_name = name_variant
+                     cached.latitude = cached_variant.latitude
+                     cached.longitude = cached_variant.longitude
+                     await session.commit()
+                     return StationCoords(lat=cached.latitude, lon=cached.longitude)
 
-    logger.info(f"Станция '{original_station_name}' не найдена в кеше, запрашиваю OSM по варианту '{station_name_for_search}'...")
-    
-    search_criteria = "station|yard|halt|stop|stop_position"
-    query = f'''
-        [out:json];
-        (
-          node["railway"~"{search_criteria}"]["name"~"{station_name_for_search}",i];
-          way["railway"~"{search_criteria}"]["name"~"{station_name_for_search}",i];
-        );
-        out center;
-    '''
-    
-    data = await _make_overpass_request(query)
-    if not data or not data.get('elements'):
+            # 3. Если в кеше нет - ищем в OSM по вариантам
+            for name_variant in variations:
+                logger.info(f"Станция '{station_name_with_code}' не найдена в кеше, запрашиваю OSM по варианту '{name_variant}'...")
+                # Формируем более точный запрос к Overpass
+                query = f"""
+                [out:json][timeout:25];
+                (
+                  node["railway"="station"]["name"~"^{name_variant}$", i];
+                  way["railway"="station"]["name"~"^{name_variant}$", i];
+                  relation["railway"="station"]["name"~"^{name_variant}$", i];
+                );
+                out center;
+                """
+                data = await self._query_overpass(query)
+
+                if data and data.get("elements"):
+                    element = data["elements"][0] # Берем первый найденный элемент
+                    coords = None
+                    if element["type"] == "node":
+                        coords = StationCoords(lat=element["lat"], lon=element["lon"])
+                    elif "center" in element: # Для way/relation
+                        coords = StationCoords(lat=element["center"]["lat"], lon=element["center"]["lon"])
+
+                    if coords:
+                        logger.info(f"✅ Найдено в OSM! Станция '{station_name_with_code}' сохранена в кеш как '{name_variant}'.")
+                        # Сохраняем в кеш
+                        if not cached:
+                            cached = StationCache(original_name=station_name_with_code)
+                            session.add(cached)
+                        cached.found_name = name_variant
+                        cached.latitude = coords.lat
+                        cached.longitude = coords.lon
+                        await session.commit()
+                        return coords
+                else:
+                    logger.warning(f"По варианту '{name_variant}' ничего не найдено в OSM.")
+                    await asyncio.sleep(1) # Небольшая пауза между запросами
+
+        logger.error(f"❌ Не удалось найти координаты для станции '{station_name_with_code}' ни в кеше, ни в OSM.")
         return None
-    
-    elements = data['elements']
-    best_element = elements[0]
-    for el_type in ['station', 'yard', 'halt', 'stop_position', 'stop']:
-        for el in elements:
-            if el.get('tags', {}).get('railway') == el_type:
-                best_element = el
-                break
-        else:
-            continue
-        break
-    
-    lat, lon = 0.0, 0.0
-    if 'center' in best_element:
-        lat, lon = best_element['center']['lat'], best_element['center']['lon']
-    elif 'lat' in best_element:
-        lat, lon = best_element['lat'], best_element['lon']
-    else:
-        return None
-
-    await save_station_to_cache(canonical_name, lat, lon)
-    logger.info(f"Найдено! Станция '{original_station_name}' сохранена в кеш как '{canonical_name}'.")
-    return {"lat": lat, "lon": lon}
-
-async def fetch_route_distance(from_station: str, to_station: str) -> int | None:
-    return None
