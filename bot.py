@@ -1,5 +1,5 @@
 # bot.py
-import logging # <- Добавляем import logging
+import logging
 from logger import get_logger
 logger = get_logger(__name__)
 
@@ -23,18 +23,24 @@ from handlers.dislocation_handlers import handle_message
 from handlers.broadcast import broadcast_conversation_handler
 from handlers.train import setup_handlers as setup_train_handlers
 
-# --- ✅ Новые импорты для админ-панели ---
+# ✅ НОВЫЙ ИМПОРТ для расчета расстояния
+from handlers.distance_handlers import distance_conversation_handler
+
+# --- Импорты для админ-панели ---
 from handlers.admin.panel import admin_panel, admin_panel_callback
 from handlers.admin.uploads import upload_file_command, handle_admin_document
 from handlers.admin.exports import stats, exportstats, tracking
 from handlers.admin.notifications import force_notify_conversation_handler, test_notify
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка всех необработанных ошибок."""
     logger.error("❗️ Ошибка: %s", context.error, exc_info=True)
 
 async def set_bot_commands(application: Application):
+    """Устанавливает команды для бота."""
     user_commands = [
         BotCommand("start", "Главное меню"),
+        BotCommand("distance", "Расчет расстояния Прейскурант 10-01"), # <-- Добавлена новая команда
         BotCommand("my_emails", "Мои Email-адреса"),
         BotCommand("my_subscriptions", "Мои подписки")
     ]
@@ -58,7 +64,7 @@ def main():
         return
 
     # ✅ ИСПРАВЛЕНИЕ: Устанавливаем уровень логирования для HTTPX на WARNING.
-    # Это отключает повторяющиеся сообщения INFO о /getUpdates (Long Polling).
+    # Это отключает повторяющиеся сообщения INFO о /getUpdates.
     logging.getLogger("httpx").setLevel(logging.WARNING) 
     
     application = Application.builder().token(TOKEN).build()
@@ -69,6 +75,7 @@ def main():
     application.add_handler(get_email_conversation_handler())
     application.add_handler(force_notify_conversation_handler)
     setup_train_handlers(application)
+    application.add_handler(distance_conversation_handler()) # ✅ НОВАЯ РЕГИСТРАЦИЯ
     
     # 2. Команды админа
     application.add_handler(CommandHandler("admin", admin_panel))
@@ -80,6 +87,7 @@ def main():
     
     # 3. Команды пользователя
     application.add_handler(CommandHandler("start", start))
+    # Команда /distance регистрируется через distance_conversation_handler()
     application.add_handlers(get_email_command_handlers())
     application.add_handlers(get_subscription_management_handlers())
     
@@ -93,6 +101,7 @@ def main():
         filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
         handle_admin_document
     ))
+    # Обработчик дислокации (должен идти в конце, чтобы не перехватывать другие команды/диалоги)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     application.add_error_handler(error_handler)
