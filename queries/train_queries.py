@@ -1,69 +1,73 @@
 # queries/train_queries.py
-from __future__ import annotations
-from typing import List, Tuple, Optional
-from sqlalchemy import select, func, desc, literal
-# ИСПРАВЛЕНИЕ 1: Импортируем 'Row' из sqlalchemy
-from sqlalchemy.engine import Row
+"""
+Запросы SQLAlchemy для получения информации о поездах и связанных контейнерах.
+"""
+from sqlalchemy import select, func, desc
+from sqlalchemy.orm import aliased
 
 from db import SessionLocal
-from models import TerminalContainer, Tracking
+# ✅ Исправляем импорт TerminalContainer
+from models import Tracking # Импортируем Tracking из models.py
+from model.terminal_container import TerminalContainer # Импортируем TerminalContainer из его файла
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 
-async def get_train_summary(train_no: str) -> List[Tuple[str, int]]:
+async def get_train_client_summary_by_code(train_code: str) -> dict[str, int]:
     """
-    Возвращает список (client_name, cnt) для поезда train_no.
-    Группируем по COALESCE(short_name, client, 'Без клиента').
+    Получает сводку по клиентам для указанного поезда.
+    Возвращает словарь {клиент: количество_контейнеров}.
     """
+    summary = {}
     async with SessionLocal() as session:
-        client_expr = func.coalesce(
-            TerminalContainer.short_name,
-            TerminalContainer.client,
-            literal("Без клиента"),
+        # Выбираем контейнеры на терминале с нужным номером поезда
+        # и группируем по клиенту, считая количество контейнеров
+        result = await session.execute(
+            select(TerminalContainer.client, func.count(TerminalContainer.id).label('count'))
+            .where(TerminalContainer.train == train_code)
+            .group_by(TerminalContainer.client)
+            .order_by(func.count(TerminalContainer.id).desc()) # Сортируем по убыванию количества
         )
+        rows = result.mappings().all() # Получаем результат как список словарей
+        
+        # Преобразуем результат в нужный формат
+        summary = {row['client'] if row['client'] else 'Не указан': row['count'] for row in rows}
+        
+    if summary:
+         logger.info(f"Найдена сводка для поезда {train_code}: {len(summary)} клиентов.")
+    else:
+         logger.warning(f"Сводка для поезда {train_code} не найдена (нет контейнеров с таким поездом в terminal_containers).")
+         
+    return summary
 
-        q = (
-            select(
-                client_expr.label("client_name"),
-                func.count(func.distinct(TerminalContainer.container_number)).label("cnt"),
-            )
-            .where(TerminalContainer.train == train_no)
-            .group_by(client_expr)
-            .order_by(desc("cnt"))
-        )
-        rows = (await session.execute(q)).all()
-        return [(r.client_name, int(r.cnt)) for r in rows]
 
+async def get_first_container_in_train(train_code: str) -> str | None:
+     """
+     Находит номер первого попавшегося контейнера в указанном поезде
+     из таблицы terminal_containers (для получения примера дислокации).
+     """
+     async with SessionLocal() as session:
+         result = await session.execute(
+             select(TerminalContainer.container_number)
+             .where(TerminalContainer.train == train_code)
+             .limit(1)
+         )
+         container = result.scalar_one_or_none()
+         if container:
+             logger.debug(f"Найден пример контейнера {container} для поезда {train_code}")
+         else:
+              logger.debug(f"Не найден пример контейнера для поезда {train_code} в terminal_containers")
+         return container
 
-# ИСПРАВЛЕНИЕ 2: Меняем аннотацию возвращаемого типа с Tuple на Row
-async def get_train_latest_status(train_no: str) -> Optional[Row]:
-    """
-    Возвращает объект Row с данными:
-    (container_number, operation, current_station, operation_date, wagon_number, operation_road)
-    для ПОСЛЕДНЕЙ записи по любому контейнеру из поезда train_no.
-    Если контейнеров нет — None.
-    """
-    async with SessionLocal() as session:
-        q_ctn = (
-            select(TerminalContainer.container_number)
-            .where(TerminalContainer.train == train_no)
-            .limit(1)
-        )
-        ctn = (await session.execute(q_ctn)).scalar()
-        if not ctn:
-            return None
+# --- Старые/Ненужные функции (можно удалить, если не используются) ---
 
-        q_latest = (
-            select(
-                Tracking.container_number,
-                Tracking.operation,
-                Tracking.current_station,
-                Tracking.operation_date,
-                Tracking.wagon_number,
-                Tracking.operation_road,
-            )
-            .where(Tracking.container_number == ctn)
-            .order_by(desc(Tracking.id))
-            .limit(1)
-        )
-        row = (await session.execute(q_latest)).first()
-        return row if row else None
+# async def get_train_summary(train_no: str) -> dict[str, int]:
+#     """ (Устарело?) Получает сводку по клиентам для поезда """
+#     # Реализация похожа на get_train_client_summary_by_code
+#     pass 
+
+# async def get_train_latest_status(train_no: str) -> Optional[tuple[str, str, str]]:
+#     """ (Устарело?) Получает последний статус поезда по одному из его контейнеров """
+#     # Эта логика теперь, вероятно, внутри train.py (_get_full_train_report_text)
+#     pass
