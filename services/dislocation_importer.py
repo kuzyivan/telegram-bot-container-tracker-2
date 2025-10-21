@@ -19,20 +19,17 @@ imap_service = ImapService()
 DOWNLOAD_DIR = 'downloads'
 
 # ✅ КРИТИЧЕСКИЙ СЛОВАРЬ СОПОСТАВЛЕНИЯ
-# Переводит заголовки Excel (после обработки Pandas) в имена полей модели Tracking.
 COLUMN_MAPPING = {
     'номер_контейнера': 'container_number',
     'станция_отправления': 'from_station',
     'станция_назначения': 'to_station',
-    'станция_операции': 'current_station',  # ВАЖНО: Текущая станция
+    'станция_операции': 'current_station',  
     'операция': 'operation',
     'дата_и_время_операции': 'operation_date',
     'номер_накладной': 'waybill',
     'расстояние_оставшееся': 'km_left',
     'номер_вагона': 'wagon_number',
     'дорога_операции': 'operation_road',
-    # Добавьте другие поля, если они есть
-    # Например: 'прогноз_прибытия_(дней)': 'forecast_days', 
 }
 
 # --- КОНСТАНТЫ IMAP ---
@@ -84,38 +81,51 @@ async def process_dislocation_file(filepath: str) -> int:
     async with SessionLocal() as session:
         async with session.begin():
             for record in records_to_insert:
-                container_number = record.get('номер_контейнера') 
+                container_number_raw = record.get('номер_контейнера') 
                 
                 # 1. Пропускаем, если номер контейнера отсутствует
-                if not container_number or pd.isna(container_number):
+                if not container_number_raw or pd.isna(container_number_raw):
                     continue
 
-                # ✅ ИСПРАВЛЕНИЕ: Переводим русские ключи в английские имена модели
+                # ✅ ИСПРАВЛЕНИЕ: Гарантируем, что номер контейнера - строка
+                container_number = str(container_number_raw).removesuffix('.0')
+
+                # Очищаем и преобразуем словарь для обновления
                 cleaned_record = {}
                 for key_ru, value in record.items():
                     if pd.notna(value) and key_ru in COLUMN_MAPPING:
                         
-                        # ⚠️ Дополнительное исправление: Удаляем timezone из datetime
-                        if isinstance(value, datetime) and value.tzinfo is not None:
-                             value = value.replace(tzinfo=None)
-                             
-                        cleaned_record[COLUMN_MAPPING[key_ru]] = value
-                
-                # Пропускаем, если нет данных для SET (иначе SQL-ошибка)
+                        mapped_key = COLUMN_MAPPING[key_ru]
+                        
+                        # ⚠️ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ТИПА ДАННЫХ: Преобразование в str
+                        if mapped_key in ['wagon_number', 'waybill']:
+                            # Преобразуем число/float в строку и убираем .0
+                            cleaned_record[mapped_key] = str(value).removesuffix('.0')
+                        
+                        elif isinstance(value, datetime) and value.tzinfo is not None:
+                            # Удаляем timezone из datetime
+                            cleaned_record[mapped_key] = value.replace(tzinfo=None)
+                            
+                        else:
+                            # Оставляем остальные поля как есть
+                            cleaned_record[mapped_key] = value
+
+
+                # Пропускаем, если нет данных для SET (кроме container_number, который используется в WHERE)
                 if not cleaned_record:
                     logger.warning(f"[Dislocation Import] Пропущена строка для {container_number}: нет данных для обновления.")
                     continue 
 
-                # 1. Сначала пытаемся обновить существующую запись (по container_number)
+                # 1. Сначала пытаемся обновить существующую запись
                 update_stmt = update(Tracking).where(
-                    Tracking.container_number == str(container_number)
+                    Tracking.container_number == container_number
                 ).values(**cleaned_record) 
                 
                 result = await session.execute(update_stmt)
 
                 if result.rowcount == 0:
                     # 2. Если не обновили (не нашли), то вставляем новую запись
-                    insert_stmt = insert(Tracking).values(container_number=str(container_number), **cleaned_record)
+                    insert_stmt = insert(Tracking).values(container_number=container_number, **cleaned_record)
                     await session.execute(insert_stmt)
                 
                 inserted_count += 1
