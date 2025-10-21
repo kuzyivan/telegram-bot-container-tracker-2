@@ -68,13 +68,21 @@ def find_station_info(station_name: str, stations_df: pd.DataFrame):
     
     ПРИМЕЧАНИЕ: station_name может содержать 'НАЗВАНИЕ (КОД)', поэтому мы его очищаем.
     """
-    # 1. Очищаем имя от кода в скобках, если он есть
+    # 1. Очищаем имя от кода в скобках
+    # Это ключевой шаг: удаляем все, что находится после открывающей скобки (включая саму скобку и код)
     cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', station_name).strip()
+    
+    # Если очистка привела к пустой строке (что маловероятно), возвращаем исходное имя
+    if not cleaned_name:
+         cleaned_name = station_name.strip()
 
-    # 2. Ищем по очищенному имени, игнорируя регистр и пробелы
+    # 2. Ищем по очищенному имени, игнорируя регистр
+    # Используем str.strip() для очистки пробелов в DataFrame, чтобы совпадение было точным
     station_data = stations_df[stations_df['station_name'].str.strip().str.lower() == cleaned_name.lower()]
     
     if station_data.empty:
+        # Если не нашли по точной очистке, возвращаем None (здесь можно добавить fallback на нормализованное имя,
+        # но для тарифного расчета лучше требовать точного совпадения в 2-РП.csv)
         return None
         
     station_series = station_data.iloc[0]
