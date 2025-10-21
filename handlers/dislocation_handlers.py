@@ -1,229 +1,132 @@
 # handlers/dislocation_handlers.py
+import asyncio
+import os 
 from telegram import Update
 from telegram.ext import ContextTypes
-from telegram.constants import ParseMode
 import re
-from typing import List
 
 from logger import get_logger
 from db import SessionLocal
-from models import Stats, Tracking
-from queries.containers import get_latest_train_by_container, get_latest_tracking_data, get_tracking_data_by_wagons
+from models import UserRequest, Tracking 
+# ✅ Возвращаем правильный импорт add_user_request
+from queries.user_queries import add_user_request, register_user_if_not_exists 
+from queries.notification_queries import get_tracking_data_for_containers 
 from services.railway_router import get_remaining_distance_on_route
+from utils.send_tracking import create_excel_file, get_vladivostok_filename
+import config 
 
 logger = get_logger(__name__)
 
-def _fmt_num(x):
-    try:
-        f = float(x)
-        if f.is_integer(): return str(int(f))
-        return str(f)
-    except (ValueError, TypeError): return str(x)
+# --- Основной обработчик сообщений ---
 
-def detect_wagon_type(wagon_number: str) -> str:
-    try:
-        num = int(str(wagon_number)[:2])
-    except (ValueError, TypeError): return "платформа"
-    if 60 <= num <= 69: return "полувагон"
-    return "платформа"
-
-def _are_all_tokens_wagons(tokens: List[str]) -> bool:
-    """Проверяет, являются ли все токены 8-значными числами."""
-    if not tokens:
-        return False
-    return all(t.isdigit() and len(t) == 8 for t in tokens)
-
-COLUMNS = [
-    'Номер контейнера', 'Поезд', 'Станция отправления', 'Станция назначения',
-    'Станция операции', 'Операция', 'Дата и время операции', 'Номер накладной',
-    'Расстояние оставшееся', 'Прогноз прибытия (дней)', 'Номер вагона', 'Дорога операции'
-]
+def normalize_text_input(text: str) -> list[str]:
+    """Извлекает и нормализует номера контейнеров или другие запросы из текста."""
+    text = text.upper().strip()
+    items = re.split(r'[,\s;\n]+', text)
+    normalized_items = sorted(list(set(filter(None, items))))
+    return normalized_items
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text or not update.message.from_user:
+    """
+    Обрабатывает текстовые сообщения: ищет контейнеры, логирует запрос, отправляет результат.
+    """
+    message = update.message
+    user = update.effective_user
+
+    if not message or not message.text or not user:
+        logger.warning("Получено сообщение без текста или пользователя.")
         return
 
-    user_id = update.message.from_user.id
-    user_name = update.message.from_user.username or "—"
-    text = update.message.text.strip()
-    
-    logger.info(f"[dislocation] пользователь {user_id} ({user_name}) отправил текст для поиска: {text}")
-    
-    input_tokens = [c.strip().upper() for c in re.split(r'[\s,\n.]+', text) if c]
-    
-    if not input_tokens:
-        await update.message.reply_text("Пожалуйста, введите корректный номер контейнера или вагона.")
+    await register_user_if_not_exists(user)
+
+    search_terms = normalize_text_input(message.text)
+    if not search_terms:
+        await message.reply_text("Пожалуйста, введите номер контейнера или другой запрос.")
         return
 
-    if _are_all_tokens_wagons(input_tokens):
-        wagon_numbers = input_tokens
-        logger.info(f"Распознан поиск по номеру вагона(ов): {', '.join(wagon_numbers)}")
-        
-        tracking_results = await get_tracking_data_by_wagons(wagon_numbers)
-        
-        if not tracking_results:
-            await update.message.reply_text(f"Не найдено активных контейнеров на вагонах: `{', '.join(wagon_numbers)}`.", parse_mode=ParseMode.MARKDOWN)
-            return
-            
-        if len(wagon_numbers) > 1:
-            rows_for_excel = []
-            for tracking_obj in tracking_results:
-                train = await get_latest_train_by_container(tracking_obj.container_number) or ""
-                remaining_distance = await get_remaining_distance_on_route(
-                    start_station=tracking_obj.from_station,
-                    end_station=tracking_obj.to_station,
-                    current_station=tracking_obj.current_station
-                )
-                km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
-                forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
-                
-                rows_for_excel.append([
-                    tracking_obj.container_number, train,
-                    tracking_obj.from_station, tracking_obj.to_station,
-                    tracking_obj.current_station, tracking_obj.operation, tracking_obj.operation_date,
-                    tracking_obj.waybill, km_left, forecast_days,
-                    _fmt_num(tracking_obj.wagon_number), tracking_obj.operation_road,
-                ])
-            
-            from utils.send_tracking import create_excel_file, get_vladivostok_filename
-            
-            filename_prefix = f"Вагоны_{'-'.join(wagon_numbers[:3])}"
-            caption = f"На вагонах `{', '.join(wagon_numbers)}` найдено контейнеров: {len(rows_for_excel)} шт."
+    query_text_log = ", ".join(search_terms) 
+    logger.info(f"[dislocation] пользователь {user.id} ({user.username}) отправил текст для поиска: {query_text_log}")
 
-            file_path = create_excel_file(rows_for_excel, COLUMNS)
-            filename = get_vladivostok_filename(filename_prefix)
+    # Логируем запрос пользователя в базу данных
+    try:
+        # ✅ Возвращаем правильный вызов функции
+        await add_user_request(telegram_id=user.id, query_text=query_text_log) 
+    except Exception as log_err:
+        logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
 
-            with open(file_path, "rb") as f:
-                await update.message.reply_document(document=f, filename=filename, caption=caption, parse_mode=ParseMode.MARKDOWN)
-            return
-        else:
-            wagon_number = wagon_numbers[0]
-            first_container = tracking_results[0]
-            train = await get_latest_train_by_container(first_container.container_number) or "неизвестен"
+    tracking_results = await get_tracking_data_for_containers(search_terms)
 
-            header_lines = [
-                f"🚆 *Вагон*: `{wagon_number}` ({detect_wagon_type(wagon_number)})",
-                f"📍 *Текущая станция*: `{first_container.current_station}` 🛤️ ({first_container.operation_road})",
-                f"📅 *Последняя операция*: {first_container.operation_date} — _{first_container.operation}_",
-            ]
-            if train != "неизвестен":
-                header_lines.append(f"🚂 *Поезд*: `{train}`")
-            
-            message = "\n".join(header_lines)
-            message += f"\n\nНа вагоне найдено контейнеров: *{len(tracking_results)}* шт."
-            message += "\n" + ("-"*20)
+    if not tracking_results:
+        await message.reply_text(f"Ничего не найдено по номерам: {query_text_log}")
+        return
 
-            for tracking_obj in tracking_results:
-                remaining_distance = await get_remaining_distance_on_route(
-                    start_station=tracking_obj.from_station,
-                    end_station=tracking_obj.to_station,
-                    current_station=tracking_obj.current_station
-                )
-                km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
-                forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
-                
-                container_part = (
-                    f"\n\n📦 *Контейнер*: `{tracking_obj.container_number}`\n"
-                    f"🛤 *Маршрут*: `{tracking_obj.from_station}` → `{tracking_obj.to_station}`\n"
-                    f"📏 *Осталось ехать*: {_fmt_num(km_left)} км (~{_fmt_num(forecast_days)} суток)"
-                )
-                message += container_part
-            
-            await update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN)
-            return
+    # --- Формирование ответа ---
+    if len(tracking_results) == 1:
+        result = tracking_results[0]
+        remaining_distance = await get_remaining_distance_on_route(
+            start_station=result.from_station,
+            end_station=result.to_station,
+            current_station=result.current_station
+        )
+        km_left_display = remaining_distance if remaining_distance is not None else result.km_left
+        forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance is not None and remaining_distance > 0 else (result.forecast_days or 0.0)
+
+        response_text = (
+            f"**Контейнер:** {result.container_number}\n"
+            f"**Отпр:** {result.from_station}\n"
+            f"**Назн:** {result.to_station}\n"
+            f"**Текущая:** {result.current_station}\n"
+            f"**Операция:** {result.operation}\n"
+            f"**Дата/Время:** {result.operation_date}\n"
+            f"**Осталось км:** {km_left_display or 'н/д'}\n" 
+            f"**Прогноз (дни):** {forecast_days_display:.1f}\n"
+            f"**Накладная:** {result.waybill}\n"
+            f"**Вагон:** {result.wagon_number}\n"
+            f"**Дорога:** {result.operation_road}"
+        )
+        await message.reply_markdown(response_text)
 
     else:
-        container_numbers = input_tokens
-        found_rows = []
-        not_found = []
+        final_report_data = []
+        for db_row in tracking_results:
+             recalculated_distance = await get_remaining_distance_on_route(
+                 start_station=db_row.from_station,
+                 end_station=db_row.to_station,
+                 current_station=db_row.current_station
+             )
+             km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
+             forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance is not None and recalculated_distance > 0 else (db_row.forecast_days or 0.0)
 
-        async with SessionLocal() as session:
-            for container_number in container_numbers:
-                rows = await get_latest_tracking_data(container_number)
-                stats_record = Stats(container_number=container_number, user_id=user_id, username=user_name)
-                session.add(stats_record)
-                await session.commit()
-                if not rows:
-                    not_found.append(container_number)
-                    continue
-                found_rows.append(rows[0])
-
-        if len(container_numbers) > 1 and found_rows:
-            try:
-                rows_for_excel = []
-                # <<< НАЧАЛО ИСПРАВЛЕНИЙ ВО ВТОРОМ БЛОКЕ >>>
-                for tracking_obj in found_rows:
-                    # Используем доступ к атрибутам через точку
-                    train = await get_latest_train_by_container(tracking_obj.container_number) or ""
-                    remaining_distance = await get_remaining_distance_on_route(
-                        start_station=tracking_obj.from_station,
-                        end_station=tracking_obj.to_station,
-                        current_station=tracking_obj.current_station
-                    )
-                    km_left = remaining_distance if remaining_distance is not None else tracking_obj.km_left
-                    # Приводим km_left к float для безопасности
-                    forecast_days = round(float(km_left or 0) / 600 + 1, 1) if km_left and float(km_left or 0) > 0 else 0.0
-                    rows_for_excel.append([
-                        tracking_obj.container_number, train,
-                        tracking_obj.from_station, tracking_obj.to_station,
-                        tracking_obj.current_station, tracking_obj.operation, tracking_obj.operation_date,
-                        tracking_obj.waybill, km_left, forecast_days,
-                        _fmt_num(tracking_obj.wagon_number), tracking_obj.operation_road,
-                    ])
-                # <<< КОНЕЦ ИСПРАВЛЕНИЙ >>>
-
-                from utils.send_tracking import create_excel_file, get_vladivostok_filename
-                file_path = create_excel_file(rows_for_excel, COLUMNS)
-                filename = get_vladivostok_filename()
-                with open(file_path, "rb") as f:
-                    await update.message.reply_document(document=f, filename=filename)
-            except Exception as e:
-                logger.error(f"Ошибка отправки Excel пользователю {user_id}: {e}", exc_info=True)
-
-            if not_found:
-                await update.message.reply_text("❌ Не найдены: " + ", ".join(not_found))
-            return
-
-        if found_rows:
-            tracking_obj = found_rows[0]
-            train = await get_latest_train_by_container(tracking_obj.container_number)
-            wagon_number_str = str(tracking_obj.wagon_number) if tracking_obj.wagon_number else "—"
-            wagon_type = detect_wagon_type(wagon_number_str)
-            
-            km_left_val = tracking_obj.km_left
-            distance_str = f"📏 *Осталось ехать (по данным ЭТРАН)*: *{_fmt_num(km_left_val)}* км\n"
-
-            remaining_distance = await get_remaining_distance_on_route(
-                start_station=tracking_obj.from_station,
-                end_station=tracking_obj.to_station,
-                current_station=tracking_obj.current_station
-            )
-            
-            if remaining_distance is not None:
-                distance_str = f"🚆 *Осталось ехать (расчет по OSM)*: *{_fmt_num(remaining_distance)}* км\n"
-                km_left_val = remaining_distance
-
-            try:
-                km_float = float(km_left_val) if km_left_val is not None else 0.0
-                forecast_days_calc = round(km_float / 600 + 1, 1) if km_float > 0 else 0
-            except (ValueError, TypeError):
-                forecast_days_calc = "—"
-
-            operation_station = f"`{tracking_obj.current_station}` 🛤️ ({tracking_obj.operation_road})" if tracking_obj.operation_road else f"`{tracking_obj.current_station}`"
-            header = f"📦 *Контейнер*: `{tracking_obj.container_number}`\n"
-            if train:
-                header += f"🚂 *Поезд*: `{train}`\n"
-            msg = (
-                f"{header}\n"
-                f"🛤 *Маршрут*:\n`{tracking_obj.from_station}` 🚂 → `{tracking_obj.to_station}`\n\n"
-                f"📍 *Текущая станция*: {operation_station}\n"
-                f"📅 *Последняя операция*:\n{tracking_obj.operation_date} — _{tracking_obj.operation}_\n\n"
-                f"🚆 *Вагон*: `{_fmt_num(wagon_number_str)}` ({wagon_type})\n"
-                f"{distance_str}\n"
-                f"⏳ *Оценка времени в пути*:\n~*{_fmt_num(forecast_days_calc)}* суток"
-            )
-            await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
-            return
-
-        if not_found:
-            await update.message.reply_text(f"Ничего не найдено по номерам: {', '.join(not_found)}")
+             excel_row = [
+                 db_row.container_number, db_row.from_station, db_row.to_station,
+                 db_row.current_station, db_row.operation, db_row.operation_date,
+                 db_row.waybill, km_left, forecast_days,
+                 db_row.wagon_number, db_row.operation_road,
+             ]
+             final_report_data.append(excel_row)
+        
+        file_path = None 
+        try:
+             file_path = await asyncio.to_thread(
+                 create_excel_file, 
+                 final_report_data, 
+                 config.TRACKING_REPORT_COLUMNS 
+             ) 
+             filename = get_vladivostok_filename(prefix="Дислокация")
+        
+             with open(file_path, "rb") as f:
+                 await message.reply_document(
+                     document=f, 
+                     filename=filename,
+                     caption=f"Найдены данные по {len(final_report_data)} контейнерам."
+                 )
+             logger.info(f"Отправлен Excel отчет по запросу пользователя {user.id}")
+        except Exception as send_err:
+             logger.error(f"Ошибка отправки Excel отчета пользователю {user.id}: {send_err}", exc_info=True)
+             await message.reply_text("Не удалось отправить Excel файл.")
+        finally:
+             if file_path and os.path.exists(file_path):
+                 try:
+                     os.remove(file_path)
+                 except OSError as e:
+                      logger.error(f"Не удалось удалить временный файл {file_path}: {e}")

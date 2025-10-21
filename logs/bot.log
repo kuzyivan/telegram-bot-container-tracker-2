@@ -97,3 +97,17 @@ Traceback (most recent call last):
 ImportError: cannot import name 'Calculator' from 'zdtarif_bot.core.calculator' (/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/zdtarif_bot/core/calculator.py)
 2025-10-21 14:22:49,150 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
 2025-10-21 14:22:49,183 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 14:40:44,247 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:40:44,279 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 14:50:09,781 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:50:09,813 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 14:53:06,270 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 14:53:06,308 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 15:06:34,647 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 15:06:34,683 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 15:10:39,608 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 15:10:39,643 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 15:12:39,618 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 15:12:39,655 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
+2025-10-21 15:19:05,715 INFO [osm_service:14] <<<<< ЗАГРУЖЕНА НОВАЯ ВЕРСИЯ OSM SERVICE v15.0 (финальная, исправленная) >>>>>
+2025-10-21 15:19:05,747 INFO [tariff_service:27] ✅ [Tariff] Сервис 'zdtarif_bot' (get_distance_sync) успешно импортирован.
