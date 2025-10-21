@@ -10,7 +10,6 @@ from services.imap_service import ImapService
 from services.train_event_notifier import process_dislocation_for_train_events
 from db import SessionLocal
 from models import Tracking
-# ✅ НОВЫЕ ИМПОРТЫ: Для явного UPDATE и INSERT
 from sqlalchemy import update, insert 
 from config import TRACKING_REPORT_COLUMNS
 
@@ -29,10 +28,11 @@ FILENAME_PATTERN_DISLOCATION = r'^.*\.(xlsx|xls)$'
 # --- Вспомогательные функции для парсинга ---
 
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
-    """Считывает данные из Excel-файла."""
+    """Считывает данные из Excel-файла, пропуская лишние верхние строки."""
     try:
-        # Читаем только первый лист
-        df = pd.read_excel(filepath) 
+        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Пропускаем 3 строки, не относящиеся к данным.
+        df = pd.read_excel(filepath, skiprows=3, header=0) 
+        
         # Приводим названия колонок к нижнему регистру и удаляем пробелы/заменяем их на подчеркивания
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         
@@ -69,7 +69,9 @@ async def process_dislocation_file(filepath: str) -> int:
         async with session.begin():
             for record in records_to_insert:
                 container_number = record.get('номер_контейнера') 
-                if not container_number:
+                
+                # 1. Пропускаем, если номер контейнера отсутствует или не число
+                if not container_number or pd.isna(container_number):
                     continue
 
                 # Очищаем словарь для безопасного использования в kwargs
@@ -77,12 +79,14 @@ async def process_dislocation_file(filepath: str) -> int:
                     str(k): v for k, v in record.items() if pd.notna(v)
                 }
                 
-                # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ЛОГИКИ ОБНОВЛЕНИЯ: UPDATE/INSERT
-                
-                # 1. Сначала пытаемся обновить существующую запись (используя container_number)
+                # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Пропускаем, если нет данных для SET (иначе SQL-ошибка)
+                if not cleaned_record:
+                    continue 
+
+                # 1. Сначала пытаемся обновить существующую запись (по container_number)
                 update_stmt = update(Tracking).where(
                     Tracking.container_number == str(container_number)
-                ).values(**cleaned_record)
+                ).values(**cleaned_record) 
                 
                 result = await session.execute(update_stmt)
 
@@ -118,7 +122,6 @@ async def check_and_process_dislocation():
 
         if filepath:
             try:
-                # ✅ ИСПРАВЛЕНИЕ: Вызываем process_dislocation_file (который обновляет базу)
                 await process_dislocation_file(filepath)
             except Exception as e:
                 logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
