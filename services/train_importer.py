@@ -4,11 +4,13 @@ from __future__ import annotations
 import os
 import re
 from typing import List, Tuple
+
 import pandas as pd
 from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from logger import get_logger
+# ✅ ИСПРАВЛЕНИЕ: Используем актуальный путь к модели
 from model.terminal_container import TerminalContainer
 from db import SessionLocal 
 
@@ -25,7 +27,7 @@ def extract_train_code_from_filename(filename: str) -> str | None:
     if not filename: return None
     base = os.path.basename(filename)
     name, _ = os.path.splitext(base)
-    # Ищет K или К, 2 цифры, дефис/пробел, 3 цифры
+    # Ищем K или К, 2 цифры, дефис/пробел, 3 цифры
     m = re.search(r"([КK]\s*\d{2}[-–— ]?\s*\d{3})", name, flags=re.IGNORECASE)
     if not m:
         return None
@@ -36,8 +38,7 @@ def extract_train_code_from_filename(filename: str) -> str | None:
 
 def normalize_container(value) -> str | None:
     """
-    Нормализует номер контейнера, удаляя лишние символы и .0, 
-    и обрабатывая числа (float) как строки.
+    Нормализует номер контейнера, обрабатывая float и удаляя лишние символы.
     """
     if pd.isna(value) or value is None:
         return None
@@ -48,7 +49,6 @@ def normalize_container(value) -> str | None:
     if s.endswith('.0'):
         s = s[:-2]
         
-    # Фильтруем пустые строки после очистки
     return s if s else None
 
 
@@ -56,12 +56,13 @@ def find_container_column(df: pd.DataFrame) -> str | None:
     """
     Пытаемся найти колонку с номерами контейнеров в Excel-файле поезда.
     """
-    # ✅ ИСПРАВЛЕНИЕ: ДОБАВЛЕНЫ ВАРИАНТЫ CONTAINER NO.
+    # ✅ ИСПРАВЛЕНИЕ: ДОБАВЛЕНЫ ВСЕ НЕОБХОДИМЫЕ КАНДИДАТЫ, включая 'Контейнер' и 'Container No.'
     candidates = [
-        "номер контейнера", "контейнер", "container", 
-        "№ контейнера", "контейнера", "container no", "номер_контейнера",
-        "container no.", "container no" 
+        "контейнер", "container", "container no", "container no.", "номер контейнера", 
+        "№ контейнера", "контейнера", "номенклатура"
     ]
+    
+    # Приводим заголовки DataFrame к нижнему регистру для поиска
     cols_norm = {str(c).strip().lower(): c for c in df.columns}
     
     for cand in candidates:
@@ -79,15 +80,15 @@ def find_container_column(df: pd.DataFrame) -> str | None:
 
 async def _collect_containers_from_excel(file_path: str) -> List[str]:
     """
-    Читает Excel с контейнерами, возвращает список номеров контейнеров (строки в верхнем регистре).
+    Читает Excel с контейнерами, возвращает список номеров контейнеров.
     """
     xl = pd.ExcelFile(file_path)
     containers: set[str] = set()
 
     for sheet in xl.sheet_names:
         try:
-            # ✅ ИСПРАВЛЕНИЕ: Пропускаем 3 строки, если это стандартный отчет
-            df = pd.read_excel(xl, sheet_name=sheet, skiprows=3, header=0) 
+            # ✅ ИСПРАВЛЕНИЕ: Читаем Excel без пропуска строк (для файлов поезда)
+            df = pd.read_excel(xl, sheet_name=sheet) 
             df.columns = [str(c).strip() for c in df.columns]
             
             col = find_container_column(df)
@@ -108,7 +109,6 @@ async def _collect_containers_from_excel(file_path: str) -> List[str]:
 async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
     """
     Проставляет номер поезда в terminal_containers.train для всех контейнеров из файла.
-    Возвращает (обновлено_строк, всего_контейнеров_в_файле, train_code)
     """
     train_code = extract_train_code_from_filename(src_file_path)
     if not train_code:
@@ -128,11 +128,13 @@ async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
         async with SessionLocal() as session:
             
             for cn in containers:
-                # 1. Обновляем поле 'train'
+                # Обновляем поле 'train'
                 update_stmt = update(TerminalContainer).where(
                     TerminalContainer.container_number == cn
                 ).values(train=train_code)
                 
+                # NOTE: Здесь нет проверки, существует ли контейнер, 
+                # но UPDATE с WHERE(container_number == cn) сам вернет rowcount=0, если его нет.
                 result = await session.execute(update_stmt)
                 updated += result.rowcount
 
