@@ -6,7 +6,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from db import SessionLocal
-from models import StationCache
+from models import StationsCache as StationCache # Импортируем StationsCache, но используем как StationCache
 from logger import get_logger
 from config import OVERPASS_API_URL
 
