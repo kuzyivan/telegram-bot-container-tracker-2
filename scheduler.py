@@ -31,7 +31,6 @@ def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mappin
     key_map = [("file_name", "Файл"), ("sheets_processed", "Листов обработано"), ("total_added", "Добавлено новых")]
     pretty = [f"<b>{title}:</b> {stats[key]}" for key, title in key_map if key in stats]
     
-    # ✅ ЯВНОЕ ЛОГИРОВАНИЕ СВОДКИ
     summary_log = f"[Terminal Import] Сводка: Файл={stats.get('file_name', 'н/д')}, Добавлено={stats.get('total_added', 0)}, Листов={stats.get('sheets_processed', 0)}"
     logger.info(summary_log)
     
@@ -44,27 +43,35 @@ async def job_send_notifications(bot, target_time: time):
     
     service = NotificationService(bot)
     try:
-        # ✅ ЛОГИРОВАНИЕ: Начало работы сервиса
         logger.info(f"[Notification] Инициация рассылки для времени {time_str}...")
         
         sent_count, total_count = await service.send_scheduled_notifications(target_time)
         
-        # ✅ ЛОГИРОВАНИЕ: Результаты работы сервиса
         logger.info(f"✅ [Notification] Рассылка для {time_str} завершена. Отправлено: {sent_count}/{total_count}.")
         
     except Exception as e:
         logger.critical(f"❌ Критическая ошибка в задаче рассылки для {time_str}: {e}", exc_info=True)
 
+
+# ✅ НОВАЯ ФУНКЦИЯ: Проверка при запуске (для немедленного вызова)
+async def job_dislocation_check_on_start():
+    logger.info("⚡️ Scheduler: Запуск ПЕРВОНАЧАЛЬНОЙ проверки дислокации (при старте)...")
+    try:
+        await check_and_process_dislocation()
+        logger.info("✅ Scheduler: Первоначальная проверка дислокации завершена.")
+    except Exception as e:
+        logger.error(f"❌ Scheduler: Ошибка в задаче ПЕРВОНАЧАЛЬНОЙ проверки дислокации: {e}", exc_info=True)
+
+
+# ПЕРИОДИЧЕСКАЯ проверка
 async def job_periodic_dislocation_check():
     """Задача на проверку почты и обработку дислокации."""
     logger.info("🕒 Scheduler: Запуск периодической проверки дислокации...")
     try:
-        # ✅ ЛОГИРОВАНИЕ: Передача управления на импорт
         logger.info("[Dislocation Import] Запуск проверки почты и обработки...")
         
         await check_and_process_dislocation()
         
-        # ✅ ЛОГИРОВАНИЕ: Завершение
         logger.info("✅ Scheduler: Периодическая проверка дислокации завершена.")
     except Exception as e:
         logger.error(f"❌ Scheduler: Ошибка в задаче проверки дислокации: {e}", exc_info=True)
@@ -74,15 +81,12 @@ async def job_daily_terminal_import():
     logger.info("🕒 Scheduler: Запуск ежедневного импорта базы терминала...")
     started = datetime.now(TZ)
     try:
-        # ✅ ЛОГИРОВАНИЕ: Передача управления на импорт
         logger.info("[Terminal Import] Запуск проверки почты и импорта...")
         
         stats = await check_and_process_terminal_report()
         
-        # Вызываем функцию форматирования, которая теперь и логирует, и форматирует сообщение
         text = _format_terminal_import_message(started_dt=started, stats=stats)
         
-        # Если есть статистика, отправляем уведомление
         if stats and stats.get('total_added', 0) > 0:
              await notify_admin(text, silent=True, parse_mode="HTML")
              
@@ -95,10 +99,9 @@ async def job_daily_terminal_import():
 
 def start_scheduler(bot):
     """Регистрирует и запускает все задачи планировщика."""
-    # ... (регистрация задач остается прежней)
     scheduler.add_job(job_send_notifications, 'cron', hour=9, minute=0, args=[bot, time(9, 0)], id="notify_for_09", replace_existing=True, jitter=600)
     scheduler.add_job(job_send_notifications, 'cron', hour=16, minute=0, args=[bot, time(16, 0)], id="notify_for_16", replace_existing=True, jitter=600)
-    scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', id="dislocation_check_20min", replace_existing=True, jitter=10)
+    scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', id="dislocation_check_20min", replace_existing=True, jitter=10) 
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE:
@@ -114,3 +117,6 @@ def start_scheduler(bot):
     local_time = datetime.now(TZ)
     logger.info(f"🕒 Локальное время Владивостока: {local_time}")
     logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
+    
+    # ✅ ВОЗВРАЩАЕМ ФУНКЦИЮ ДЛЯ ЗАПУСКА В post_init
+    return job_dislocation_check_on_start

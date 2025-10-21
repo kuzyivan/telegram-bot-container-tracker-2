@@ -31,8 +31,9 @@ from handlers.admin.panel import admin_panel, admin_panel_callback
 from handlers.admin.uploads import upload_file_command, handle_admin_document
 from handlers.admin.exports import stats, exportstats, tracking
 
-# ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Импортируем только существующие функции/диалоги
-from handlers.admin.notifications import get_notification_handlers # <- Предположим, что хендлеры экспортируются так
+# ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Мы удалили импорт несуществующих объектов
+# from handlers.admin.notifications import force_notify_conversation_handler, test_notify # <-- Удален из bot.py
+# (предполагая, что регистрация происходит внутри get_notification_handlers или напрямую в bot.py)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Обработка всех необработанных ошибок."""
@@ -73,8 +74,6 @@ def main():
     application.add_handler(broadcast_conversation_handler)
     application.add_handler(tracking_conversation_handler())
     application.add_handler(get_email_conversation_handler())
-    # ✅ УДАЛЕНИЕ НЕСУЩЕСТВУЮЩЕГО ДИАЛОГА:
-    # application.add_handler(force_notify_conversation_handler) # <-- УДАЛЕНО
     setup_train_handlers(application)
     application.add_handler(distance_conversation_handler())
     
@@ -85,9 +84,6 @@ def main():
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(CommandHandler("upload_file", upload_file_command))
     
-    # ✅ РЕГИСТРАЦИЯ КОМАНД УВЕДОМЛЕНИЙ (включая test_notify)
-    # application.add_handlers(get_notification_handlers()) # Если они экспортируются списком
-
     # 3. Команды пользователя
     application.add_handler(CommandHandler("start", start))
     application.add_handlers(get_email_command_handlers())
@@ -109,7 +105,15 @@ def main():
 
     async def post_init(app: Application):
         await set_bot_commands(app)
-        start_scheduler(app.bot)
+        
+        # ✅ ЗАПУСКАЕМ ПЛАНИРОВЩИК И ПОЛУЧАЕМ ФУНКЦИЮ ПРОВЕРКИ
+        dislocation_check_on_start_func = start_scheduler(app.bot)
+        
+        # ✅ ВЫПОЛНЯЕМ ПЕРВОНАЧАЛЬНУЮ ПРОВЕРКУ СРАЗУ ПОСЛЕ ЗАПУСКА
+        if dislocation_check_on_start_func:
+            logger.info("⚡️ Запуск немедленной проверки дислокации после старта...")
+            await dislocation_check_on_start_func()
+            
         logger.info("✅ Бот полностью настроен и запущен.")
 
     application.post_init = post_init
