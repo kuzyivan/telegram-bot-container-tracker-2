@@ -65,8 +65,14 @@ def search_station_names(partial_name: str, stations_df: pd.DataFrame, limit: in
 def find_station_info(station_name: str, stations_df: pd.DataFrame):
     """
     Ищет станцию по ТОЧНОМУ названию в DataFrame.
+    
+    ПРИМЕЧАНИЕ: station_name может содержать 'НАЗВАНИЕ (КОД)', поэтому мы его очищаем.
     """
-    station_data = stations_df[stations_df['station_name'].str.lower() == station_name.lower()]
+    # 1. Очищаем имя от кода в скобках, если он есть
+    cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', station_name).strip()
+
+    # 2. Ищем по очищенному имени, игнорируя регистр и пробелы
+    station_data = stations_df[stations_df['station_name'].str.strip().str.lower() == cleaned_name.lower()]
     
     if station_data.empty:
         return None

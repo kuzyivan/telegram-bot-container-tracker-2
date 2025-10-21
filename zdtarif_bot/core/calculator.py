@@ -52,12 +52,9 @@ def get_transit_distance(tp1_name: str, tp2_name: str, matrices: dict):
 def calculate_distance(station_a_name: str, station_b_name: str, stations_df: pd.DataFrame, matrices: dict):
     """Основная функция для расчета расстояния."""
     
-    # ✅ ИСПРАВЛЕНИЕ: Удаляем код станции в скобках, прежде чем искать его в справочнике 2-РП
-    cleaned_a_name = re.sub(r'\s*\([^)]*\)', '', station_a_name).strip()
-    cleaned_b_name = re.sub(r'\s*\([^)]*\)', '', station_b_name).strip()
-
-    info_a = find_station_info(cleaned_a_name, stations_df)
-    info_b = find_station_info(cleaned_b_name, stations_df)
+    # ✅ ИСПРАВЛЕНИЕ: Используем station_a_name/station_b_name напрямую. Очистка произойдет в find_station_info.
+    info_a = find_station_info(station_a_name, stations_df)
+    info_b = find_station_info(station_b_name, stations_df)
     # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     if not info_a:
