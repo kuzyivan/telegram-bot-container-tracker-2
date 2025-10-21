@@ -23,8 +23,6 @@ logger = get_logger(__name__)
 def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     """
     Определяет тип вагона по первой цифре номера, согласно предоставленной логике.
-    6xx... -> Полувагон
-    9xx... или 5xx... -> Платформа
     """
     if wagon_number is None:
         return 'н/д'
@@ -32,7 +30,7 @@ def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     wagon_str = str(wagon_number).removesuffix('.0').strip()
     
     if not wagon_str or not wagon_str[0].isdigit():
-        return 'Прочий' # Изменено на 'Прочий' для логики Excel
+        return 'Прочий' 
     
     first_digit = wagon_str[0]
     
@@ -85,7 +83,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(f"Ничего не найдено по номерам: {query_text_log}")
         return
 
-    # --- Формирование ответа ---
+    # --- Формирование ответа (ОДИНОЧНЫЙ КОНТЕЙНЕР) ---
     if len(tracking_results) == 1:
         result = tracking_results[0]
         
@@ -99,7 +97,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         km_left_display = None
         forecast_days_display = 0.0
         source_log_tag = "Н/Д"
-        distance_label = "Осталось км (БД):"
+        distance_label = "Осталось км (БД):" 
 
         if remaining_distance is not None:
             source_log_tag = "РАСЧЕТ"
@@ -154,21 +152,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              km_left_index = excel_columns.index('Расстояние оставшееся')
              wagon_index = excel_columns.index('Вагон')
              
-             # Вставляем "Источник данных"
+             # 1. Вставляем "Источник данных"
              excel_columns.insert(km_left_index + 1, 'Источник данных')
 
-             # Удаляем старый заголовок "Вагон"
+             # 2. Удаляем старый заголовок "Вагон"
              excel_columns.pop(wagon_index)
              
-             # Вставляем "Вагон" и "Тип вагона"
+             # 3. Вставляем "Вагон" и "Тип вагона"
              excel_columns.insert(wagon_index, 'Вагон')
              excel_columns.insert(wagon_index + 1, 'Тип вагона')
-
-             # Теперь у нас 14 заголовков, но в данных 13 элементов.
-             # УДАЛЯЕМ ОДНУ КОЛОНКУ ИЗ ЗАГОЛОВКОВ (например, "Прогноз прибытия (дни)"), 
-             # чтобы соответствовать 13 элементам данных.
+             
+             # 4. Удаляем "Прогноз прибытия (дни)"
              excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)'))
              
+             # 5. Добавляем "Прогноз прибытия (дни)" в конец (чтобы сохранить 13 элементов)
+             excel_columns.append('Прогноз прибытия (дни)')
+
 
         except ValueError:
              # На случай, если какая-то колонка отсутствует, добавляем в конец
@@ -212,8 +211,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
                  db_row.waybill, km_left, source_tag, 
-                 wagon_number_cleaned, wagon_type_for_excel, railway_display_name, 
-                 forecast_days, # ✅ ОСТАВЛЯЕМ ПРОГНОЗ В КОНЦЕ
+                 wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
+                 forecast_days, # Прогноз в конце
              ]
             final_report_data.append(excel_row)
 
