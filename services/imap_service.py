@@ -11,10 +11,10 @@ from logger import get_logger
 
 logger = get_logger(__name__)
 
-# ✅ ИСПРАВЛЕНИЕ: Используем существующие имена переменных из вашего .env
+# ✅ ИСПРАВЛЕНИЕ ПЕРЕМЕННЫХ: Используем существующие имена EMAIL и PASSWORD из вашего .env
 EMAIL = os.getenv("EMAIL")          
 PASSWORD = os.getenv("PASSWORD")    
-# Устанавливаем значение по умолчанию, если в .env нет IMAP_SERVER
+# Устанавливаем значение по умолчанию для IMAP_SERVER
 IMAP_SERVER = os.getenv("IMAP_SERVER", "imap.yandex.ru") 
 DOWNLOAD_DIR = 'downloads' 
 
@@ -31,7 +31,6 @@ class ImapService:
         Приватный метод-контекстный менеджер для безопасного подключения к почтовому ящику.
         """
         if not all([EMAIL, PASSWORD, IMAP_SERVER]):
-            # ✅ ЛОГИРОВАНИЕ: Критическая ошибка конфигурации
             logger.error("[ImapService] EMAIL, PASSWORD или IMAP_SERVER не заданы в .env.")
             yield None
             return
@@ -55,11 +54,10 @@ class ImapService:
             yield mailbox
             
         except Exception as e:
-            # ✅ ЛОГИРОВАНИЕ: Ошибка подключения/выбора папки
             logger.error(f"❌ [ImapService] Ошибка подключения к IMAP или выбора папки 'INBOX': {e}", exc_info=True)
             yield None
         finally:
-            # ✅ ИСПРАВЛЕНИЕ ОШИБКИ: Пытаемся разлогиниться, только если логин был успешен.
+            # Пытаемся разлогиниться, только если логин был успешен.
             if is_connected:
                 try:
                     mailbox.logout()
@@ -82,12 +80,13 @@ class ImapService:
 
             try:
                 # 1. Поиск писем
-                # Используем критерий A(ALL) для поиска по всем письмам, затем сортируем
+                # ✅ ИСПРАВЛЕНИЕ КОДИРОВКИ: Добавляем charset='utf8' для поиска кириллицы
                 emails = mailbox.fetch(
                     criteria=A(all=True, subject=subject_filter, from_=sender_filter, seen=False), 
                     bulk=True, 
-                    reverse=True, # Самые новые в начале
-                    limit=50 # Ограничиваем количество
+                    reverse=True, 
+                    limit=50,
+                    charset='utf8' # <-- Устраняет UnicodeEncodeError
                 )
                 
                 # 2. Итерация по письмам
@@ -108,7 +107,7 @@ class ImapService:
                                 
                             logger.info(f"✅ [ImapService] Вложение '{att.filename}' успешно сохранено.")
 
-                            # 5. Важно: Пометка письма как прочитанного.
+                            # 5. Пометка письма как прочитанного.
                             mailbox.flag(msg.uid, 'SEEN', value=True)
                             
                             return filepath
