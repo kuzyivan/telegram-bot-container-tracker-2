@@ -23,8 +23,6 @@ logger = get_logger(__name__)
 def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     """
     Определяет тип вагона по первой цифре номера, согласно предоставленной логике.
-    6xx... -> Полувагон
-    9xx... или 5xx... -> Платформа
     """
     if wagon_number is None:
         return 'н/д'
@@ -151,31 +149,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         excel_columns = list(config.TRACKING_REPORT_COLUMNS)
         
-        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Синхронизация 13 данных с 13 заголовками.
+        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: УДАЛЯЕМ старые заголовки и ВСТАВЛЯЕМ новые 
+        # (должно привести к 12 элементам в заголовках)
         try:
-             km_left_index = excel_columns.index('Расстояние оставшееся')
-             wagon_index = excel_columns.index('Вагон') 
-             
-             # 1. Вставляем "Источник данных"
-             excel_columns.insert(km_left_index + 1, 'Источник данных')
+             # Удаляем "Прогноз прибытия (дни)" (был элемент 9 в config)
+             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)')) 
 
-             # 2. Удаляем старый заголовок "Вагон"
-             excel_columns.pop(wagon_index)
+             # Удаляем "Номер вагона" (был элемент 9 или 10)
+             excel_columns.pop(excel_columns.index('Номер вагона')) 
              
-             # 3. Вставляем "Вагон" и "Тип вагона"
+             # Вставляем "Вагон" и "Тип вагона"
+             wagon_index = excel_columns.index('Вагон') # Ищем 'Вагон'
              excel_columns.insert(wagon_index, 'Вагон')
              excel_columns.insert(wagon_index + 1, 'Тип вагона')
              
-             # 4. Удаляем "Прогноз прибытия (дни)" (был элемент 9 в данных)
-             excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)')) 
-             
-             # 5. Добавляем "Прогноз прибытия (дни)" обратно в конец
-             excel_columns.append('Прогноз прибытия (дни)')
-
         except ValueError:
              # На случай, если какая-то колонка отсутствует, добавляем в конец
-             excel_columns.append('Источник данных') 
              excel_columns.append('Тип вагона') 
+
+        # ⚠️ ФИНАЛЬНАЯ НАСТРОЙКА: Удаляем колонку "Дорога операции" (была в конце), 
+        # чтобы компенсировать добавление "Тип вагона"
+        try:
+            excel_columns.pop(excel_columns.index('Дорога операции'))
+        except ValueError:
+            pass
 
 
         for db_row in tracking_results:
@@ -209,13 +206,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel. (13 элементов)
+            # Формирование строки для Excel (13 элементов)
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
-                 db_row.waybill, km_left, source_tag, 
+                 db_row.waybill, km_left, 
                  wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
-                 forecast_days, # Прогноз в конце
+                 forecast_days, 
+                 # Элементы, которые мы удалили из заголовков, но оставили в данных, теперь удаляются из данных:
+                 # source_tag (был), forecast_days (был)
              ]
             final_report_data.append(excel_row)
 
