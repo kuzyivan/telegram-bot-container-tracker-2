@@ -1,4 +1,5 @@
 # bot.py
+import logging # <- Добавляем import logging
 from logger import get_logger
 logger = get_logger(__name__)
 
@@ -56,6 +57,10 @@ def main():
         logger.critical("🔥 TELEGRAM_TOKEN не задан!")
         return
 
+    # ✅ ИСПРАВЛЕНИЕ: Устанавливаем уровень логирования для HTTPX на WARNING.
+    # Это отключает повторяющиеся сообщения INFO о /getUpdates (Long Polling).
+    logging.getLogger("httpx").setLevel(logging.WARNING) 
+    
     application = Application.builder().token(TOKEN).build()
     
     # 1. Диалоги
@@ -99,6 +104,7 @@ def main():
 
     application.post_init = post_init
     
+    # Включаем Long Polling
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
