@@ -149,30 +149,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         excel_columns = list(config.TRACKING_REPORT_COLUMNS)
         
-        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: УДАЛЯЕМ старые заголовки и ВСТАВЛЯЕМ новые 
-        # (должно привести к 12 элементам в заголовках)
+        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ EXCEL: Синхронизация данных.
         try:
-             # Удаляем "Прогноз прибытия (дни)" (был элемент 9 в config)
+             # 1. Удаляем "Прогноз прибытия (дни)"
              excel_columns.pop(excel_columns.index('Прогноз прибытия (дни)')) 
 
-             # Удаляем "Номер вагона" (был элемент 9 или 10)
-             excel_columns.pop(excel_columns.index('Номер вагона')) 
+             # 2. Удаляем "Номер вагона" (который мы заменяем на 2 поля)
+             wagon_index = excel_columns.index('Номер вагона')
+             excel_columns.pop(wagon_index) 
              
-             # Вставляем "Вагон" и "Тип вагона"
-             wagon_index = excel_columns.index('Вагон') # Ищем 'Вагон'
+             # 3. Вставляем "Вагон" и "Тип вагона"
              excel_columns.insert(wagon_index, 'Вагон')
              excel_columns.insert(wagon_index + 1, 'Тип вагона')
              
-        except ValueError:
-             # На случай, если какая-то колонка отсутствует, добавляем в конец
-             excel_columns.append('Тип вагона') 
+             # 4. Добавляем "Прогноз прибытия (дни)" обратно в конец.
+             excel_columns.append('Прогноз прибытия (дни)')
 
-        # ⚠️ ФИНАЛЬНАЯ НАСТРОЙКА: Удаляем колонку "Дорога операции" (была в конце), 
-        # чтобы компенсировать добавление "Тип вагона"
-        try:
-            excel_columns.pop(excel_columns.index('Дорога операции'))
         except ValueError:
-            pass
+             # Если что-то пошло не так, просто добавляем новые поля в конец
+             excel_columns.append('Тип вагона') 
 
 
         for db_row in tracking_results:
@@ -185,17 +180,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             km_left = None
             forecast_days = 0.0
-            source_tag = ""
             
             if recalculated_distance is not None:
-                source_tag = "Тариф (10-01)"
                 km_left = recalculated_distance
                 forecast_days = round(recalculated_distance / 600 + 1, 1) if recalculated_distance > 0 else 0.0
             else:
-                source_tag = "БД"
                 km_left = db_row.km_left
-                forecast_days = db_row.forecast_days or 0.0
 
+            # Логирование (source_tag убран из данных, но остается в логе)
+            source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
              
             wagon_number_raw = db_row.wagon_number
@@ -206,15 +199,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             railway_display_name = db_row.operation_road 
 
 
-            # Формирование строки для Excel (13 элементов)
+            # Формирование строки для Excel. (13 элементов)
             excel_row = [
                  db_row.container_number, db_row.from_station, db_row.to_station,
                  db_row.current_station, db_row.operation, db_row.operation_date,
-                 db_row.waybill, km_left, 
+                 db_row.waybill, km_left, # <- Источник данных удален
                  wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
-                 forecast_days, 
-                 # Элементы, которые мы удалили из заголовков, но оставили в данных, теперь удаляются из данных:
-                 # source_tag (был), forecast_days (был)
+                 forecast_days, # Прогноз в конце
+                 
+                 # ⚠️ Элемент, который мы не учли в заголовках, но который есть в данных:
+                 # В предыдущих версиях был source_tag, который теперь удален.
+                 # Если в excel_columns 12 элементов, а в excel_row 13, то excel_row содержит лишний элемент.
+                 # Я удалю Source_tag из данных окончательно, чтобы размерность сошлась.
              ]
             final_report_data.append(excel_row)
 
