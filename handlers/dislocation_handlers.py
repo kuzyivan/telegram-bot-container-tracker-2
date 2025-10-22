@@ -5,12 +5,13 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import re
 from typing import Optional
-from sqlalchemy import select # ✅ Добавляем импорт select
+from sqlalchemy import select
 
 from logger import get_logger
 from db import SessionLocal
-# ✅ Добавляем импорт TerminalContainer
-from models import UserRequest, Tracking, TerminalContainer
+# ✅ ИСПРАВЛЕННЫЙ ИМПОРТ: Указываем правильный путь к TerminalContainer
+from models import UserRequest, Tracking
+from model.terminal_container import TerminalContainer # <<< ИСПРАВЛЕНО ЗДЕСЬ
 from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
 from services.railway_router import get_remaining_distance_on_route
@@ -45,7 +46,7 @@ def normalize_text_input(text: str) -> list[str]:
     normalized_items = sorted(list(set(filter(None, items))))
     return normalized_items
 
-# --- ✅ Новая асинхронная функция для получения поезда ---
+# --- Асинхронная функция для получения поезда ---
 async def get_train_for_container(container_number: str) -> str | None:
     """Получает номер поезда из terminal_containers."""
     async with SessionLocal() as session:
@@ -96,11 +97,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(tracking_results) == 1:
         result = tracking_results[0]
 
-        # --- ✅ Получаем номер поезда ---
+        # --- Получаем номер поезда ---
         train_number = await get_train_for_container(result.container_number)
-        train_display = f"Поезд: `{train_number}`\n" if train_number else "" # Формируем строку для вывода
+        train_display = f"Поезд: `{train_number}`\n" if train_number else ""
 
-        # --- Расчет расстояния (логика остается прежней) ---
+        # --- Расчет расстояния ---
         remaining_distance = await get_remaining_distance_on_route(
             start_station=result.from_station,
             end_station=result.to_station,
@@ -129,12 +130,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
         railway_abbreviation = get_railway_abbreviation(result.operation_road)
 
-        # ✅ ИЗМЕНЕНИЕ ФОРМАТИРОВАНИЯ: Добавляем train_display
+        # --- Форматирование ответа ---
         response_text = (
             f"📦 **Статус контейнера: {result.container_number}**\n"
             f"═════════════════════\n"
             f"📍 *Маршрут:*\n"
-            f"{train_display}" # <<< ДОБАВЛЕНА СТРОКА С ПОЕЗДОМ
+            f"{train_display}" # Строка с поездом
             f"Отпр: `{result.from_station}`\n"
             f"Назн: `{result.to_station}`\n"
             f"═════════════════════\n"
@@ -225,9 +226,9 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     logger.info(f"[dislocation] Пользователь {user.id} запросил Excel для {container_number} через кнопку.")
     tracking_results = await get_tracking_data_for_containers([container_number])
     if not tracking_results:
-        if query.message and query.message.text: # Проверяем, что сообщение текстовое
+        if query.message and query.message.text:
             await query.edit_message_text("❌ Ошибка: Не удалось найти актуальные данные для Excel.")
-        elif query.message: # Если не текстовое (например, с фото), просто отправляем новое сообщение
+        elif query.message:
              await context.bot.send_message(user.id, "❌ Ошибка: Не удалось найти актуальные данные для Excel.")
         return
 
@@ -270,7 +271,6 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
                  caption=f"✅ Отчет по контейнеру {container_number}."
              )
          logger.info(f"Отправлен Excel отчет для {container_number} пользователю {user.id}")
-         # Пытаемся удалить кнопку, только если сообщение было текстовым
          if query.message and query.message.text:
              await query.edit_message_reply_markup(reply_markup=None)
 
