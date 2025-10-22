@@ -89,11 +89,18 @@ async def process_dislocation_file(filepath: str) -> int:
                         
                         mapped_key = COLUMN_MAPPING[key_ru]
                         
-                        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ТИПА ДАННЫХ: Принудительное преобразование
-                        if mapped_key in ['wagon_number', 'waybill', 'container_number']:
+                        # ✅ ИСПРАВЛЕНИЕ ОШИБКИ:
+                        # Мы УБРАЛИ 'container_number' из этого списка.
+                        # Он уже обработан выше и будет передан в INSERT отдельно,
+                        # что и вызывало ошибку "got multiple values".
+                        if mapped_key in ['wagon_number', 'waybill']:
                             # Преобразуем ЛЮБОЕ значение в строку и убираем .0
                             cleaned_record[mapped_key] = str(value).removesuffix('.0')
                         
+                        # Пропускаем 'container_number', так как он уже есть
+                        elif mapped_key == 'container_number':
+                            continue
+                            
                         elif isinstance(value, datetime) and value.tzinfo is not None:
                             # Удаляем timezone из datetime
                             cleaned_record[mapped_key] = value.replace(tzinfo=None)
@@ -117,6 +124,7 @@ async def process_dislocation_file(filepath: str) -> int:
 
                 if result.rowcount == 0:
                     # 2. Если не обновили (не нашли), то вставляем новую запись (INSERT)
+                    # Теперь эта строка не вызовет ошибки
                     insert_stmt = insert(Tracking).values(container_number=container_number, **cleaned_record)
                     await session.execute(insert_stmt)
                 
