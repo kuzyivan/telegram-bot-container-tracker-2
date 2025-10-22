@@ -104,13 +104,16 @@ def start_scheduler(bot):
     scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', id="dislocation_check_20min", replace_existing=True, jitter=10) 
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
 
-    if config.STATIONS_CACHE_CRON_SCHEDULE:
-        try:
-            trigger = CronTrigger.from_crontab(config.STATIONS_CACHE_CRON_SCHEDULE, timezone=TZ)
-            scheduler.add_job(job_populate_stations_cache, trigger, id="stations_cacher_periodic", replace_existing=True, jitter=120)
-            logger.info(f"🟢 Задача кеширования станций OSM запланирована: '{config.STATIONS_CACHE_CRON_SCHEDULE}'")
-        except Exception as e:
-            logger.error(f"❌ Не удалось запланировать задачу кеширования станций: {e}")
+    # --- ✅ Блок фонового обновления кэша станций OSM отключен ---
+    # if config.STATIONS_CACHE_CRON_SCHEDULE:
+    #     try:
+    #         trigger = CronTrigger.from_crontab(config.STATIONS_CACHE_CRON_SCHEDULE, timezone=TZ)
+    #         scheduler.add_job(job_populate_stations_cache, trigger, id="stations_cacher_periodic", replace_existing=True, jitter=120)
+    #         logger.info(f"🟢 Задача кеширования станций OSM запланирована: '{config.STATIONS_CACHE_CRON_SCHEDULE}'")
+    #     except Exception as e:
+    #         logger.error(f"❌ Не удалось запланировать задачу кеширования станций: {e}")
+    # else:
+    #     logger.info("ℹ️ Фоновое кеширование станций OSM отключено в конфигурации.")
     
     scheduler.start()
     logger.info("🟢 Планировщик запущен со всеми задачами.")
