@@ -80,6 +80,15 @@ def cancel_tracking_confirm_keyboard() -> InlineKeyboardMarkup:
          no_callback_data="confirm_cancel_tracking_no"
      )
 
+# ✅ НОВАЯ ФУНКЦИЯ ДЛЯ ОДНОГО КОНТЕЙНЕРА
+def create_single_container_excel_keyboard(container_number: str) -> InlineKeyboardMarkup:
+    """Создает Inline клавиатуру с кнопкой для скачивания Excel-отчета по одному контейнеру."""
+    # Используем уникальный callback_data для передачи номера контейнера
+    keyboard = [
+        [InlineKeyboardButton("⬇️ Скачать Excel-отчет", callback_data=f"get_excel_single_{container_number}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 # --- Старые клавиатуры (проверь, используются ли они еще) ---
 
 # Клавиатура после выбора станции (возможно, устарела)

@@ -15,6 +15,8 @@ from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
 import config
+# ✅ ИМПОРТИРУЕМ НОВУЮ КЛАВИАТУРУ
+from utils.keyboards import create_single_container_excel_keyboard 
 
 logger = get_logger(__name__)
 
@@ -41,14 +43,14 @@ def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     else:
         return 'Прочий'
 
-# --- Основной обработчик сообщений ---
-
 def normalize_text_input(text: str) -> list[str]:
     """Извлекает и нормализует номера контейнеров или другие запросы из текста."""
     text = text.upper().strip()
     items = re.split(r'[,\s;\n]+', text)
     normalized_items = sorted(list(set(filter(None, items))))
     return normalized_items
+
+# --- Основной обработчик сообщений ---
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -83,7 +85,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text(f"Ничего не найдено по номерам: {query_text_log}")
         return
 
-    # --- Формирование ответа (ОДИНОЧНЫЙ КОНТЕЙНЕР) ---
+    # --- ЛОГИКА: ОДИН КОНТЕЙНЕР (ОТВЕТ ТЕКСТОМ + КНОПКА) ---
     if len(tracking_results) == 1:
         result = tracking_results[0]
         
@@ -96,21 +98,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         km_left_display = None
         forecast_days_display = 0.0
-        source_log_tag = "Н/Д" # Инициализация
-        distance_label = "Осталось км (БД):" # Лейбл по умолчанию
+        source_log_tag = "Н/Д" 
+        distance_label = "Осталось км (БД):" 
 
         if remaining_distance is not None:
             # 2. Расчет успешен -> используем его
             source_log_tag = "РАСЧЕТ"
             km_left_display = remaining_distance
             forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
-            distance_label = "Тарифное расстояние:" # НОВЫЙ ЛЕЙБЛ
+            distance_label = "Тарифное расстояние:" 
         else:
             # 3. Расчет не успешен -> используем БД (Fallback)
             source_log_tag = "БД (Fallback)"
             km_left_display = result.km_left
             forecast_days_display = result.forecast_days or 0.0
-            distance_label = "Осталось км (БД):" # Возвращаем старый лейбл
+            distance_label = "Осталось км (БД):" 
             
         logger.info(f"[dislocation] Контейнер {result.container_number}: Расстояние ({km_left_display} км) взято из источника: {source_log_tag}")
         # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ ИСТОЧНИКА ДАННЫХ ---
@@ -141,10 +143,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"**{distance_label}** **{km_left_display or 'н/д'} км**\n" 
             f"**Прогноз (дни):** `{forecast_days_display:.1f} дн.`"
         )
-        await message.reply_markdown(response_text)
+        
+        # ✅ ДОБАВЛЕНИЕ ИНЛАЙН-КЛАВИАТУРЫ
+        await message.reply_markdown(
+            response_text,
+            reply_markup=create_single_container_excel_keyboard(result.container_number)
+        )
 
+    # --- ЛОГИКА: МНОГО КОНТЕЙНЕРОВ (ОТВЕТ EXCEL) ---
     else:
-        # Логика для нескольких результатов (Excel)
+        # ... (существующая логика формирования Excel для многих контейнеров) ...
         final_report_data = []
         
         # ⚠️ ФИНАЛЬНЫЙ СПИСОК ЗАГОЛОВКОВ (ДОЛЖЕН СОДЕРЖАТЬ 11 ЭЛЕМЕНТОВ!)
@@ -191,7 +199,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  db_row.current_station, db_row.operation, db_row.operation_date,
                  db_row.waybill, km_left, 
                  wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
-                 # Здесь было 13 элементов. Мы удалили source_tag и forecast_days.
              ]
             final_report_data.append(excel_row)
 
@@ -200,7 +207,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              file_path = await asyncio.to_thread(
                  create_excel_file,
                  final_report_data,
-                 excel_columns # Передаем 11 элементов
+                 excel_columns
              )
              filename = get_vladivostok_filename(prefix="Дислокация")
 
@@ -220,3 +227,95 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      os.remove(file_path)
                  except OSError as e:
                       logger.error(f"Не удалось удалить временный файл {file_path}: {e}")
+
+
+# --- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ ---
+
+async def handle_single_container_excel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обрабатывает нажатие inline-кнопки для скачивания Excel-отчета по одному контейнеру.
+    """
+    query = update.callback_query
+    if not query or not query.data or not query.data.startswith("get_excel_single_") or not update.effective_user:
+        return
+    
+    await query.answer("⏳ Готовлю Excel-отчет...")
+    container_number = query.data.split("_")[-1]
+    user = update.effective_user
+    
+    logger.info(f"[dislocation] Пользователь {user.id} запросил Excel для {container_number} через кнопку.")
+
+    # 1. Снова получаем данные для этого одного контейнера
+    tracking_results = await get_tracking_data_for_containers([container_number])
+
+    if not tracking_results:
+        # Проверяем, есть ли у сообщения вообще caption, прежде чем его редактировать
+        if query.message.caption:
+            await query.edit_message_caption("❌ Ошибка: Не удалось найти актуальные данные для Excel.")
+        else:
+            await context.bot.send_message(user.id, "❌ Ошибка: Не удалось найти актуальные данные для Excel.")
+        return
+
+    # 2. Используем существующую логику формирования Excel (как для множественного запроса)
+    db_row = tracking_results[0]
+    
+    # Расчет расстояния (повторяем ту же логику)
+    recalculated_distance = await get_remaining_distance_on_route(
+        start_station=db_row.from_station,
+        end_station=db_row.to_station,
+        current_station=db_row.current_station
+    )
+    km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
+    wagon_number_raw = db_row.wagon_number
+    wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
+    wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
+    railway_display_name = db_row.operation_road
+
+    # ⚠️ ФИНАЛЬНЫЙ СПИСОК ЗАГОЛОВКОВ (11 элементов)
+    EXCEL_HEADERS = [
+        'Номер контейнера', 'Станция отправления', 'Станция назначения',
+        'Станция операции', 'Операция', 'Дата и время операции',
+        'Номер накладной', 'Расстояние оставшееся', 'Вагон', 
+        'Тип вагона', 'Дорога операции'
+    ]
+    
+    # ФОРМИРОВАНИЕ СТРОКИ ДАННЫХ (11 ЭЛЕМЕНТОВ)
+    final_report_data = [[
+         db_row.container_number, db_row.from_station, db_row.to_station,
+         db_row.current_station, db_row.operation, db_row.operation_date,
+         db_row.waybill, km_left, 
+         wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
+     ]]
+
+    file_path = None
+    try:
+         # Генерация файла
+         file_path = await asyncio.to_thread(
+             create_excel_file,
+             final_report_data,
+             EXCEL_HEADERS
+         )
+         filename = get_vladivostok_filename(prefix=container_number)
+
+         with open(file_path, "rb") as f:
+              # Отправка документа пользователю
+              await context.bot.send_document(
+                 chat_id=user.id,
+                 document=f,
+                 filename=filename,
+                 caption=f"✅ Отчет по контейнеру {container_number}."
+             )
+         logger.info(f"Отправлен Excel отчет для {container_number} пользователю {user.id}")
+         
+         # Удаляем инлайн-кнопку после успешной отправки
+         await query.edit_message_reply_markup(reply_markup=None) 
+         
+    except Exception as send_err:
+         logger.error(f"Ошибка отправки Excel отчета пользователю {user.id}: {send_err}", exc_info=True)
+         await context.bot.send_message(user.id, "❌ Не удалось отправить Excel файл.")
+    finally:
+         if file_path and os.path.exists(file_path):
+             try:
+                 os.remove(file_path)
+             except OSError as e:
+                  logger.error(f"Не удалось удалить временный файл {file_path}: {e}")
