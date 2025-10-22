@@ -1,5 +1,4 @@
 # services/dislocation_importer.py
-
 import asyncio
 import os
 import re
@@ -23,7 +22,7 @@ COLUMN_MAPPING = {
     'номер_контейнера': 'container_number',
     'станция_отправления': 'from_station',
     'станция_назначения': 'to_station',
-    'станция_операции': 'current_station',  
+    'станция_операции': 'current_station',
     'операция': 'operation',
     'дата_и_время_операции': 'operation_date',
     'номер_накладной': 'waybill',
@@ -44,9 +43,7 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """Считывает данные из Excel-файла, пропуская лишние верхние строки."""
     try:
         df = pd.read_excel(filepath, skiprows=3, header=0) 
-        
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
-        
         df = df.dropna(how='all')
         
         required_cols = list(COLUMN_MAPPING.keys())
@@ -76,17 +73,13 @@ async def process_dislocation_file(filepath: str) -> int:
 
     async with SessionLocal() as session:
         async with session.begin():
-            # Определяем ключ 'номер_контейнера' как строку, чтобы Pylance не жаловался
-            container_key: str = 'номер_контейнера'
-            
             for record in records_to_insert:
-                container_number_raw = record.get(container_key) 
+                container_number_raw = record.get('номер_контейнера') 
                 
-                # 1. Пропускаем, если номер контейнера отсутствует
                 if not container_number_raw or pd.isna(container_number_raw):
                     continue
 
-                # ✅ ИСПРАВЛЕНИЕ: Гарантируем, что номер контейнера - строка
+                # Гарантируем, что номер контейнера - строка
                 container_number = str(container_number_raw).removesuffix('.0')
 
                 # Очищаем и преобразуем словарь для обновления
@@ -96,9 +89,9 @@ async def process_dislocation_file(filepath: str) -> int:
                         
                         mapped_key = COLUMN_MAPPING[key_ru]
                         
-                        # ⚠️ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ТИПА ДАННЫХ: Преобразование в str
-                        if mapped_key in ['wagon_number', 'waybill']:
-                            # Преобразуем число/float в строку и убираем .0
+                        # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ТИПА ДАННЫХ: Принудительное преобразование
+                        if mapped_key in ['wagon_number', 'waybill', 'container_number']:
+                            # Преобразуем ЛЮБОЕ значение в строку и убираем .0
                             cleaned_record[mapped_key] = str(value).removesuffix('.0')
                         
                         elif isinstance(value, datetime) and value.tzinfo is not None:
@@ -110,7 +103,7 @@ async def process_dislocation_file(filepath: str) -> int:
                             cleaned_record[mapped_key] = value
 
 
-                # Пропускаем, если нет данных для SET (иначе SQL-ошибка)
+                # Пропускаем, если нет данных для SET
                 if not cleaned_record:
                     logger.warning(f"[Dislocation Import] Пропущена строка для {container_number}: нет данных для обновления.")
                     continue 
