@@ -4,19 +4,41 @@ from telegram.ext import ContextTypes
 from logger import get_logger
 import re
 
-# <-- ИМПОРТ, ВЫДАЮЩИЙ ОШИБКУ: УБЕДИТЕСЬ, ЧТО ОН ТУТ ЕСТЬ
+# Импорт ADMIN_CHAT_ID ИЗ config.py
+import sys
+import os
+# Добавляем корень проекта в путь, если он не был добавлен ранее
+sys.path.append(os.path.join(os.path.dirname(__file__), '..')) 
+from config import ADMIN_CHAT_ID 
+
+# Импорт хендлеров из других модулей, как в вашем проекте
 from handlers.subscription_management_handler import my_subscriptions_command 
 
 logger = get_logger(__name__)
 
-# --- Вспомогательные функции ---
+# --- Константы для кнопок ---
+BUTTON_DISLOCATION = "📦 Дислокация"
+BUTTON_SUBSCRIPTIONS = "📂 Мои подписки"
+BUTTON_TRAINS = "🚆 Мои поезда" # Скрытая для обычных
+BUTTON_SETTINGS = "⚙️ Настройки" # Скрытая для обычных
 
-# Клавиатура главного меню
-MAIN_KEYBOARD = ReplyKeyboardMarkup(
+# --- Клавиатуры ---
+
+# Клавиатура для всех пользователей (только базовый функционал)
+USER_KEYBOARD = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("📦 Дислокация"), KeyboardButton("🚆 Мои поезда")],
-        [KeyboardButton("📂 Мои подписки")],
-        [KeyboardButton("⚙️ Настройки")]
+        [KeyboardButton(BUTTON_DISLOCATION)],
+        [KeyboardButton(BUTTON_SUBSCRIPTIONS)]
+    ],
+    resize_keyboard=True
+)
+
+# Клавиатура для администратора (включает "Мои поезда" и "Настройки")
+ADMIN_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton(BUTTON_DISLOCATION), KeyboardButton(BUTTON_TRAINS)],
+        [KeyboardButton(BUTTON_SUBSCRIPTIONS)],
+        [KeyboardButton(BUTTON_SETTINGS)]
     ],
     resize_keyboard=True
 )
@@ -25,12 +47,16 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /start, выводя главное меню."""
-    if not update.message:
+    if not update.message or not update.effective_user:
         return
+    
+    # Выбор клавиатуры в зависимости от ID пользователя
+    is_admin = update.effective_user.id == ADMIN_CHAT_ID
+    keyboard = ADMIN_KEYBOARD if is_admin else USER_KEYBOARD
     
     await update.message.reply_text(
         "Здравствуйте! Выберите действие в меню:",
-        reply_markup=MAIN_KEYBOARD
+        reply_markup=keyboard
     )
 
 async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -38,34 +64,41 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text("Спасибо за стикер!")
 
-# --- Обработчик кнопок ReplyKeyboard ---
+# --- Обработчик кнопок ReplyKeyboard (reply_keyboard_handler) ---
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает нажатия кнопок ReplyKeyboard."""
-    if not update.message or not update.message.text:
+    if not update.message or not update.message.text or not update.effective_user:
          return 
          
     text = update.message.text.strip()
     user = update.effective_user
+    is_admin = user.id == ADMIN_CHAT_ID
     
     logger.info(f"[Menu] Пользователь {user.id} нажал кнопку: {text}")
 
     # Логика для кнопки "📦 Дислокация"
-    if "Дислокация" in text:
+    if BUTTON_DISLOCATION in text:
         await update.message.reply_text("Введите номер контейнера или вагона для поиска:")
         
     # Логика для кнопки "📂 Мои подписки"
-    elif "подписки" in text:
-        # Прямой вызов хендлера команды /my_subscriptions
+    elif BUTTON_SUBSCRIPTIONS in text:
         await update.message.reply_text("Загрузка списка подписок...")
+        # Предполагаем, что my_subscriptions_command запускает правильную логику подписок
         await my_subscriptions_command(update, context) 
     
-    # Логика для кнопки "🚆 Мои поезда"
-    elif "поезда" in text:
-        await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
-        
-    # Логика для кнопки "⚙️ Настройки"
-    elif "Настройки" in text:
-         await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
+    # Логика для кнопок "🚆 Мои поезда" и "⚙️ Настройки" (только для админа)
+    elif BUTTON_TRAINS in text or BUTTON_SETTINGS in text:
+        if is_admin:
+            if BUTTON_TRAINS in text:
+                # Админ получает инструкцию для диалога /train (который защищен внутри)
+                await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
+            elif BUTTON_SETTINGS in text:
+                # Админ получает меню настроек
+                await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
+        else:
+            # Обычный пользователь нажал кнопку, которую не должен был видеть
+            await update.message.reply_text("⛔️ Доступ запрещён. Обновляю меню...")
+            await start(update, context) # Перезагружаем меню с USER_KEYBOARD
 
     return

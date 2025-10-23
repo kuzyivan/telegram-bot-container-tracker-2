@@ -2,7 +2,12 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from config import ADMIN_CHAT_ID
+# Импорт ADMIN_CHAT_ID из config.py
+import sys
+import os
+# Добавляем корень проекта в путь, если он не был добавлен ранее
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..')) 
+from config import ADMIN_CHAT_ID 
 from logger import get_logger
 
 logger = get_logger(__name__)
