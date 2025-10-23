@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler, CommandHandler
 from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details
 from logger import get_logger
+from handlers.menu_handlers import reply_keyboard_handler
 
 logger = get_logger(__name__)
 
@@ -17,7 +18,8 @@ async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT
     else:
         text += "Выберите подписку для управления:"
         for sub in subs:
-            keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.display_id})", callback_data=f"sub_menu_{sub.id}")])
+            # ИСПРАВЛЕНИЕ: Используем sub.id вместо несуществующего sub.display_id
+            keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.id})", callback_data=f"sub_menu_{sub.id}")])
     keyboard.append([InlineKeyboardButton("➕ Создать новую подписку", callback_data="create_sub_start")])
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -37,9 +39,10 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
     containers_count = len(sub.containers) if sub.containers is not None else 0
     text = (
         f"⚙️ *Управление подпиской:*\n"
-        f"*{sub.subscription_name}* `({sub.display_id})`\n\n"
+        # ИСПРАВЛЕНИЕ: Используем sub.id вместо несуществующего sub.display_id
+        f"*{sub.subscription_name}* `({sub.id})`\n\n" 
         f"Статус: {status_text}\n"
-        f"Время отчета: {sub.notify_time.strftime('%H:%M')}\n"
+        f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n"
         f"Контейнеров: {containers_count} шт.\n"
         f"Email для отчетов: {emails_text}"
     )
@@ -93,7 +96,8 @@ async def back_to_subscriptions_list_callback(update: Update, context: ContextTy
     else:
         text += "Выберите подписку для управления:"
         for sub in subs:
-            keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.display_id})", callback_data=f"sub_menu_{sub.id}")])
+            # ИСПРАВЛЕНИЕ: Используем sub.id вместо несуществующего sub.display_id
+            keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.id})", callback_data=f"sub_menu_{sub.id}")])
     keyboard.append([InlineKeyboardButton("➕ Создать новую подписку", callback_data="create_sub_start")])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
