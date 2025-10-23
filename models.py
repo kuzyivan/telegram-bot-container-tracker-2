@@ -1,3 +1,8 @@
+# models.py
+"""
+Определяет основные ORM-модели SQLAlchemy для бота,
+кроме TerminalContainer, которая находится в model/terminal_container.py.
+"""
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
     String, Float, Integer, BigInteger, DateTime, Time, ARRAY, ForeignKey, Text, Boolean
@@ -31,16 +36,29 @@ class UserEmail(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
     
-    # ИСПРАВЛЕНИЕ 1: Снимаем UNIQUE, чтобы несколько пользователей могли использовать один email
+    # Снято UNIQUE для возможности дублирования адресов у разных пользователей
     email: Mapped[str] = mapped_column(String, index=True) 
     
-    # ИСПРАВЛЕНИЕ 2: Добавляем поле для статуса подтверждения
+    # Поле для статуса подтверждения (False по умолчанию для новых)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False) 
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Связь обратно к User
     user: Mapped["User"] = relationship(back_populates="emails")
+
+# --- НОВАЯ МОДЕЛЬ ДЛЯ ХРАНЕНИЯ КОДА ПОДТВЕРЖДЕНИЯ ---
+class VerificationCode(Base):
+    """Временная модель для хранения кода подтверждения email."""
+    __tablename__ = "email_verification_codes"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    email: Mapped[str] = mapped_column(String, index=True)
+    code: Mapped[str] = mapped_column(String(6))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+# ----------------------------------------------------
+
 
 class UserRequest(Base):
      __tablename__ = "user_requests"
