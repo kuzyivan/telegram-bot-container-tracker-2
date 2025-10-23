@@ -1,10 +1,10 @@
-# handlers/menu_handlers.py (ИСПРАВЛЕННЫЙ И ОЧИЩЕННЫЙ код)
+# handlers/menu_handlers.py
 from telegram import Update, ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from logger import get_logger
 import re
 
-# <-- Добавлен импорт функции для прямого вызова
+# <-- ИМПОРТ, ВЫДАЮЩИЙ ОШИБКУ: УБЕДИТЕСЬ, ЧТО ОН ТУТ ЕСТЬ
 from handlers.subscription_management_handler import my_subscriptions_command 
 
 logger = get_logger(__name__)
@@ -42,7 +42,6 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает нажатия кнопок ReplyKeyboard."""
-    # Убеждаемся, что message и text существуют, чтобы избежать AttributeError
     if not update.message or not update.message.text:
          return 
          
@@ -63,7 +62,6 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     
     # Логика для кнопки "🚆 Мои поезда"
     elif "поезда" in text:
-        # NOTE: В боте train_cmd - это ConversationHandler, запускаем его через /train
         await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
         
     # Логика для кнопки "⚙️ Настройки"
