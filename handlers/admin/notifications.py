@@ -1,87 +1,53 @@
-# handlers/admin/notifications.py
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters, ConversationHandler
-from datetime import datetime
-import os
-
-from config import ADMIN_CHAT_ID
+# handlers/admin/notifications.py (Добавьте эту функцию)
+from telegram import Update
+from telegram.ext import ContextTypes
+from datetime import datetime, time
+from services.notification_service import NotificationService 
 from logger import get_logger
-from queries.admin_queries import get_data_for_test_notification
-# ✅ ИСПРАВЛЕНИЕ: Импортируем только существующие функции
-from utils.send_tracking import create_excel_file, get_vladivostok_filename 
-from utils.notify import notify_admin
 
 logger = get_logger(__name__)
 
-# --- Состояния диалога (если есть) ---
-# Предположим, что состояния для force_notify определены здесь
-CHOOSING, TYPING_REPLY = range(2) 
-
-
-# --- Обработчик /test_notify (Примерный код) ---
-
-async def test_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Генерирует Excel-файл с данными для тестовой рассылки и отправляет его администратору."""
-    if update.effective_user.id != ADMIN_CHAT_ID:
+async def force_notify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Принудительный запуск рассылки уведомлений для текущего часа.
+    Полностью повторяет логику job_send_notifications, но запускается по команде.
+    """
+    if update.effective_chat is None or update.effective_message is None:
         return
     
-    await update.message.reply_text("⏳ Собираю тестовые данные для рассылки...")
-    logger.info("[TestNotify] Инициация сбора данных.")
+    # ❗ Рекомендуется: добавить проверку на админа, чтобы команда была доступна только вам.
+    # Пример:
+    # if update.effective_user.id != ADMIN_ID:
+    #     await update.effective_message.reply_text("Эта команда доступна только администраторам.")
+    #     return
+
+    # 1. Определение целевого времени: текущий час в UTC.
+    now_utc = datetime.utcnow()
+    # Берем только час, минуты и секунды обнуляем, чтобы соответствовать notification_time в БД.
+    target_time = time(hour=now_utc.hour, minute=0, second=0, microsecond=0)
+    target_time_str = target_time.strftime('%H:%M')
     
+    await update.effective_message.reply_text(
+        f"⏳ Запуск принудительной рассылки для времени **{target_time_str}** (UTC)...",
+        parse_mode="Markdown"
+    )
+
     try:
-        # Получаем данные в формате {sheet_name: [[row1], [row2]], ...}
-        data_dict = await get_data_for_test_notification()
+        # 2. Инициализация и запуск сервиса
+        service = NotificationService(context.bot)
         
-        if not data_dict:
-            await update.message.reply_text("⚠️ Не найдено активных подписок для тестового отчета.")
-            return
+        # Вызов основной логики рассылки из сервиса
+        sent_count, total_count = await service.send_scheduled_notifications(target_time)
 
-        # ✅ ИСПРАВЛЕНИЕ: Используем стандартную функцию create_excel_file 
-        # Если create_excel_file не поддерживает мульти-листы, код может быть упрощен.
-        # Поскольку у нас нет create_excel_multisheet, мы создадим ОДИН лист
-        
-        # ВРЕМЕННОЕ РЕШЕНИЕ: Создаем один Excel-файл с первым листом данных
-        first_sheet_name = next(iter(data_dict))
-        rows = data_dict[first_sheet_name]
-        
-        # Заголовки (предполагаем, что они известны или берутся из первого элемента)
-        # Если нет заголовков в data_dict, используем заглушки
-        headers = ['Контейнер', 'Отпр', 'Назн', 'Текущая', 'Операция', 'Дата', 'НаКладная', 'КМ', 'Прогноз', 'Вагон', 'Дорога']
-        
-        file_path = await asyncio.to_thread(
-            create_excel_file,
-            rows,
-            headers
+        final_message = (
+            f"✅ **Принудительная рассылка завершена.**\n"
+            f"Обработано подписок на время {target_time_str}: **{total_count}**\n"
+            f"Отправлено сообщений: **{sent_count}**"
         )
-
-        with open(file_path, 'rb') as f:
-            await update.message.reply_document(
-                document=f,
-                filename=get_vladivostok_filename(prefix="ТестРассылка"),
-                caption=f"✅ Тестовый Excel-отчет (только первый лист данных)."
-            )
-        logger.info("[TestNotify] Тестовый Excel успешно отправлен.")
+        logger.info(f"[Force Notify] {final_message.replace('**', '')}")
+        await update.effective_message.reply_text(final_message, parse_mode="Markdown")
 
     except Exception as e:
-        logger.exception(f"❌ Ошибка при создании тестового Excel: {e}")
-        await update.message.reply_text("❌ Внутренняя ошибка при создании тестового Excel-отчета.")
-    finally:
-        if 'file_path' in locals() and os.path.exists(file_path):
-            os.remove(file_path)
-
-# --- Обработчик /force_notify (Примерный код) ---
-
-async def force_notify_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Заглушка для force_notify, которая вызывает диалог (если он определен в bot.py)"""
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
-    await update.message.reply_text("Введите текст для рассылки всем пользователям...")
-    # Этот код обычно запускает ConversationHandler, который должен быть зарегистрирован в bot.py
-
-# --- Регистрация хендлеров ---
-
-def get_notification_handlers():
-    return [
-        CommandHandler("test_notify", test_notify),
-        CommandHandler("force_notify", force_notify_cmd) # Заглушка, если диалог не определен
-    ]
+        error_message = f"❌ Критическая ошибка при принудительной рассылке для {target_time_str}: `{e}`"
+        logger.critical(error_message, exc_info=True)
+        await update.effective_message.reply_text(error_message, parse_mode="Markdown")

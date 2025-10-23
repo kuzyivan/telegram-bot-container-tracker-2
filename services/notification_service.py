@@ -65,7 +65,18 @@ class NotificationService:
                 if container_data_list:
                     message_parts = [f"🔔 **Отчет по подписке: {sub.subscription_name}** 🔔"]
                     for info in container_data_list:
-                        message_parts.append(f"*{info.container_number}*: {info.operation} на {info.current_station} ({info.operation_date.strftime('%d.%m %H:%M')})")
+                        date_str = info.operation_date
+                        formatted_date = "н/д"
+                        if date_str:
+                            try:
+                                # Преобразуем строку в datetime
+                                op_dt = datetime.strptime(date_str, '%d.%m.%Y %H:%M')
+                                formatted_date = op_dt.strftime('%d.%m %H:%M')
+                            except ValueError:
+                                logger.warning(f"[Notification] Не удалось распарсить дату '{date_str}' для контейнера {info.container_number}")
+                        
+                        # ✅ ИСПРАВЛЕНО: используем formatted_date вместо info.operation_date.strftime()
+                        message_parts.append(f"*{info.container_number}*: {info.operation} на {info.current_station} ({formatted_date})")
                     
                     try:
                         # 3. Отправка
