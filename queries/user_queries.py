@@ -1,6 +1,6 @@
 # queries/user_queries.py
 from typing import List, Optional
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from telegram import User as TelegramUser # Импортируем тип User из telegram для аннотации
@@ -120,40 +120,42 @@ async def verify_code_and_activate_email(telegram_id: int, code: str) -> Optiona
                 
             verified_email = verification_entry.email
 
-            # 2. Активируем email в таблице UserEmail
-            # Ищем НЕПОДТВЕРЖДЕННУЮ запись
-            email_to_activate_result = await session.execute(
-                select(UserEmail).where(
-                    UserEmail.user_telegram_id == telegram_id,
-                    UserEmail.email == verified_email,
-                    UserEmail.is_verified == False
-                )
-            )
-            email_to_activate = email_to_activate_result.scalar_one_or_none()
+            # 2. Активируем email в таблице UserEmail (используем UPDATE для надежности)
+            # Мы ищем неподтвержденную запись и обновляем ее
+            update_stmt = update(UserEmail).where(
+                UserEmail.user_telegram_id == telegram_id,
+                UserEmail.email == verified_email,
+                UserEmail.is_verified == False
+            ).values(is_verified=True)
             
-            if email_to_activate:
-                email_to_activate.is_verified = True
-                
-                # При активации записи, удаляем все остальные НЕПОДТВЕРЖДЕННЫЕ дубликаты
-                # (Хотя, по нашей новой логике, она должна быть только одна, но это для безопасности)
-                await session.execute(
-                    delete(UserEmail).where(
-                        UserEmail.user_telegram_id == telegram_id,
-                        UserEmail.email == verified_email,
-                        UserEmail.is_verified == False # Удаляем только неподтвержденные
-                    )
-                )
-
+            update_result = await session.execute(update_stmt)
+            
+            if update_result.rowcount == 0:
+                 logger.warning(f"Код верный, но не найдена НЕПОДТВЕРЖДЕННАЯ запись для обновления: {verified_email}")
+                 email_activated = False
             else:
-                 # WARNING: Код верный, но запись email уже активирована или удалена (в т.ч. самой системой)
-                 logger.warning(f"Код верный, но не найдена неподтвержденная запись для {verified_email}")
+                 email_activated = True
                  
-            # 3. Удаляем код подтверждения
+                 # 3. Удаляем все остальные неподтвержденные дубликаты (если они были)
+                 # Это избыточная очистка, но безопасная.
+                 await session.execute(
+                     delete(UserEmail).where(
+                         UserEmail.user_telegram_id == telegram_id,
+                         UserEmail.email == verified_email,
+                         UserEmail.is_verified == False
+                     )
+                 )
+                 
+            # 4. Удаляем код подтверждения
             await session.delete(verification_entry)
             await session.commit()
             
-            logger.info(f"Email {verified_email} успешно подтвержден для пользователя {telegram_id}.")
-            return verified_email if email_to_activate else None
+            if email_activated:
+                logger.info(f"Email {verified_email} успешно подтвержден для пользователя {telegram_id}.")
+                return verified_email
+            else:
+                return None # Если активация не удалась, возвращаем None
+
 
 async def delete_unverified_email(telegram_id: int, email: str) -> None:
     """Удаляет неподтвержденную запись UserEmail и все связанные коды."""
