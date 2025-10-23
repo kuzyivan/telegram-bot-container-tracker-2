@@ -46,7 +46,7 @@ async def add_unverified_email(telegram_id: int, email: str) -> Optional[UserEma
     """
     email_lower = email.strip().lower()
     async with SessionLocal() as session:
-        try: # <--- НАЧАЛО БЛОКА TRY
+        try:
             async with session.begin():
                 # 1. Проверка на дубликат email у этого пользователя (уже подтвержденного)
                 existing_verified_email = await session.execute(
@@ -84,7 +84,7 @@ async def add_unverified_email(telegram_id: int, email: str) -> Optional[UserEma
                 
                 logger.info(f"Для пользователя {telegram_id} добавлен новый НЕПОДТВЕРЖДЕННЫЙ email: {email_lower}")
                 return new_email
-        except IntegrityError as e: # <--- КОНЕЦ БЛОКА TRY/НАЧАЛО EXCEPT
+        except IntegrityError as e: 
             await session.rollback()
             logger.error(f"Ошибка целостности при добавлении email {email} для пользователя {telegram_id}: {e}")
             return None
@@ -121,58 +121,64 @@ async def generate_and_save_verification_code(telegram_id: int, email: str) -> s
 async def verify_code_and_activate_email(telegram_id: int, code: str) -> Optional[str]:
     """Проверяет код, подтверждает email и возвращает адрес или None."""
     async with SessionLocal() as session:
-        async with session.begin():
-            now_aware = datetime.now(datetime.now().astimezone().tzinfo)
-            # 1. Ищем актуальный код
-            result = await session.execute(
-                select(VerificationCode)
-                .where(
-                    VerificationCode.user_telegram_id == telegram_id,
-                    VerificationCode.code == code,
-                    VerificationCode.expires_at > now_aware
+        try: # <--- НАЧАЛО БЛОКА TRY
+            async with session.begin():
+                now_aware = datetime.now(datetime.now().astimezone().tzinfo)
+                # 1. Ищем актуальный код
+                result = await session.execute(
+                    select(VerificationCode)
+                    .where(
+                        VerificationCode.user_telegram_id == telegram_id,
+                        VerificationCode.code == code,
+                        VerificationCode.expires_at > now_aware
+                    )
+                    .order_by(VerificationCode.expires_at.desc())
+                    .limit(1)
                 )
-                .order_by(VerificationCode.expires_at.desc())
-                .limit(1)
-            )
-            verification_entry = result.scalar_one_or_none()
-            
-            if not verification_entry:
-                return None # Код недействителен или истек
+                verification_entry = result.scalar_one_or_none()
                 
-            verified_email = verification_entry.email
+                if not verification_entry:
+                    return None # Код недействителен или истек
+                    
+                verified_email = verification_entry.email
 
-            # 2. Активируем email в таблице UserEmail
-            # Ищем НЕПОДТВЕРЖДЕННУЮ запись
-            email_to_activate_result = await session.execute(
-                select(UserEmail).where(
-                    UserEmail.user_telegram_id == telegram_id,
-                    UserEmail.email == verified_email,
-                    UserEmail.is_verified == False
-                )
-            )
-            email_to_activate = email_to_activate_result.scalar_one_or_none()
-            
-            # --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ 2: Удаление неподтвержденных дубликатов ---
-            if email_to_activate:
-                email_to_activate.is_verified = True
-                
-                # Удаляем все остальные неподтвержденные дубликаты этого адреса (если они есть)
-                await session.execute(
-                    delete(UserEmail).where(
+                # 2. Активируем email в таблице UserEmail
+                # Ищем НЕПОДТВЕРЖДЕННУЮ запись
+                email_to_activate_result = await session.execute(
+                    select(UserEmail).where(
                         UserEmail.user_telegram_id == telegram_id,
                         UserEmail.email == verified_email,
                         UserEmail.is_verified == False
                     )
                 )
-            else:
-                 logger.warning(f"Код верный, но не найдена неподтвержденная запись для {verified_email}")
-                 
-            # 3. Удаляем код подтверждения
-            await session.delete(verification_entry)
-            await session.commit()
-            
-            logger.info(f"Email {verified_email} успешно подтвержден для пользователя {telegram_id}.")
-            return verified_email if email_to_activate else None
+                email_to_activate = email_to_activate_result.scalar_one_or_none()
+                
+                # --- АКТИВАЦИЯ ---
+                if email_to_activate:
+                    email_to_activate.is_verified = True
+                    
+                    # Удаляем все остальные неподтвержденные дубликаты этого адреса
+                    await session.execute(
+                        delete(UserEmail).where(
+                            UserEmail.user_telegram_id == telegram_id,
+                            UserEmail.email == verified_email,
+                            UserEmail.is_verified == False
+                        )
+                    )
+                else:
+                    logger.warning(f"Код верный, но не найдена неподтвержденная запись для {verified_email}")
+                    
+                # 3. Удаляем код подтверждения
+                await session.delete(verification_entry)
+                await session.commit()
+                
+                logger.info(f"Email {verified_email} успешно подтвержден для пользователя {telegram_id}.")
+                return verified_email if email_to_activate else None
+
+        except IntegrityError as e: # <--- КОНЕЦ БЛОКА TRY/НАЧАЛО EXCEPT
+            await session.rollback()
+            logger.error(f"Ошибка целостности при активации email {verified_email} для пользователя {telegram_id}: {e}")
+            return None
 
 
 async def delete_user_email(email_id: int, user_telegram_id: int) -> bool:
