@@ -11,7 +11,7 @@ from logger import get_logger
 from db import SessionLocal
 from models import Subscription, UserEmail, SubscriptionEmail 
 from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details 
-from queries.user_queries import get_user_emails 
+from queries.user_queries import get_user_emails, register_user_if_not_exists 
 from utils.keyboards import create_yes_no_inline_keyboard, create_time_keyboard, create_email_keyboard 
 
 logger = get_logger(__name__)
@@ -32,8 +32,15 @@ def normalize_containers(text: str) -> list[str]:
 
 async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога создания подписки."""
-    if update.effective_user and context.user_data: 
-        logger.info(f"Пользователь {update.effective_user.id} начал создание подписки.")
+    if not update.effective_user:
+        return ConversationHandler.END
+        
+    # --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Регистрируем пользователя перед началом работы с БД ---
+    await register_user_if_not_exists(update.effective_user) 
+    # ---------------------------------------------------------------------------------
+        
+    logger.info(f"Пользователь {update.effective_user.id} начал создание подписки.")
+    if context.user_data: 
         context.user_data.clear() 
     
     chat_id = update.effective_chat.id
@@ -252,6 +259,7 @@ async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await query.edit_message_text("✅ Подписка успешно создана!")
 
     except Exception as e:
+        # Логирование ошибки, которую вы прислали
         logger.error(f"Ошибка сохранения подписки для пользователя {user_id}: {e}", exc_info=True)
         if query.message:
             await query.edit_message_text("❌ Произошла ошибка при сохранении подписки.")
@@ -303,3 +311,4 @@ def tracking_conversation_handler():
              CallbackQueryHandler(cancel_subscription, pattern="^cancel_sub")
         ],
     )
+```eof

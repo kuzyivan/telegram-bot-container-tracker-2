@@ -3,6 +3,7 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler, CommandHandler
 from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details
+from queries.user_queries import register_user_if_not_exists 
 from logger import get_logger
 
 # NOTE: Импорты из handlers.menu_handlers удалены для предотвращения Circular Import
@@ -10,8 +11,13 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user:
+    if not update.message and not update.callback_query or not update.effective_user: # Учитываем CallbackQuery
         return
+    
+    # --- ИСПРАВЛЕНИЕ: Регистрируем пользователя перед запросом его подписок ---
+    await register_user_if_not_exists(update.effective_user) 
+    # --------------------------------------------------------------------------
+    
     subs = await get_user_subscriptions(update.effective_user.id)
     keyboard = []
     text = "📂 *Ваши подписки*\n\n"
@@ -23,7 +29,13 @@ async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT
             # ИСПРАВЛЕНО: Используем sub.id вместо sub.display_id
             keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.id})", callback_data=f"sub_menu_{sub.id}")]) 
     keyboard.append([InlineKeyboardButton("➕ Создать новую подписку", callback_data="create_sub_start")])
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    
+    # Отправляем сообщение в зависимости от того, откуда пришел вызов (сообщение или колбэк)
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    elif update.callback_query:
+         # Если вызвано из колбэка, отправляем новое сообщение
+        await context.bot.send_message(update.effective_chat.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -47,10 +59,6 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
         f"⚙️ *Управление подпиской:*\n"
         f"*{sub.subscription_name}* `({sub.id})`\n\n" # ИСПРАВЛЕНО: Используем sub.id
         f"Статус: {status_text}\n"
-        # ИСПРАВЛЕНО: notify_time -> notification_time (или используйте то, что есть в вашей модели)
-        # В предыдущих контекстах использовалось notify_time, но models.py имеет notification_time.
-        # Если models.py имеет notification_time, то нужно использовать его. 
-        # Если нет, то используем notification_time, так как это более новое поле.
         f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
         f"Контейнеров: {containers_count} шт.\n"
         f"Email для отчетов: {emails_text}"

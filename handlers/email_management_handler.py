@@ -5,7 +5,7 @@ from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
     CallbackQueryHandler, MessageHandler, filters
 )
-from queries.user_queries import get_user_emails, add_user_email, delete_user_email
+from queries.user_queries import get_user_emails, add_user_email, delete_user_email, register_user_if_not_exists
 from logger import get_logger
 from handlers.menu_handlers import reply_keyboard_handler
 
@@ -29,6 +29,11 @@ async def build_email_management_menu(telegram_id: int, intro_text: str) -> dict
 
 async def my_emails_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message: return
+    
+    # --- ИСПРАВЛЕНИЕ: Регистрируем пользователя перед запросом его emails ---
+    await register_user_if_not_exists(update.effective_user) 
+    # -----------------------------------------------------------------------
+
     menu_data = await build_email_management_menu(update.effective_user.id, "📧 *Управление Email-адресами*")
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
 
