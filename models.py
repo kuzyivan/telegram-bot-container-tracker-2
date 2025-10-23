@@ -1,8 +1,3 @@
-# models.py
-"""
-Определяет основные ORM-модели SQLAlchemy для бота,
-кроме TerminalContainer, которая находится в model/terminal_container.py.
-"""
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
     String, Float, Integer, BigInteger, DateTime, Time, ARRAY, ForeignKey, Text, Boolean
@@ -35,7 +30,13 @@ class UserEmail(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
-    email: Mapped[str] = mapped_column(String, unique=True, index=True) # Email должен быть уникальным
+    
+    # ИСПРАВЛЕНИЕ 1: Снимаем UNIQUE, чтобы несколько пользователей могли использовать один email
+    email: Mapped[str] = mapped_column(String, index=True) 
+    
+    # ИСПРАВЛЕНИЕ 2: Добавляем поле для статуса подтверждения
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False) 
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Связь обратно к User
