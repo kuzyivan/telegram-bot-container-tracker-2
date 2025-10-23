@@ -76,7 +76,6 @@ def get_email_conversation_handler() -> ConversationHandler:
         },
         fallbacks=[
             CommandHandler("cancel", cancel_email_conversation),
-            # УДАЛЕН КОНФЛИКТУЮЩИЙ MessageHandler
         ],
     )
 
