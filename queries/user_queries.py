@@ -46,36 +46,40 @@ async def add_unverified_email(telegram_id: int, email: str) -> Optional[UserEma
     """
     email_lower = email.strip().lower()
     async with SessionLocal() as session:
-        async with session.begin():
-            # 1. Проверка на дубликат email у этого пользователя (уже подтвержденного)
-            existing_verified_email = await session.execute(
-                select(UserEmail).where(
-                    UserEmail.user_telegram_id == telegram_id, 
-                    func.lower(UserEmail.email) == email_lower,
-                    UserEmail.is_verified == True
+        try:
+            async with session.begin(): # Начало транзакции
+                # 1. Проверка на дубликат email у этого пользователя (уже подтвержденного)
+                existing_verified_email = await session.execute(
+                    select(UserEmail).where(
+                        UserEmail.user_telegram_id == telegram_id, 
+                        func.lower(UserEmail.email) == email_lower,
+                        UserEmail.is_verified == True
+                    )
                 )
-            )
-            if existing_verified_email.scalar_one_or_none():
-                logger.warning(f"Попытка добавить существующий email {email} для пользователя {telegram_id} (уже подтвержден)")
-                return None # Email уже существует у этого пользователя и подтвержден
+                if existing_verified_email.scalar_one_or_none():
+                    logger.warning(f"Попытка добавить существующий email {email} для пользователя {telegram_id} (уже подтвержден)")
+                    return None # Email уже существует у этого пользователя и подтвержден
+                    
+                # 2. Удаляем старую неподтвержденную или неактуальную запись (чтобы избежать дубликатов неподтвержденных)
+                await session.execute(
+                    delete(UserEmail).where(
+                        UserEmail.user_telegram_id == telegram_id,
+                        func.lower(UserEmail.email) == email_lower,
+                        UserEmail.is_verified == False
+                    )
+                )
                 
-            # 2. Удаляем старую неподтвержденную или неактуальную запись (чтобы избежать дубликатов неподтвержденных)
-            await session.execute(
-                delete(UserEmail).where(
-                    UserEmail.user_telegram_id == telegram_id,
-                    func.lower(UserEmail.email) == email_lower,
-                    UserEmail.is_verified == False
-                )
-            )
-            
-            # 3. Создаем новую запись, is_verified=False (т.к. миграция установила default=False)
-            new_email = UserEmail(user_telegram_id=telegram_id, email=email_lower, is_verified=False)
-            session.add(new_email)
-            await session.flush()
-            await session.refresh(new_email)
-            
-            logger.info(f"Для пользователя {telegram_id} добавлен новый НЕПОДТВЕРЖДЕННЫЙ email: {email_lower}")
-            return new_email
+                # 3. Создаем новую запись, is_verified=False
+                new_email = UserEmail(user_telegram_id=telegram_id, email=email_lower, is_verified=False)
+                session.add(new_email)
+                await session.flush()
+                await session.refresh(new_email)
+                
+                logger.info(f"Для пользователя {telegram_id} добавлен новый НЕПОДТВЕРЖДЕННЫЙ email: {email_lower}")
+                return new_email
+        
+        # Строка 79 находится здесь, за пределами try блока. 
+        # Если блок try не был закрыт, 'except' вызовет ошибку.
         except IntegrityError as e: 
             await session.rollback()
             logger.error(f"Ошибка целостности при добавлении email {email} для пользователя {telegram_id}: {e}")
@@ -217,7 +221,7 @@ async def register_user_if_not_exists(user: TelegramUser):
             username=username,
             first_name=first_name,
             last_name=last_name
-        ).on_conflict_do_update( 
+        ).on_conflict_do_update(
             index_elements=['telegram_id'], 
             set_=dict(
                 username=username,
