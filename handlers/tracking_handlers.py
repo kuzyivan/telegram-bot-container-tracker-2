@@ -47,7 +47,7 @@ async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_T
                  "Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
             )
         else:
-             # На случай, если message нет (хотя должен быть)
+             # На случай, если message нет
              await context.bot.send_message(
                  chat_id=chat_id,
                  text="Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
@@ -62,9 +62,13 @@ async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_T
 
 async def process_name_and_ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает название, сохраняет его и запрашивает номера контейнеров."""
-    if not update.message or not update.message.text or not context.user_data: 
-        logger.warning("[process_name_and_ask_containers] Сбой: нет сообщения или данных.")
-        return ConversationHandler.END
+    
+    # ❗️ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем наличие текста и игнорируем CallbackQuery, который может прийти.
+    if not update.message or not update.message.text:
+        # Если пришел CallbackQuery, то отвечаем на него и остаемся в текущем состоянии.
+        if update.callback_query:
+             await update.callback_query.answer("Пожалуйста, введите название текстом.")
+        return ASK_NAME 
 
     name = update.message.text.strip()
     if not name:
