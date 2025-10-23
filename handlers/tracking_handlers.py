@@ -311,4 +311,3 @@ def tracking_conversation_handler():
              CallbackQueryHandler(cancel_subscription, pattern="^cancel_sub")
         ],
     )
-```eof
