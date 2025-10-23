@@ -7,7 +7,7 @@ from telegram.ext import (
 )
 from queries.user_queries import get_user_emails, add_user_email, delete_user_email
 from logger import get_logger
-# from handlers.menu_handlers import reply_keyboard_handler <--- УДАЛЕНА СТРОКА, ВЫЗЫВАВШАЯ ЦИКЛИЧЕСКИЙ ИМПОРТ
+# Убедитесь, что здесь нет импорта из handlers.menu_handlers
 
 logger = get_logger(__name__)
 ADD_EMAIL = range(1)
@@ -61,25 +61,11 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
     return ConversationHandler.END
 
-# Для устранения ошибки в fallbacks, мы можем перенести `reply_keyboard_handler` внутрь функции
-# или удалить рероутинг, если он не критичен. Оставим логику, предполагая, что
-# reply_keyboard_handler будет импортирована позже или передана.
-async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ЕДИНСТВЕННАЯ ФУНКЦИЯ ОТМЕНЫ
+async def cancel_email_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отменяет ввод email."""
     if not update.message: return ConversationHandler.END
     await update.message.reply_text("Действие отменено.")
-    return ConversationHandler.END
-
-async def cancel_and_reroute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message: return ConversationHandler.END
-    await update.message.reply_text("Действие отменено. Выполняю команду из меню...")
-    # NOTE: Поскольку reply_keyboard_handler вызвал циклический импорт, 
-    # мы должны импортировать его локально, если он действительно нужен.
-    # Для простоты и устранения ошибки мы временно удаляем вызов:
-    # await reply_keyboard_handler(update, context) 
-    
-    # Вместо вызова, просто отправляем /start
-    from handlers.menu_handlers import start
-    await start(update, context)
     return ConversationHandler.END
 
 def get_email_conversation_handler() -> ConversationHandler:
@@ -89,11 +75,8 @@ def get_email_conversation_handler() -> ConversationHandler:
             ADD_EMAIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_email_receive)]
         },
         fallbacks=[
-            CommandHandler("cancel", cancel_conversation),
-            # filters.Regex("^(📦 Дислокация|📂 Мои подписки)$") вызывает MessageHandler,
-            # который перенаправляет в cancel_and_reroute.
-            # Оставим это, так как cancel_and_reroute теперь импортирует start
-            MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки|⚙️ Настройки|🚆 Мои поезда)$"), cancel_and_reroute)
+            CommandHandler("cancel", cancel_email_conversation),
+            # УДАЛЕН КОНФЛИКТУЮЩИЙ MessageHandler
         ],
     )
 
