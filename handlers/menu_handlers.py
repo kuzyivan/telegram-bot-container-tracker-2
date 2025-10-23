@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 from logger import get_logger
 import re
 
-# <-- ИСПРАВЛЕНИЕ: Добавлен импорт функции для прямого вызова
+# <-- Добавлен импорт функции для прямого вызова (как было в предыдущем шаге)
 from handlers.subscription_management_handler import my_subscriptions_command 
 
 logger = get_logger(__name__)
@@ -55,7 +55,7 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
         
     # Логика для кнопки "📂 Мои подписки"
     elif "подписки" in text:
-        # <-- ИСПРАВЛЕНИЕ: Прямой вызов хендлера команды /my_subscriptions
+        # Прямой вызов хендлера команды /my_subscriptions
         await update.message.reply_text("Загрузка списка подписок...")
         await my_subscriptions_command(update, context) 
     
@@ -64,8 +64,8 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
         # NOTE: В боте train_cmd - это ConversationHandler, запускаем его через /train
         await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
         
-    # Логика для кнопки "⚙️ Настройки"
-    elif "Настройки" в text:
+    # ИСПРАВЛЕНИЕ: Замена русской 'в' на английское 'in'
+    elif "Настройки" in text: 
          await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
 
     return
