@@ -1,9 +1,10 @@
-# handlers/menu_handlers.py
+# handlers/menu_handlers.py (ИСПРАВЛЕННЫЙ И ОЧИЩЕННЫЙ код)
 from telegram import Update, ReplyKeyboardRemove, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from logger import get_logger
 import re
 
+# <-- Добавлен импорт функции для прямого вызова
 from handlers.subscription_management_handler import my_subscriptions_command 
 
 logger = get_logger(__name__)
@@ -41,6 +42,10 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает нажатия кнопок ReplyKeyboard."""
+    # Убеждаемся, что message и text существуют, чтобы избежать AttributeError
+    if not update.message or not update.message.text:
+         return 
+         
     text = update.message.text.strip()
     user = update.effective_user
     

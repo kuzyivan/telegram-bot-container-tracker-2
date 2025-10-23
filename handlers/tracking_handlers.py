@@ -29,30 +29,41 @@ def normalize_containers(text: str) -> list[str]:
     found = re.findall(r'[A-Z]{3}U\d{7}', text.upper())
     return sorted(list(set(found)))
 
+
 async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога создания подписки."""
     if update.effective_user and context.user_data: 
         logger.info(f"Пользователь {update.effective_user.id} начал создание подписки.")
         context.user_data.clear() 
     
+    chat_id = update.effective_chat.id
+
     # Обработка CallbackQuery (для Inline-кнопки "Создать новую подписку")
     if update.callback_query:
         await update.callback_query.answer()
-        # Очистка кнопок в сообщении, откуда пришел колбэк (опционально)
+        # Редактируем сообщение, чтобы убрать кнопки и задать первый вопрос.
         if update.callback_query.message:
-            await update.callback_query.edit_message_reply_markup(reply_markup=None) 
+            await update.callback_query.edit_message_text(
+                 "Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
+            )
+        else:
+             # На случай, если message нет (хотя должен быть)
+             await context.bot.send_message(
+                 chat_id=chat_id,
+                 text="Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
+             )
     
-    # Отправляем запрос на название
-    chat_id = update.effective_chat.id
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
-    )
-    return ASK_NAME
+    # Обработка команды /add_subscription или reply_keyboard_handler
+    elif update.message:
+        await update.message.reply_text("Введите название для новой подписки (например, 'Контейнеры для клиента А'):")
+        
+    return ASK_NAME # <-- Возвращаем состояние ASK_NAME
+
 
 async def process_name_and_ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает название, сохраняет его и запрашивает номера контейнеров."""
     if not update.message or not update.message.text or not context.user_data: 
+        logger.warning("[process_name_and_ask_containers] Сбой: нет сообщения или данных.")
         return ConversationHandler.END
 
     name = update.message.text.strip()
@@ -62,11 +73,12 @@ async def process_name_and_ask_containers(update: Update, context: ContextTypes.
 
     context.user_data[NAME] = name
     if update.effective_user:
-        logger.info(f"Пользователь {update.effective_user.id} ввел название подписки: {name}")
+        logger.info(f"Пользователь {update.effective_user.id} ввел название подписки: {name}. Переход к ASK_CONTAINERS.")
         
     # Запрашиваем контейнеры
     await update.message.reply_text("Отправьте номера контейнеров (можно списком, через запятую или пробел):")
     return ASK_CONTAINERS
+
 
 async def process_containers_and_ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает контейнеры, сохраняет их и запрашивает время уведомления."""
@@ -85,6 +97,7 @@ async def process_containers_and_ask_time(update: Update, context: ContextTypes.
     # Запрашиваем время
     await update.message.reply_text("Выберите время для ежедневной рассылки:", reply_markup=create_time_keyboard())
     return ASK_TIME
+
 
 async def ask_emails(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает время (через колбэк), запрашивает email для рассылки."""
@@ -120,6 +133,7 @@ async def ask_emails(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await query.edit_message_text("Некорректное время. Попробуйте еще раз.")
         return ConversationHandler.END
 
+
 async def handle_email_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обрабатывает выбор email (добавление/удаление) или переход к подтверждению."""
     query = update.callback_query
@@ -146,6 +160,7 @@ async def handle_email_selection(update: Update, context: ContextTypes.DEFAULT_T
         return await confirm_save(update, context)
 
     return ASK_EMAILS
+
 
 async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Показывает сводку и спрашивает подтверждение."""
@@ -182,6 +197,7 @@ async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
     return CONFIRM_SAVE
+
 
 async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет подписку в базу данных."""
@@ -238,6 +254,7 @@ async def save_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     if context.user_data: context.user_data.clear()
     return ConversationHandler.END
+
 
 async def cancel_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отмена создания подписки."""
