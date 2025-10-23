@@ -1,17 +1,15 @@
-# db.py
-"""
-Настройка асинхронной сессии SQLAlchemy для работы с базой данных.
-"""
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base # Этот импорт не нужен, так как Base импортируется из db_base
+# from sqlalchemy.orm import declarative_base # Этот импорт не нужен, так как Base импортируется из db_base
 
 from config import DATABASE_URL
 from db_base import Base 
 
 # Импортируем ВСЕ МОДЕЛИ, чтобы Base.metadata.create_all их увидел.
+# ВАЖНО: Импортируем их здесь, а не внутри queries/user_queries.py
 from models import Subscription, Tracking, User, UserEmail, SubscriptionEmail, UserRequest, StationsCache, TrainEventLog 
 from model.terminal_container import TerminalContainer 
-# --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Импортируем модель кода для init_db ---
+# --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Импортируем модель кода из queries ---
+# Этот импорт необходим, чтобы Base.metadata "увидел" эту модель при вызове init_db().
 from queries.user_queries import VerificationCode 
 # -------------------------------------------------------------------
 
@@ -36,5 +34,4 @@ async def init_db():
     """
     async with engine.begin() as conn:
         # NOTE: Это синхронный вызов внутри асинхронного блока.
-        # SQLAlchemy 2.0 handle this correctly with asyncpg.
-        await conn.run_sync(Base.metadata.create_all) 
+        await conn.run_sync(Base.metadata.create_all)
