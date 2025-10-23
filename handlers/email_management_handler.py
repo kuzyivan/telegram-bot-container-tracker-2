@@ -5,7 +5,6 @@ from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
     CallbackQueryHandler, MessageHandler, filters
 )
-# Обновлен импорт для delete_unverified_email
 from queries.user_queries import get_user_emails, add_unverified_email, delete_user_email, register_user_if_not_exists, generate_and_save_verification_code, verify_code_and_activate_email, delete_unverified_email
 from logger import get_logger
 from handlers.menu_handlers import reply_keyboard_handler
@@ -88,7 +87,8 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 3. Отправляем код по почте (фоново)
     subject, body = generate_verification_email(code, user_id)
-    # Используем asyncio.to_thread, так как send_email синхронный
+    # Вызываем синхронную send_email в отдельном потоке
+    # ИСПРАВЛЕНИЕ: Вызов остаётся корректным, так как send_email теперь синхронна
     await asyncio.to_thread(send_email, to=email, subject=subject, body=body, attachments=None)
 
     # 4. Просим ввести код
@@ -135,27 +135,23 @@ async def receive_verification_code(update: Update, context: ContextTypes.DEFAUL
 
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message: return ConversationHandler.END
+    if not update.message or not update.effective_user: return ConversationHandler.END
     
-    # --- ОЧИСТКА НЕПОДТВЕРЖДЕННОЙ ЗАПИСИ ---
-    email_to_verify = context.user_data.get('email_to_verify')
-    if email_to_verify and update.effective_user:
-        # Вызываем функцию очистки из queries/user_queries.py
-        await delete_unverified_email(update.effective_user.id, email_to_verify)
-        
+    # Очистка неподтвержденного email и кодов
+    email_to_clear = context.user_data.get('email_to_verify')
+    await delete_unverified_email(update.effective_user.id, email_to_clear)
+
     await update.message.reply_text("Действие отменено.")
     context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel_and_reroute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message: return ConversationHandler.END
+    if not update.message or not update.effective_user: return ConversationHandler.END
     
-    # --- ОЧИСТКА НЕПОДТВЕРЖДЕННОЙ ЗАПИСИ ---
-    email_to_verify = context.user_data.get('email_to_verify')
-    if email_to_verify and update.effective_user:
-        # Вызываем функцию очистки из queries/user_queries.py
-        await delete_unverified_email(update.effective_user.id, email_to_verify)
-        
+    # Очистка неподтвержденного email и кодов
+    email_to_clear = context.user_data.get('email_to_verify')
+    await delete_unverified_email(update.effective_user.id, email_to_clear)
+
     await update.message.reply_text("Действие отменено. Выполняю команду из меню...")
     await reply_keyboard_handler(update, context)
     context.user_data.clear()

@@ -1,3 +1,4 @@
+# utils/email_sender.py
 import os
 import smtplib
 from email.message import EmailMessage
@@ -34,15 +35,15 @@ def generate_verification_email(code: str, telegram_id: int) -> tuple[str, str]:
     )
     return subject, body
 
-async def send_email(to, subject=None, body=None, attachments=None):
+# --- ИСПРАВЛЕНИЕ: Удалено 'async' ---
+def send_email(to, subject=None, body=None, attachments=None):
     """
     Отправляет письмо с вложениями или простое текстовое письмо.
-    """
-    # Если это письмо не является явно заданным (например, для отчета или уведомления),
-    # используем шаблон по умолчанию.
-    is_default_report = subject is None and body is None and not attachments
     
-    if is_default_report:
+    Эта функция СИНХРОННА. Она должна вызываться через asyncio.to_thread().
+    """
+    # Если это письмо с кодом, subject и body будут заполнены
+    if subject is None and body is None and not attachments:
         subject = "Дислокация контейнеров — отправка от ООО «Терминал»"
         body = (
             "Привет! 👋\n\n"
@@ -88,5 +89,5 @@ async def send_email(to, subject=None, body=None, attachments=None):
         logger.info(f"📧 Успешно отправлено письмо на {to}")
     except Exception as e:
         logger.error(f"❌ Ошибка при отправке письма на {to}: {e}", exc_info=True)
-        # Поднимаем исключение, чтобы вызывающая функция (handler) могла его обработать
+        # Оставляем raise, чтобы вы видели ошибку, но можно убрать, если она не критична для работы
         raise
