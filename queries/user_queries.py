@@ -1,6 +1,6 @@
 # queries/user_queries.py
 from typing import List, Optional
-from sqlalchemy import select, delete, func, or_
+from sqlalchemy import select, delete, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from telegram import User as TelegramUser # Импортируем тип User из telegram для аннотации
@@ -9,8 +9,8 @@ import string
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Mapped, mapped_column 
 from sqlalchemy import BigInteger, String, DateTime, Integer, Boolean
-from db import SessionLocal
 from models import UserEmail, User, UserRequest, VerificationCode # Import VerificationCode from models.py
+from logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -52,8 +52,9 @@ async def add_unverified_email(telegram_id: int, email: str) -> Optional[UserEma
                     logger.warning(f"Попытка добавить существующий email {email} для пользователя {telegram_id} (уже подтвержден)")
                     return None # Адрес уже подтвержден, выходим.
                 else:
+                    # Это существующая неподтвержденная запись. Используем ее для повторной отправки кода.
                     logger.info(f"Для пользователя {telegram_id} найден существующий НЕПОДТВЕРЖДЕННЫЙ email: {email}. Повторная отправка кода.")
-                    return existing_email # Адрес найден, возвращаем для повторной отправки кода.
+                    return existing_email 
                 
             # 2. Если адрес не найден (ни подтвержденный, ни неподтвержденный) - создаем новый.
             new_email = UserEmail(user_telegram_id=telegram_id, email=email_lower, is_verified=False)
@@ -63,10 +64,6 @@ async def add_unverified_email(telegram_id: int, email: str) -> Optional[UserEma
             
             logger.info(f"Для пользователя {telegram_id} добавлен новый НЕПОДТВЕРЖДЕННЫЙ email: {email_lower}")
             return new_email
-        # except IntegrityError as e: # Удалено, т.к. IntegrityError должен обрабатываться выше по стеку
-        #     await session.rollback()
-        #     logger.error(f"Ошибка целостности при добавлении email {email} для пользователя {telegram_id}: {e}")
-        #     return None
 
 
 async def generate_and_save_verification_code(telegram_id: int, email: str) -> str:
@@ -137,18 +134,18 @@ async def verify_code_and_activate_email(telegram_id: int, code: str) -> Optiona
             if email_to_activate:
                 email_to_activate.is_verified = True
                 
-                # Удаляем все неподтвержденные дубликаты этого адреса (если они есть)
-                # NOTE: Это необязательно, так как мы уже удаляем их при создании новой записи,
-                # но оставляем для чистоты на случай, если есть старые ошибки
-                # await session.execute(
-                #     delete(UserEmail).where(
-                #         UserEmail.user_telegram_id == telegram_id,
-                #         UserEmail.email == verified_email,
-                #         UserEmail.is_verified == False
-                #     )
-                # )
+                # При активации записи, удаляем все остальные НЕПОДТВЕРЖДЕННЫЕ дубликаты
+                # (Хотя, по нашей новой логике, она должна быть только одна, но это для безопасности)
+                await session.execute(
+                    delete(UserEmail).where(
+                        UserEmail.user_telegram_id == telegram_id,
+                        UserEmail.email == verified_email,
+                        UserEmail.is_verified == False # Удаляем только неподтвержденные
+                    )
+                )
+
             else:
-                 # WARNING: Код верный, но запись email уже активирована или удалена
+                 # WARNING: Код верный, но запись email уже активирована или удалена (в т.ч. самой системой)
                  logger.warning(f"Код верный, но не найдена неподтвержденная запись для {verified_email}")
                  
             # 3. Удаляем код подтверждения
