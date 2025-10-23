@@ -31,6 +31,7 @@ from handlers.distance_handlers import distance_conversation_handler
 from handlers.admin.panel import admin_panel, admin_panel_callback
 from handlers.admin.uploads import upload_file_command, handle_admin_document
 from handlers.admin.exports import stats, exportstats, tracking
+from handlers.admin.notifications import force_notify_handler # <--- НОВЫЙ ИМПОРТ
 
 # --- ИМПОРТ init_db ---
 from db import init_db
@@ -84,6 +85,7 @@ def main():
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(CommandHandler("upload_file", upload_file_command))
+    application.add_handler(CommandHandler("force_notify", force_notify_handler)) # <--- РЕГИСТРАЦИЯ НОВОЙ КОМАНДЫ
     
     # 3. Команды пользователя
     application.add_handler(CommandHandler("start", start))
