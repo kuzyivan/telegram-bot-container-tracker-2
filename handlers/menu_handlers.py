@@ -4,6 +4,9 @@ from telegram.ext import ContextTypes
 from logger import get_logger
 import re
 
+# <-- ИСПРАВЛЕНИЕ: Добавлен импорт функции для прямого вызова
+from handlers.subscription_management_handler import my_subscriptions_command 
+
 logger = get_logger(__name__)
 
 # --- Вспомогательные функции ---
@@ -52,34 +55,17 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
         
     # Логика для кнопки "📂 Мои подписки"
     elif "подписки" in text:
-        # Вызываем команду /my_subscriptions (она должна быть зарегистрирована в bot.py)
-        await context.application.update_queue.put(
-             Update(
-                 update_id=update.update_id,
-                 message=update.message.effective_message,
-                 callback_query=None,
-                 my_chat_member=None,
-                 edited_message=None,
-                 channel_post=None,
-                 edited_channel_post=None,
-                 inline_query=None,
-                 chosen_inline_result=None,
-                 shipping_query=None,
-                 pre_checkout_query=None,
-                 poll=None,
-                 poll_answer=None,
-                 chat_member=None,
-                 chat_join_request=None
-             )
-        )
-        await update.message.reply_text("Запущена команда /my_subscriptions...")
+        # <-- ИСПРАВЛЕНИЕ: Прямой вызов хендлера команды /my_subscriptions
+        await update.message.reply_text("Загрузка списка подписок...")
+        await my_subscriptions_command(update, context) 
     
     # Логика для кнопки "🚆 Мои поезда"
     elif "поезда" in text:
+        # NOTE: В боте train_cmd - это ConversationHandler, запускаем его через /train
         await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
         
     # Логика для кнопки "⚙️ Настройки"
-    elif "Настройки" in text:
+    elif "Настройки" в text:
          await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
 
     return

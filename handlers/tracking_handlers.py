@@ -3,7 +3,7 @@ import re
 from datetime import time
 from telegram import Update
 from telegram.ext import (
-    ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+    ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler # <-- CallbackQueryHandler добавлен
 )
 from sqlalchemy import select 
 
@@ -12,7 +12,6 @@ from db import SessionLocal
 from models import Subscription, UserEmail, SubscriptionEmail 
 from queries.subscription_queries import get_user_subscriptions, delete_subscription, get_subscription_details 
 from queries.user_queries import get_user_emails 
-# ✅ Импортируем НОВУЮ функцию клавиатуры
 from utils.keyboards import create_yes_no_inline_keyboard, create_time_keyboard, create_email_keyboard 
 
 logger = get_logger(__name__)
@@ -32,9 +31,25 @@ async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_T
     if update.effective_user and context.user_data: 
         logger.info(f"Пользователь {update.effective_user.id} начал создание подписки.")
         context.user_data.clear() 
-    if update.message:
-        await update.message.reply_text("Введите название для новой подписки (например, 'Контейнеры для клиента А'):")
+    
+    message = update.message
+    query = update.callback_query
+
+    # Если запуск через CallbackQuery, отвечаем на него и убираем кнопки
+    if query:
+        await query.answer()
+        # Попытка удалить или отредактировать сообщение с кнопкой
+        if query.message:
+            await context.bot.send_message(
+                 chat_id=query.message.chat_id,
+                 text="Начинаем создание подписки. Введите название:",
+            )
+        return ASK_NAME # Продолжаем с ASK_NAME
+
+    if message:
+        await message.reply_text("Введите название для новой подписки (например, 'Контейнеры для клиента А'):")
         return ASK_NAME
+        
     return ConversationHandler.END
 
 async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -158,7 +173,6 @@ async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     ]
     text = "Проверьте данные:\n\n" + "\n".join(summary) + "\n\nСохранить?"
 
-    # ✅ Используем НОВУЮ функцию для Inline Да/Нет
     reply_markup = create_yes_no_inline_keyboard("save_sub", "cancel_sub") 
 
     if query:
@@ -244,7 +258,11 @@ async def cancel_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
 def tracking_conversation_handler():
     """Возвращает ConversationHandler для создания подписки."""
     return ConversationHandler(
-        entry_points=[CommandHandler("add_subscription", add_subscription_start)],
+        entry_points=[
+            CommandHandler("add_subscription", add_subscription_start),
+            # <-- ИСПРАВЛЕНИЕ: Добавлена точка входа по CallbackQuery
+            CallbackQueryHandler(add_subscription_start, pattern="^create_sub_start$") 
+        ],
         states={
             ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_containers)],
             ASK_CONTAINERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_time)],
