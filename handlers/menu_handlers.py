@@ -4,7 +4,6 @@ from telegram.ext import ContextTypes
 from logger import get_logger
 import re
 
-# <-- Добавлен импорт функции для прямого вызова (как было в предыдущем шаге)
 from handlers.subscription_management_handler import my_subscriptions_command 
 
 logger = get_logger(__name__)
@@ -27,8 +26,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /start, выводя главное меню."""
     if not update.message:
         return
-    
-    # Введите здесь логику регистрации пользователя, если она не в register_user_if_not_exists
     
     await update.message.reply_text(
         "Здравствуйте! Выберите действие в меню:",
@@ -64,8 +61,8 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
         # NOTE: В боте train_cmd - это ConversationHandler, запускаем его через /train
         await update.message.reply_text("Запущена команда /train. Введите номер поезда:")
         
-    # ИСПРАВЛЕНИЕ: Замена русской 'в' на английское 'in'
-    elif "Настройки" in text: 
+    # Логика для кнопки "⚙️ Настройки"
+    elif "Настройки" in text:
          await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
 
     return

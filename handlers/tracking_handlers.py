@@ -3,7 +3,7 @@ import re
 from datetime import time
 from telegram import Update
 from telegram.ext import (
-    ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler # <-- CallbackQueryHandler добавлен
+    ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 )
 from sqlalchemy import select 
 
@@ -17,6 +17,9 @@ from utils.keyboards import create_yes_no_inline_keyboard, create_time_keyboard,
 logger = get_logger(__name__)
 
 # Состояния диалога
+# ASK_NAME - Ждем названия
+# ASK_CONTAINERS - Ждем номеров контейнеров
+# ASK_TIME - Ждем выбора времени
 (ASK_NAME, ASK_CONTAINERS, ASK_TIME, ASK_EMAILS, CONFIRM_SAVE) = range(5)
 # Ключи для context.user_data
 (NAME, CONTAINERS, TIME, EMAILS) = ("sub_name", "sub_containers", "sub_time", "sub_emails")
@@ -32,28 +35,23 @@ async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_T
         logger.info(f"Пользователь {update.effective_user.id} начал создание подписки.")
         context.user_data.clear() 
     
-    message = update.message
-    query = update.callback_query
+    # Обработка CallbackQuery (для Inline-кнопки "Создать новую подписку")
+    if update.callback_query:
+        await update.callback_query.answer()
+        # Очистка кнопок в сообщении, откуда пришел колбэк (опционально)
+        if update.callback_query.message:
+            await update.callback_query.edit_message_reply_markup(reply_markup=None) 
+    
+    # Отправляем запрос на название
+    chat_id = update.effective_chat.id
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
+    )
+    return ASK_NAME
 
-    # Если запуск через CallbackQuery, отвечаем на него и убираем кнопки
-    if query:
-        await query.answer()
-        # Попытка удалить или отредактировать сообщение с кнопкой
-        if query.message:
-            await context.bot.send_message(
-                 chat_id=query.message.chat_id,
-                 text="Начинаем создание подписки. Введите название:",
-            )
-        return ASK_NAME # Продолжаем с ASK_NAME
-
-    if message:
-        await message.reply_text("Введите название для новой подписки (например, 'Контейнеры для клиента А'):")
-        return ASK_NAME
-        
-    return ConversationHandler.END
-
-async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получает название, запрашивает номера контейнеров."""
+async def process_name_and_ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получает название, сохраняет его и запрашивает номера контейнеров."""
     if not update.message or not update.message.text or not context.user_data: 
         return ConversationHandler.END
 
@@ -65,11 +63,13 @@ async def ask_containers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data[NAME] = name
     if update.effective_user:
         logger.info(f"Пользователь {update.effective_user.id} ввел название подписки: {name}")
+        
+    # Запрашиваем контейнеры
     await update.message.reply_text("Отправьте номера контейнеров (можно списком, через запятую или пробел):")
     return ASK_CONTAINERS
 
-async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Получает контейнеры, запрашивает время уведомления."""
+async def process_containers_and_ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Получает контейнеры, сохраняет их и запрашивает время уведомления."""
     if not update.message or not update.message.text or not context.user_data: 
         return ConversationHandler.END
 
@@ -82,6 +82,7 @@ async def ask_time(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.effective_user:
         logger.info(f"Пользователь {update.effective_user.id} ввел контейнеры: {containers}")
 
+    # Запрашиваем время
     await update.message.reply_text("Выберите время для ежедневной рассылки:", reply_markup=create_time_keyboard())
     return ASK_TIME
 
@@ -256,16 +257,22 @@ async def cancel_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 def tracking_conversation_handler():
-    """Возвращает ConversationHandler для создания подписки."""
+    """
+    Возвращает ConversationHandler для создания подписки.
+    Порядок шагов: 1. Название -> 2. Контейнеры -> 3. Время -> 4. Email -> 5. Подтверждение.
+    """
     return ConversationHandler(
         entry_points=[
             CommandHandler("add_subscription", add_subscription_start),
-            # <-- ИСПРАВЛЕНИЕ: Добавлена точка входа по CallbackQuery
             CallbackQueryHandler(add_subscription_start, pattern="^create_sub_start$") 
         ],
         states={
-            ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_containers)],
-            ASK_CONTAINERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_time)],
+            # ASK_NAME: Ждем название, затем переходим к ASK_CONTAINERS
+            ASK_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_name_and_ask_containers)],
+            
+            # ASK_CONTAINERS: Ждем контейнеры, затем переходим к ASK_TIME
+            ASK_CONTAINERS: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_containers_and_ask_time)],
+            
             ASK_TIME: [CallbackQueryHandler(ask_emails, pattern="^time_")],
             ASK_EMAILS: [CallbackQueryHandler(handle_email_selection, pattern="^(email_|confirm_emails)")],
             CONFIRM_SAVE: [CallbackQueryHandler(save_subscription, pattern="^save_sub")],
