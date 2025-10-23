@@ -32,6 +32,10 @@ from handlers.admin.panel import admin_panel, admin_panel_callback
 from handlers.admin.uploads import upload_file_command, handle_admin_document
 from handlers.admin.exports import stats, exportstats, tracking
 
+# --- ИМПОРТ init_db ---
+from db import init_db
+# ---------------------
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """Обработка всех необработанных ошибок."""
     logger.error("❗️ Ошибка: %s", context.error, exc_info=True)
@@ -109,6 +113,10 @@ def main():
     application.add_error_handler(error_handler)
 
     async def post_init(app: Application):
+        # --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ---
+        await init_db() # Гарантируем, что все таблицы существуют перед запуском
+        # -----------------------------
+        
         await set_bot_commands(app)
         
         dislocation_check_on_start_func = start_scheduler(app.bot)

@@ -3,17 +3,18 @@
 Настройка асинхронной сессии SQLAlchemy для работы с базой данных.
 """
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base # Этот импорт не нужен, так как Base импортируется из db_base
 
 from config import DATABASE_URL
 from db_base import Base 
 
-# Импортируем только те модели, которые могут понадобиться ДЛЯ ИНИЦИАЛИЗАЦИИ
-# или если другие модули импортируют их ИЗ ЭТОГО ФАЙЛА (что не рекомендуется).
-# Для Alembic все модели импортируются в env.py.
-# Оставляем только те, что могут быть нужны напрямую (например, если есть функции в этом файле)
-from models import Subscription, Tracking, User # Пример - оставь, если нужны
-from model.terminal_container import TerminalContainer # Пример
+# Импортируем ВСЕ МОДЕЛИ, чтобы Base.metadata.create_all их увидел.
+from models import Subscription, Tracking, User, UserEmail, SubscriptionEmail, UserRequest, StationsCache, TrainEventLog 
+from model.terminal_container import TerminalContainer 
+# --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Импортируем модель кода для init_db ---
+from queries.user_queries import VerificationCode 
+# -------------------------------------------------------------------
+
 
 engine = create_async_engine(DATABASE_URL, echo=False) 
 
@@ -28,5 +29,12 @@ async def get_db() -> AsyncSession:
         yield session
 
 async def init_db():
+    """
+    Создает все таблицы, определенные через Base.
+    Это гарантирует, что даже если Alembic не был запущен, или пропустил какую-то таблицу, 
+    ORM создаст ее при первом запуске бота.
+    """
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # NOTE: Это синхронный вызов внутри асинхронного блока.
+        # SQLAlchemy 2.0 handle this correctly with asyncpg.
+        await conn.run_sync(Base.metadata.create_all) 
