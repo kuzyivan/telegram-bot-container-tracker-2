@@ -1,239 +1,190 @@
 # handlers/broadcast.py
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import html
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, Message
+from telegram.error import BadRequest, Forbidden, ChatMigrated # Добавлен Forbidden
 from telegram.ext import (
-    ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+    ContextTypes, ConversationHandler,
+    CommandHandler, MessageHandler, CallbackQueryHandler, filters
 )
-from telegram.error import TelegramError
-from typing import cast, Dict, Any
 
 from logger import get_logger
+from config import ADMIN_CHAT_ID
+# ✅ ИСПРАВЛЕНИЕ: Импортируем get_all_user_ids из queries.user_queries, как в других файлах
 from queries.user_queries import get_all_user_ids 
-from handlers.admin.utils import admin_only_handler
-from config import ADMIN_CHAT_ID 
-# ✅ ИМПОРТИРУЕМ ФУНКЦИЮ ДЛЯ КЛАВИАТУРЫ ИЗ UTILS/KEYBOARDS.PY
-from utils.keyboards import create_broadcast_confirm_keyboard
 
 logger = get_logger(__name__)
 
-# Состояния
-AWAIT_BROADCAST_MESSAGE, CONFIRM_BROADCAST = range(2) 
+BROADCAST_TEXT, BROADCAST_CONFIRM = range(2)
 
-# --- Обработчики ConversationHandler ---
-
-async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Начинает диалог рассылки."""
-    # Строки 40, 50, 51: Проверка на update.message и admin_only_handler гарантирует, 
-    # что мы работаем с реальным сообщением от админа.
-    if not update.message or not await admin_only_handler(update, context):
-        return ConversationHandler.END
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начинает диалог создания рассылки."""
+    user = update.effective_user
+    chat = update.effective_chat
     
-    # ✅ ИСПРАВЛЕНИЕ ЛОГИРОВАНИЯ: Запись о начале команды
-    if update.effective_user:
-        logger.info(f"[/broadcast] Администратор {update.effective_user.id} начал диалог рассылки.")
-    
-    # ✅ ИСПРАВЛЕНИЕ UX: Убраны технические детали
-    await update.message.reply_text(
-        "📣 **Введите текст сообщения для рассылки всем пользователям бота.**\n"
-        "Вы можете использовать форматирование MarkdownV2.\n"
-        "Используйте /cancel для отмены."
-    )
-    return AWAIT_BROADCAST_MESSAGE
-
-async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """
-    Получает сообщение, показывает предпросмотр и запрашивает подтверждение
-    с помощью инлайн-кнопок.
-    """
-    # Дополнительная проверка для Pylance
-    if not update.message or not update.message.text or not update.effective_user: 
-        logger.warning("[BROADCAST_ASK] Message, text or user is missing. Ending conversation.")
+    if not user or not chat:
         return ConversationHandler.END
 
-    logger.info(f"[BROADCAST_ASK] Получен текст от {update.effective_user.id}: {update.message.text[:50]}...")
-    
-    # Приведение типа, чтобы Pylance не жаловался на context.user_data
-    user_data: Dict[str, Any] = cast(Dict[str, Any], context.user_data)
-    
-    message_text = update.message.text
-    parse_mode = "MarkdownV2" 
-    
-    user_data['broadcast_text'] = message_text
-    user_data['broadcast_parse_mode'] = parse_mode
-
-    # Показываем предпросмотр (агрессивное экранирование спецсимволов)
-    preview_text = message_text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("]", "\\]") \
-                              .replace("(", "\\(").replace(")", "\\)").replace("~", "\\~").replace("`", "\\`") \
-                              .replace(">", "\\>").replace("#", "\\#").replace("+", "\\+").replace("-", "\\-") \
-                              .replace("=", "\\=").replace("|", "\\|").replace("{", "\\{").replace("}", "\\}") \
-                              .replace(".", "\\.").replace("!", "\\!")
-    
-    # Форматируем сообщение подтверждения с экранированием обрамляющего текста
-    confirmation_text = (
-        f"📣 **Предпросмотр рассылки**\n"
-        f"Вы уверены, что хотите отправить следующее сообщение всем пользователям\\?\n"
-        f"\n\\-\\-\\-\n"
-        f"{preview_text}\n"
-        f"\\-\\-\\-\n"
-    )
-
-    # ✅ ИСПОЛЬЗУЕМ ФУНКЦИЮ ИЗ KEYBOARDS.PY
-    await update.message.reply_text(
-        confirmation_text,
-        reply_markup=create_broadcast_confirm_keyboard(),
-        parse_mode="MarkdownV2"
-    )
-    
-    return CONFIRM_BROADCAST 
-
-async def broadcast_confirm_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обрабатывает ввод 'ДА' (на случай, если пользователь введет его текстом)."""
-    if not update.message or not update.message.text or not context.user_data:
+    # ✅ ИСПОЛЬЗУЕМ АДМИН-ПРОВЕРКУ (подразумевается, что она настроена)
+    if user.id != ADMIN_CHAT_ID:
+        if update.message:
+            await chat.send_message("⛔ Эта команда доступна только администратору.")
+        elif update.callback_query:
+            await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
         return ConversationHandler.END
 
-    confirmation = update.message.text.strip().upper()
+    # ✅ ИСПРАВЛЕНИЕ: Логирование начала команды
+    logger.info(f"[/broadcast] Администратор {user.id} начал диалог рассылки.")
+
+    text = "📣 **Введите текст сообщения для рассылки всем пользователям бота.**\n\n" \
+           "Вы можете использовать форматирование HTML/Markdown. Для отмены введите /cancel"
     
-    if confirmation != 'ДА':
-        await update.message.reply_text("Отправка отменена.")
-        context.user_data.clear()
-        return ConversationHandler.END
+    # Редактируем, если это был CallbackQuery, или отправляем новое сообщение
+    if update.callback_query:
+        await update.callback_query.answer()
+        if update.callback_query.message:
+            await update.callback_query.message.edit_text(text, parse_mode='Markdown')
+        else:
+             await chat.send_message(text, parse_mode='Markdown')
+    else:
+        await chat.send_message(text, parse_mode='Markdown')
+        
+    return BROADCAST_TEXT
 
-    # Если сработало, запускаем логику отправки
-    return await _execute_broadcast_logic(update.message, context)
 
+async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Получает текст рассылки и запрашивает подтверждение (безопасный предпросмотр)."""
+    message = update.message
+    if not message or not message.text:
+        if message:
+            await message.reply_text("Пожалуйста, отправьте текстовое сообщение.")
+        return BROADCAST_TEXT
 
-async def _execute_broadcast_logic(message, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Отдельная функция, выполняющая рассылку."""
-    
-    # Строки 97, 98: Добавлены безопасные .get() и проверка context.user_data
+    text = message.text
     if context.user_data is None:
-        return ConversationHandler.END
-        
-    message_text = context.user_data.get('broadcast_text')
-    parse_mode = context.user_data.get('broadcast_parse_mode')
-
-    if not message_text:
-         # Отправляем простое сообщение, чтобы избежать ошибок парсинга
-         await message.reply_text("Ошибка: Текст сообщения потерян. Попробуйте /broadcast снова.")
-         context.user_data.clear()
-         return ConversationHandler.END
-
-    await message.reply_text("Начинаю рассылку...")
+        context.user_data = {}
+    context.user_data['broadcast_text'] = text
     
-    user_ids = await get_all_user_ids()
-    successful_sends = 0
-    failed_sends = 0
-    blocked_users = 0
+    logger.info(f"[/broadcast] Текст для рассылки получен и сохранен: {text[:50]}...")
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🚀 Подтвердить и отправить", callback_data="confirm_broadcast"),
+            InlineKeyboardButton("❌ Отмена", callback_data="cancel_broadcast")
+        ]
+    ])
     
-    logger.info(f"Начало рассылки сообщения для {len(user_ids)} пользователей.")
-
-    for user_id in user_ids:
-        try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=message_text,
-                parse_mode=parse_mode
-            )
-            successful_sends += 1
-            await asyncio.sleep(0.1) # Пауза между сообщениями
-        except TelegramError as e:
-            failed_sends += 1
-            if "bot was blocked by the user" in str(e):
-                 blocked_users +=1
-                 logger.warning(f"Не удалось отправить сообщение пользователю {user_id}: Бот заблокирован.")
-            else:
-                 logger.warning(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
-        except Exception as e:
-             failed_sends += 1
-             logger.error(f"Непредвиденная ошибка при отправке пользователю {user_id}: {e}", exc_info=True)
-
-    logger.info(f"Рассылка завершена. Успешно: {successful_sends}, Ошибки: {failed_sends} (Из них бот заблокирован: {blocked_users})")
+    # ✅ ИСПОЛЬЗУЕМ HTML ДЛЯ БЕЗОПАСНОГО ПРЕДПРОСМОТРА
+    safe_text_preview = html.escape(text)
+    
     await message.reply_text(
-        f"Рассылка завершена.\n"
-        f"✅ Успешно отправлено: {successful_sends}\n"
-        f"❌ Ошибки: {failed_sends} (из них бот заблокирован: {blocked_users})"
+        f"<b>Текст для рассылки:</b>\n\n<pre>{safe_text_preview}</pre>\n\nОтправить это сообщение всем пользователям?",
+        reply_markup=keyboard,
+        parse_mode='HTML'
+    )
+    return BROADCAST_CONFIRM
+
+async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет рассылку с улучшенной диагностикой ошибок."""
+    query = update.callback_query
+    if not query or not query.message:
+        return ConversationHandler.END
+    await query.answer("Начинаю рассылку...")
+
+    if query.data == "cancel_broadcast":
+        await query.edit_message_text("❌ Рассылка отменена.")
+        if context.user_data: context.user_data.clear()
+        return ConversationHandler.END
+
+    # <<< НАЧАЛО ЛОГИКИ ОТПРАВКИ >>>
+    user_data = context.user_data or {}
+    text = user_data.get('broadcast_text')
+    
+    if not text:
+        await query.edit_message_text("Не найден текст для рассылки. Попробуйте снова.")
+        if context.user_data: context.user_data.clear()
+        return ConversationHandler.END
+
+    # ✅ ИСПОЛЬЗУЕМ queries.user_queries.get_all_user_ids()
+    user_ids = await get_all_user_ids()
+    sent_count = 0
+    failed_count = 0
+    blocked_count = 0
+    
+    await query.edit_message_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
+    logger.info(f"[BROADCAST_SEND] Начало рассылки сообщения для {len(user_ids)} пользователей.")
+
+    for user_id in set(user_ids):
+        try:
+            # 1. Попытка отправить с HTML форматированием
+            await context.bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
+            sent_count += 1
+            await asyncio.sleep(0.1) # Задержка для соблюдения лимитов Telegram
+        
+        # 2. Обработка распространенных ошибок Telegram API
+        except Forbidden:
+            # Пользователь заблокировал бота
+            blocked_count += 1
+            failed_count += 1
+            logger.warning(f"[BROADCAST_FAIL] Пользователь {user_id} заблокировал бота (Forbidden).")
+        except BadRequest as e:
+            error_str = str(e)
+            if "Chat not found" in error_str or "User not found" in error_str:
+                # Чат/Пользователь не существует
+                failed_count += 1
+                logger.warning(f"[BROADCAST_FAIL] Чат/Пользователь {user_id} не найден (Chat not found/User not found).")
+            elif "Can't parse entities" in error_str:
+                # Ошибка форматирования HTML
+                logger.warning(f"[BROADCAST_RETRY] Ошибка парсинга HTML для {user_id}. Пробую простой текст.")
+                try:
+                    await context.bot.send_message(chat_id=user_id, text=text)
+                    sent_count += 1 # Считаем, что отправка прошла успешно
+                except Exception as plain_e:
+                    failed_count += 1
+                    logger.error(f"[BROADCAST_FAIL] Не удалось отправить сообщение {user_id} даже как простой текст: {plain_e}")
+            else:
+                # Другие ошибки BadRequest (например, слишком длинный текст)
+                failed_count += 1
+                logger.warning(f"[BROADCAST_FAIL] Не удалось отправить сообщение {user_id}: {e}")
+        except ChatMigrated as e:
+            # Чат был мигрирован (редко)
+            failed_count += 1
+            logger.warning(f"[BROADCAST_WARN] Чат {user_id} мигрировал в {e.new_chat_id}. Пропуск.")
+        except Exception as e:
+            # Непредвиденные ошибки (сеть, таймаут и т.д.)
+            failed_count += 1
+            logger.error(f"[BROADCAST_ERROR] Непредвиденная ошибка при отправке пользователю {user_id}: {e}", exc_info=True)
+
+
+    logger.info(f"[BROADCAST_SEND] Рассылка завершена. Успешно: {sent_count}, Ошибки: {failed_count} (Заблокировано: {blocked_count})")
+    
+    await query.edit_message_text(
+        f"✅ Рассылка завершена!\n\n"
+        f"Успешно отправлено: {sent_count}\n"
+        f"Не удалось отправить: {failed_count}\n"
+        f"(Из них бот заблокирован: {blocked_count})"
     )
     
-    # Строка 103: Добавлена проверка context.user_data
-    if context.user_data is not None:
-        context.user_data.clear()
-        
+    if context.user_data: context.user_data.clear()
     return ConversationHandler.END
 
-async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Отменяет диалог рассылки."""
+async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает отмену диалога рассылки."""
     if update.message:
         await update.message.reply_text("Рассылка отменена.")
     
-    # Строка 143: Добавлена проверка context.user_data
-    if context.user_data is not None: 
-        context.user_data.clear()
-        
+    if context.user_data: context.user_data.clear()
     return ConversationHandler.END
 
-
-# --- ХЕНДЛЕР для обработки нажатия Inline-кнопок ---
-
-async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обрабатывает нажатия кнопок Подтвердить/Отменить на шаге CONFIRM_BROADCAST."""
-    query = update.callback_query
-    
-    # Проверка query и from_user
-    if not query or not query.data or not query.from_user or query.from_user.id != ADMIN_CHAT_ID:
-        if query: await query.answer("Действие недоступно.")
-        return CONFIRM_BROADCAST
-
-    # Строка 160: Проверка на query гарантирует, что answer будет вызван
-    await query.answer()
-
-    if query.data == 'broadcast_confirm_yes':
-        # Подтверждение
-        if query.message:
-            # ✅ ИСПРАВЛЕНИЕ PYLANCE: Добавляем безопасное получение chat_id
-            chat_id = query.message.chat_id
-            
-            # Отправляем новое сообщение и очищаем кнопки в старом.
-            await context.bot.send_message(
-                chat_id, 
-                "✅ **Подтверждено**. Запуск рассылки...", 
-                parse_mode='Markdown'
-            )
-            # ✅ ИСПРАВЛЕНИЕ PYLANCE: Проверка query.message уже есть, вызываем edit_reply_markup
-            await query.message.edit_reply_markup(reply_markup=None)
-            
-        return await _execute_broadcast_logic(query.message, context)
-        
-    elif query.data == 'broadcast_confirm_no':
-        # Отмена
-        if query.message:
-            # ✅ ИСПРАВЛЕНИЕ PYLANCE: Добавляем безопасное получение chat_id
-            chat_id = query.message.chat_id
-            
-            # Отправляем новое сообщение об отмене, а старое только очищаем
-            await query.message.edit_reply_markup(reply_markup=None)
-            await context.bot.send_message(
-                chat_id, 
-                "❌ **Отправка отменена.**", 
-                parse_mode='Markdown'
-            )
-            
-        if context.user_data: context.user_data.clear()
-        return ConversationHandler.END
-        
-    return CONFIRM_BROADCAST
-
-
-# Создаем ConversationHandler
+# Главный ConversationHandler
 broadcast_conversation_handler = ConversationHandler(
-    entry_points=[CommandHandler("broadcast", broadcast_start)],
+    entry_points=[
+        CommandHandler("broadcast", broadcast_start),
+        CallbackQueryHandler(broadcast_start, pattern="^admin_broadcast$")
+    ],
     states={
-        AWAIT_BROADCAST_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_ask_confirm)],
-        CONFIRM_BROADCAST: [
-            # Обработчик для колбэков
-            CallbackQueryHandler(handle_broadcast_callback, pattern="^broadcast_confirm_"),
-            # Обработчик для прямого ввода 'ДА'
-            MessageHandler(filters.Regex('^ДА$'), broadcast_confirm_and_send)
-        ]
+        BROADCAST_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_get_text)],
+        BROADCAST_CONFIRM: [CallbackQueryHandler(broadcast_confirm)],
     },
     fallbacks=[CommandHandler("cancel", broadcast_cancel)],
 )
