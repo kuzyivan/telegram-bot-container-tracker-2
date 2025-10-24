@@ -9,24 +9,14 @@ from telegram.error import TelegramError
 from logger import get_logger
 from queries.user_queries import get_all_user_ids 
 from handlers.admin.utils import admin_only_handler
-from config import ADMIN_CHAT_ID # Используем для фильтра колбэков
+from config import ADMIN_CHAT_ID 
+# ✅ ИМПОРТИРУЕМ ФУНКЦИЮ ДЛЯ КЛАВИАТУРЫ ИЗ UTILS/KEYBOARDS.PY
+from utils.keyboards import create_broadcast_confirm_keyboard
 
 logger = get_logger(__name__)
 
 # Состояния
 AWAIT_BROADCAST_MESSAGE, CONFIRM_BROADCAST = range(2) 
-
-# --- Вспомогательная функция для UX (в идеале должна быть в utils/keyboards.py) ---
-
-def create_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
-    """Создает Inline клавиатуру для подтверждения рассылки."""
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Подтвердить", callback_data="broadcast_confirm_yes"),
-            InlineKeyboardButton("❌ Отменить", callback_data="broadcast_confirm_no")
-        ]
-    ]
-    return InlineKeyboardMarkup(keyboard)
 
 # --- Обработчики ConversationHandler ---
 
@@ -49,6 +39,7 @@ async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     """
     logger.info(f"[BROADCAST_ASK] Получен текст от {update.effective_user.id}: {update.message.text[:50]}...")
     
+    # ИСПРАВЛЕНИЕ: Убрана ошибочная проверка context.user_data
     if not update.message or not update.message.text: 
         logger.warning("[BROADCAST_ASK] Message or text is missing. Ending conversation.")
         return ConversationHandler.END
@@ -59,17 +50,14 @@ async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['broadcast_text'] = message_text
     context.user_data['broadcast_parse_mode'] = parse_mode
 
-    # Показываем предпросмотр
-    # Агрессивное экранирование спецсимволов, чтобы они не ломали форматирование сообщения подтверждения.
-    # Это CRITICAL FIX из предыдущего шага.
+    # Показываем предпросмотр (агрессивное экранирование спецсимволов)
     preview_text = message_text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("]", "\\]") \
                               .replace("(", "\\(").replace(")", "\\)").replace("~", "\\~").replace("`", "\\`") \
                               .replace(">", "\\>").replace("#", "\\#").replace("+", "\\+").replace("-", "\\-") \
                               .replace("=", "\\=").replace("|", "\\|").replace("{", "\\{").replace("}", "\\}") \
                               .replace(".", "\\.").replace("!", "\\!")
     
-    # ИСПРАВЛЕНИЕ UX: Форматируем сообщение подтверждения
-    
+    # Форматируем сообщение подтверждения с экранированием обрамляющего текста
     confirmation_text = (
         f"📣 **Предпросмотр рассылки**\n"
         f"Вы уверены, что хотите отправить следующее сообщение всем пользователям\\?\n"
@@ -78,18 +66,17 @@ async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TY
         f"\\-\\-\\-\n"
     )
 
+    # ✅ ИСПОЛЬЗУЕМ ФУНКЦИЮ ИЗ KEYBOARDS.PY
     await update.message.reply_text(
         confirmation_text,
         reply_markup=create_broadcast_confirm_keyboard(),
         parse_mode="MarkdownV2"
     )
     
-    return CONFIRM_BROADCAST # Переходим в состояние подтверждения
+    return CONFIRM_BROADCAST 
 
 async def broadcast_confirm_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Подтверждает и отправляет рассылку (логика остается, но вызывается колбэком)."""
-    # Этот обработчик теперь должен вызываться ТОЛЬКО через callback_query, но мы его оставим 
-    # для обработки прямого ввода 'ДА', если пользователь его отправит.
+    """Обрабатывает ввод 'ДА' (на случай, если пользователь введет его текстом)."""
     if not update.message or not update.message.text or not context.user_data:
         return ConversationHandler.END
 
@@ -100,7 +87,7 @@ async def broadcast_confirm_and_send(update: Update, context: ContextTypes.DEFAU
         context.user_data.clear()
         return ConversationHandler.END
 
-    # Если сработал Regex на 'ДА', то переходим к отправке
+    # Если сработало, запускаем логику отправки
     return await _execute_broadcast_logic(update.message, context)
 
 
@@ -111,10 +98,12 @@ async def _execute_broadcast_logic(message, context: ContextTypes.DEFAULT_TYPE) 
     parse_mode = context.user_data.get('broadcast_parse_mode')
 
     if not message_text:
+         # Отправляем простое сообщение, чтобы избежать ошибок парсинга
          await message.reply_text("Ошибка: Текст сообщения потерян. Попробуйте /broadcast снова.")
          context.user_data.clear()
          return ConversationHandler.END
 
+    # Отправляем простое сообщение о начале, чтобы избежать ошибок парсинга
     await message.reply_text("Начинаю рассылку...")
     
     user_ids = await get_all_user_ids()
@@ -162,27 +151,33 @@ async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return ConversationHandler.END
 
 
-# --- НОВЫЙ ХЕНДЛЕР для обработки нажатия Inline-кнопок ---
+# --- ХЕНДЛЕР для обработки нажатия Inline-кнопок ---
 
 async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обрабатывает нажатия кнопок Подтвердить/Отменить на шаге CONFIRM_BROADCAST."""
     query = update.callback_query
     if not query or not query.data or not query.from_user or query.from_user.id != ADMIN_CHAT_ID:
-        # Проверяем, что это админ, чтобы избежать ошибок с чужими колбэками
         await query.answer("Действие недоступно.")
-        return CONFIRM_BROVERATION
+        return CONFIRM_BROADCAST
 
     await query.answer()
 
     if query.data == 'broadcast_confirm_yes':
-        # Редактируем сообщение, чтобы убрать кнопки и показать, что начата работа
+        # ИСПРАВЛЕНИЕ: Отправляем новое сообщение и очищаем кнопки в старом.
+        await context.bot.send_message(query.message.chat_id, "✅ **Подтверждено**. Запуск рассылки...", parse_mode='Markdown')
+        
+        # Очищаем инлайн-кнопки в старом сообщении для чистоты UX
         if query.message:
-             await query.message.edit_text(query.message.text + "\n\n**Запуск рассылки...**", parse_mode='MarkdownV2')
+            await query.message.edit_reply_markup(reply_markup=None)
+            
         return await _execute_broadcast_logic(query.message, context)
         
     elif query.data == 'broadcast_confirm_no':
+        # ИСПРАВЛЕНИЕ: Отправляем новое сообщение об отмене, а старое только очищаем
         if query.message:
-            await query.message.edit_text(query.message.text + "\n\n❌ **Отправка отменена.**", parse_mode='MarkdownV2')
+            await query.message.edit_reply_markup(reply_markup=None)
+            await context.bot.send_message(query.message.chat_id, "❌ **Отправка отменена.**", parse_mode='Markdown')
+            
         if context.user_data: context.user_data.clear()
         return ConversationHandler.END
         
@@ -195,9 +190,9 @@ broadcast_conversation_handler = ConversationHandler(
     states={
         AWAIT_BROADCAST_MESSAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_ask_confirm)],
         CONFIRM_BROADCAST: [
-            # Добавляем обработчик для колбэков
+            # Обработчик для колбэков
             CallbackQueryHandler(handle_broadcast_callback, pattern="^broadcast_confirm_"),
-            # Оставляем старый обработчик на случай, если пользователь введет "ДА" текстом
+            # Обработчик для прямого ввода 'ДА'
             MessageHandler(filters.Regex('^ДА$'), broadcast_confirm_and_send)
         ]
     },
