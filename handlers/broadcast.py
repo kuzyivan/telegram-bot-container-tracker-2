@@ -2,15 +2,16 @@
 import asyncio
 import html
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, Message
-from telegram.error import BadRequest, Forbidden, ChatMigrated # Добавлен Forbidden
+from telegram.error import BadRequest, Forbidden, ChatMigrated 
 from telegram.ext import (
     ContextTypes, ConversationHandler,
     CommandHandler, MessageHandler, CallbackQueryHandler, filters
 )
+from typing import cast, Dict, Any
 
 from logger import get_logger
 from config import ADMIN_CHAT_ID
-# ✅ ИСПРАВЛЕНИЕ: Импортируем get_all_user_ids из queries.user_queries, как в других файлах
+# ✅ ИСПРАВЛЕНИЕ: Импортируем get_all_user_ids из queries.user_queries
 from queries.user_queries import get_all_user_ids 
 
 logger = get_logger(__name__)
@@ -22,22 +23,19 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
     
-    if not user or not chat:
-        return ConversationHandler.END
-
-    # ✅ ИСПОЛЬЗУЕМ АДМИН-ПРОВЕРКУ (подразумевается, что она настроена)
-    if user.id != ADMIN_CHAT_ID:
+    if not user or not chat or user.id != ADMIN_CHAT_ID:
         if update.message:
             await chat.send_message("⛔ Эта команда доступна только администратору.")
         elif update.callback_query:
             await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
         return ConversationHandler.END
 
-    # ✅ ИСПРАВЛЕНИЕ: Логирование начала команды
     logger.info(f"[/broadcast] Администратор {user.id} начал диалог рассылки.")
 
+    # Используем Markdown для начального сообщения
     text = "📣 **Введите текст сообщения для рассылки всем пользователям бота.**\n\n" \
-           "Вы можете использовать форматирование HTML/Markdown. Для отмены введите /cancel"
+           "**Внимание!** Для сохранения пользовательских эмодзи форматирование HTML/Markdown будет отключено.\n" \
+           "Используйте /cancel для отмены."
     
     # Редактируем, если это был CallbackQuery, или отправляем новое сообщение
     if update.callback_query:
@@ -63,7 +61,11 @@ async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = message.text
     if context.user_data is None:
         context.user_data = {}
-    context.user_data['broadcast_text'] = text
+        
+    # Приведение типа для Pylance
+    user_data: Dict[str, Any] = cast(Dict[str, Any], context.user_data)
+    
+    user_data['broadcast_text'] = text
     
     logger.info(f"[/broadcast] Текст для рассылки получен и сохранен: {text[:50]}...")
 
@@ -74,7 +76,8 @@ async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]
     ])
     
-    # ✅ ИСПОЛЬЗУЕМ HTML ДЛЯ БЕЗОПАСНОГО ПРЕДПРОСМОТРА
+    # ✅ ИСПОЛЬЗУЕМ HTML.ESCAPE И <pre> ДЛЯ БЕЗОПАСНОГО ПРЕДПРОСМОТРА
+    # Это гарантирует, что вы видите символы, даже если они выглядят как HTML-теги.
     safe_text_preview = html.escape(text)
     
     await message.reply_text(
@@ -85,14 +88,15 @@ async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return BROADCAST_CONFIRM
 
 async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет рассылку с улучшенной диагностикой ошибок."""
+    """Отправляет рассылку БЕЗ parse_mode для сохранения кастомных эмодзи."""
     query = update.callback_query
     if not query or not query.message:
+        if query: await query.answer("Сообщение недоступно.")
         return ConversationHandler.END
     await query.answer("Начинаю рассылку...")
 
     if query.data == "cancel_broadcast":
-        await query.edit_message_text("❌ Рассылка отменена.")
+        await query.message.edit_text("❌ Рассылка отменена.")
         if context.user_data: context.user_data.clear()
         return ConversationHandler.END
 
@@ -101,64 +105,50 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = user_data.get('broadcast_text')
     
     if not text:
-        await query.edit_message_text("Не найден текст для рассылки. Попробуйте снова.")
+        await query.message.edit_text("Не найден текст для рассылки. Попробуйте снова.")
         if context.user_data: context.user_data.clear()
         return ConversationHandler.END
 
-    # ✅ ИСПОЛЬЗУЕМ queries.user_queries.get_all_user_ids()
     user_ids = await get_all_user_ids()
     sent_count = 0
     failed_count = 0
     blocked_count = 0
     
-    await query.edit_message_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
+    await query.message.edit_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
     logger.info(f"[BROADCAST_SEND] Начало рассылки сообщения для {len(user_ids)} пользователей.")
 
     for user_id in set(user_ids):
         try:
-            # 1. Попытка отправить с HTML форматированием
-            await context.bot.send_message(chat_id=user_id, text=text, parse_mode='HTML')
+            # ✅ КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: ОТПРАВКА БЕЗ parse_mode
+            # Это сохранит кастомные эмодзи и предотвратит ошибку парсинга
+            await context.bot.send_message(chat_id=user_id, text=text) 
             sent_count += 1
-            await asyncio.sleep(0.1) # Задержка для соблюдения лимитов Telegram
+            await asyncio.sleep(0.1) 
         
-        # 2. Обработка распространенных ошибок Telegram API
+        # Обработка ошибок Telegram API
         except Forbidden:
-            # Пользователь заблокировал бота
             blocked_count += 1
             failed_count += 1
             logger.warning(f"[BROADCAST_FAIL] Пользователь {user_id} заблокировал бота (Forbidden).")
         except BadRequest as e:
             error_str = str(e)
             if "Chat not found" in error_str or "User not found" in error_str:
-                # Чат/Пользователь не существует
                 failed_count += 1
-                logger.warning(f"[BROADCAST_FAIL] Чат/Пользователь {user_id} не найден (Chat not found/User not found).")
-            elif "Can't parse entities" in error_str:
-                # Ошибка форматирования HTML
-                logger.warning(f"[BROADCAST_RETRY] Ошибка парсинга HTML для {user_id}. Пробую простой текст.")
-                try:
-                    await context.bot.send_message(chat_id=user_id, text=text)
-                    sent_count += 1 # Считаем, что отправка прошла успешно
-                except Exception as plain_e:
-                    failed_count += 1
-                    logger.error(f"[BROADCAST_FAIL] Не удалось отправить сообщение {user_id} даже как простой текст: {plain_e}")
+                logger.warning(f"[BROADCAST_FAIL] Чат/Пользователь {user_id} не найден.")
             else:
-                # Другие ошибки BadRequest (например, слишком длинный текст)
                 failed_count += 1
                 logger.warning(f"[BROADCAST_FAIL] Не удалось отправить сообщение {user_id}: {e}")
         except ChatMigrated as e:
-            # Чат был мигрирован (редко)
             failed_count += 1
             logger.warning(f"[BROADCAST_WARN] Чат {user_id} мигрировал в {e.new_chat_id}. Пропуск.")
         except Exception as e:
-            # Непредвиденные ошибки (сеть, таймаут и т.д.)
             failed_count += 1
             logger.error(f"[BROADCAST_ERROR] Непредвиденная ошибка при отправке пользователю {user_id}: {e}", exc_info=True)
 
 
     logger.info(f"[BROADCAST_SEND] Рассылка завершена. Успешно: {sent_count}, Ошибки: {failed_count} (Заблокировано: {blocked_count})")
     
-    await query.edit_message_text(
+    await query.message.edit_text(
         f"✅ Рассылка завершена!\n\n"
         f"Успешно отправлено: {sent_count}\n"
         f"Не удалось отправить: {failed_count}\n"
