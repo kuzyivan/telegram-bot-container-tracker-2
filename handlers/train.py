@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 import asyncio
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup # <<< ДОБАВЛЕН ИМПОРТ
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes,
     CommandHandler,
     ConversationHandler,
     MessageHandler,
     filters,
-    CallbackQueryHandler # <<< ДОБАВЛЕН ИМПОРТ
+    CallbackQueryHandler
 )
 
 from config import ADMIN_CHAT_ID
@@ -20,10 +20,10 @@ import re
 from queries.train_queries import (
     get_train_client_summary_by_code, 
     get_first_container_in_train,
-    get_all_train_codes # <<< НОВЫЙ ИМПОРТ
+    get_all_train_codes
 ) 
 from queries.containers import get_latest_tracking_data
-from utils.railway_utils import get_railway_abbreviation # <<< ИСПОЛЬЗУЕМ СУЩЕСТВУЮЩИЙ ИМПОРТ
+from utils.railway_utils import get_railway_abbreviation
 
 logger = get_logger(__name__)
 
@@ -75,7 +75,9 @@ async def _respond_train_report(message, train_no: str):
         # В этом блоке latest - это объект Tracking (из списка)
         lines += ["───", "*Последняя дислокация поезда (по одному из контейнеров):*", f"Контейнер: `{latest.container_number}`"]
         
-        # Обращаемся к атрибутам объекта latest (объекта Tracking)
+        # ❗️ НОВОЕ: ДОБАВЛЯЕМ СТАНЦИЮ НАЗНАЧЕНИЯ
+        lines.append(f"Станция назначения: `{latest.to_station or 'н/д'}`")
+        
         if latest.current_station: 
             # Используем get_railway_abbreviation для форматирования дороги
             railway_abbr = get_railway_abbreviation(latest.operation_road) 
@@ -97,7 +99,6 @@ async def _respond_train_report(message, train_no: str):
     except Exception as e:
         logger.exception("Ошибка в /train для train=%s: %s", train_no, e)
         try:
-            # Используем message, который гарантированно существует
             await message.reply_text("Не удалось получить данные по поезду.")
         except Exception:
             pass
@@ -228,7 +229,6 @@ def setup_handlers(app):
     conv = ConversationHandler(
         entry_points=[CommandHandler("train", train_cmd)],
         states={
-            # ASK_TRAIN: Ждем текстового ввода, если не было аргументов или нажатия кнопки
             ASK_TRAIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, train_ask_handler)], 
         },
         fallbacks=[],
