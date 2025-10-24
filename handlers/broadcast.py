@@ -46,15 +46,20 @@ async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['broadcast_parse_mode'] = parse_mode
 
     # Показываем предпросмотр (экранируем для безопасности отображения в сообщении подтверждения)
+    # Здесь используется очень агрессивное экранирование всех спецсимволов MarkdownV2,
+    # чтобы текст отобразился как есть.
     preview_text = message_text.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("]", "\\]") \
                               .replace("(", "\\(").replace(")", "\\)").replace("~", "\\~").replace("`", "\\`") \
                               .replace(">", "\\>").replace("#", "\\#").replace("+", "\\+").replace("-", "\\-") \
                               .replace("=", "\\=").replace("|", "\\|").replace("{", "\\{").replace("}", "\\}") \
                               .replace(".", "\\.").replace("!", "\\!")
 
+    # ИСПРАВЛЕНИЕ: Экранируем символы в обрамляющем тексте.
+    # Заменяем "---" на "—" или просто убираем, и экранируем 'ДА', 'cancel' и т.д.
+    
     await update.message.reply_text(
-        f"Вы уверены, что хотите отправить следующее сообщение?\n\n---\n{preview_text}\n---\n\n"
-        "Введите 'ДА' для подтверждения или /cancel для отмены.",
+        f"Вы уверены, что хотите отправить следующее сообщение\\?\n\n\\-\\-\\-\n{preview_text}\n\\-\\-\\-\n\n"
+        "Введите 'ДА' для подтверждения или /cancel для отмены\\.",
         parse_mode="MarkdownV2" # Отображаем сообщение подтверждения тоже с MarkdownV2
     )
     
