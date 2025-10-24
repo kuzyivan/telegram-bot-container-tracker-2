@@ -28,9 +28,14 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not update.message or not await admin_only_handler(update, context):
         return ConversationHandler.END
     
+    # ✅ ИСПРАВЛЕНИЕ ЛОГИРОВАНИЯ: Запись о начале команды
+    if update.effective_user:
+        logger.info(f"[/broadcast] Администратор {update.effective_user.id} начал диалог рассылки.")
+    
+    # ✅ ИСПРАВЛЕНИЕ UX: Убраны технические детали
     await update.message.reply_text(
-        "Введите сообщение для рассылки всем пользователям бота.\n"
-        "Поддерживается MarkdownV2 (символы ., -, !, (, ) и др. нужно экранировать: `\\.`, `\\-` и т.д.).\n"
+        "📣 **Введите текст сообщения для рассылки всем пользователям бота.**\n"
+        "Вы можете использовать форматирование MarkdownV2.\n"
         "Используйте /cancel для отмены."
     )
     return AWAIT_BROADCAST_MESSAGE
@@ -72,6 +77,7 @@ async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TY
         f"\\-\\-\\-\n"
     )
 
+    # ✅ ИСПОЛЬЗУЕМ ФУНКЦИЮ ИЗ KEYBOARDS.PY
     await update.message.reply_text(
         confirmation_text,
         reply_markup=create_broadcast_confirm_keyboard(),
@@ -107,6 +113,7 @@ async def _execute_broadcast_logic(message, context: ContextTypes.DEFAULT_TYPE) 
     parse_mode = context.user_data.get('broadcast_parse_mode')
 
     if not message_text:
+         # Отправляем простое сообщение, чтобы избежать ошибок парсинга
          await message.reply_text("Ошибка: Текст сообщения потерян. Попробуйте /broadcast снова.")
          context.user_data.clear()
          return ConversationHandler.END
@@ -140,7 +147,7 @@ async def _execute_broadcast_logic(message, context: ContextTypes.DEFAULT_TYPE) 
              failed_sends += 1
              logger.error(f"Непредвиденная ошибка при отправке пользователю {user_id}: {e}", exc_info=True)
 
-    logger.info(f"Рассылка завершена. Успешно: {successful_sends}, Ошибки: {failed_sends} (Заблокировано: {blocked_users})")
+    logger.info(f"Рассылка завершена. Успешно: {successful_sends}, Ошибки: {failed_sends} (Из них бот заблокирован: {blocked_users})")
     await message.reply_text(
         f"Рассылка завершена.\n"
         f"✅ Успешно отправлено: {successful_sends}\n"
@@ -180,25 +187,32 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
 
     if query.data == 'broadcast_confirm_yes':
-        # Отправляем новое сообщение и очищаем кнопки в старом.
+        # Подтверждение
         if query.message:
-            # Строки 167, 171: Добавлена проверка query.message
+            # ✅ ИСПРАВЛЕНИЕ PYLANCE: Добавляем безопасное получение chat_id
+            chat_id = query.message.chat_id
+            
+            # Отправляем новое сообщение и очищаем кнопки в старом.
             await context.bot.send_message(
-                query.message.chat_id, 
+                chat_id, 
                 "✅ **Подтверждено**. Запуск рассылки...", 
                 parse_mode='Markdown'
             )
+            # ✅ ИСПРАВЛЕНИЕ PYLANCE: Проверка query.message уже есть, вызываем edit_reply_markup
             await query.message.edit_reply_markup(reply_markup=None)
             
         return await _execute_broadcast_logic(query.message, context)
         
     elif query.data == 'broadcast_confirm_no':
-        # Отправляем новое сообщение об отмене, а старое только очищаем
+        # Отмена
         if query.message:
-            # Строки 178, 179: Добавлена проверка query.message
+            # ✅ ИСПРАВЛЕНИЕ PYLANCE: Добавляем безопасное получение chat_id
+            chat_id = query.message.chat_id
+            
+            # Отправляем новое сообщение об отмене, а старое только очищаем
             await query.message.edit_reply_markup(reply_markup=None)
             await context.bot.send_message(
-                query.message.chat_id, 
+                chat_id, 
                 "❌ **Отправка отменена.**", 
                 parse_mode='Markdown'
             )
