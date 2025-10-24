@@ -41,7 +41,7 @@ async def get_latest_tracking_data(container_number: str) -> Sequence[Tracking]:
         return result.scalars().all()
 
 
-# <<< НАЧАЛО ИЗМЕНЕНИЙ >>>
+# <<< НАЧАЛО ФУНКЦИИ get_tracking_data_by_wagons (для фиксации: #wagon_search) >>>
 async def get_tracking_data_by_wagons(wagon_numbers: List[str]) -> List[Tracking]:
     """
     Находит самые последние данные по всем контейнерам,
@@ -67,4 +67,4 @@ async def get_tracking_data_by_wagons(wagon_numbers: List[str]) -> List[Tracking
         result = await session.execute(query)
         
         return list(result.scalars().all())
-# <<< КОНЕЦ ИЗМЕНЕНИЙ >>>
+# <<< КОНЕЦ ФУНКЦИИ get_tracking_data_by_wagons >>>
