@@ -30,7 +30,8 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает сообщение, показывает предпросмотр и запрашивает подтверждение."""
-    if not update.message or not update.message.text or not context.user_data:
+    # ИСПРАВЛЕНИЕ: Удалена избыточная проверка "not context.user_data", которая приводила к завершению диалога.
+    if not update.message or not update.message.text: 
         return ConversationHandler.END
     
     message_text = update.message.text
@@ -51,7 +52,7 @@ async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(
         f"Вы уверены, что хотите отправить следующее сообщение?\n\n---\n{preview_text}\n---\n\n"
         "Введите 'ДА' для подтверждения или /cancel для отмены.",
-        parse_mode=parse_mode # Отображаем сообщение подтверждения тоже с MarkdownV2
+        parse_mode="MarkdownV2" # Отображаем сообщение подтверждения тоже с MarkdownV2
     )
     
     return CONFIRM_BROADCAST # Переходим в состояние подтверждения
