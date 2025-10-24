@@ -30,8 +30,11 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def broadcast_ask_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает сообщение, показывает предпросмотр и запрашивает подтверждение."""
-    # ИСПРАВЛЕНИЕ: Удалена избыточная проверка "not context.user_data", которая приводила к завершению диалога.
+    # ДОБАВЛЕНО: Принудительная запись в лог для отладки
+    logger.info(f"[BROADCAST_ASK] Получен текст от {update.effective_user.id}: {update.message.text[:50]}...")
+    
     if not update.message or not update.message.text: 
+        logger.warning("[BROADCAST_ASK] Message or text is missing. Ending conversation.")
         return ConversationHandler.END
     
     message_text = update.message.text
