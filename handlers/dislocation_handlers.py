@@ -4,7 +4,7 @@ import os
 from telegram import Update
 from telegram.ext import ContextTypes
 import re
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import select
 
 from logger import get_logger
@@ -14,6 +14,8 @@ from models import UserRequest, Tracking
 from model.terminal_container import TerminalContainer # <<< ИСПРАВЛЕНО ЗДЕСЬ
 from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
+# ✅ ИМПОРТ НОВОЙ ФУНКЦИИ
+from queries.containers import get_tracking_data_by_wagons 
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
@@ -25,7 +27,7 @@ logger = get_logger(__name__)
 # --- Логика определения типа вагона ---
 
 def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
-    # ... (код остается прежним) ...
+    """Определяет примерный тип вагона по первой цифре номера."""
     if wagon_number is None:
         return 'н/д'
     wagon_str = str(wagon_number).removesuffix('.0').strip()
@@ -39,12 +41,29 @@ def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     else:
         return 'Прочий'
 
+# <<< ИЗМЕНЕННАЯ ФУНКЦИЯ normalize_text_input (для фиксации: #wagon_input_fix) >>>
 def normalize_text_input(text: str) -> list[str]:
-    # ... (код остается прежним) ...
+    """
+    Извлекает и нормализует номера контейнеров (11 символов) или вагонов (8 цифр) из текста.
+    """
     text = text.upper().strip()
+    # Разделяем по разделителям
     items = re.split(r'[,\s;\n]+', text)
-    normalized_items = sorted(list(set(filter(None, items))))
-    return normalized_items
+    # Фильтруем пустые и нормализуем
+    normalized_items = list(set(filter(None, items)))
+    
+    final_items = []
+    for item in normalized_items:
+        # Проверяем на контейнер (4 буквы + 7 цифр, например XXXU1234567)
+        if re.fullmatch(r'[A-Z]{3}U\d{7}', item):
+            final_items.append(item)
+        # Проверяем на вагон (8 цифр)
+        elif re.fullmatch(r'\d{8}', item):
+            final_items.append(item)
+            
+    # Сортируем для единообразия
+    return sorted(final_items)
+# <<< КОНЕЦ ИЗМЕНЕННОЙ ФУНКЦИИ >>>
 
 # --- Асинхронная функция для получения поезда ---
 async def get_train_for_container(container_number: str) -> str | None:
@@ -60,9 +79,11 @@ async def get_train_for_container(container_number: str) -> str | None:
 
 # --- Основной обработчик сообщений ---
 
+# <<< ИЗМЕНЕННАЯ ФУНКЦИЯ handle_message (для фиксации: #wagon_handler_logic) >>>
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Обрабатывает текстовые сообщения: ищет контейнеры, логирует запрос, отправляет результат.
+    Обрабатывает текстовые сообщения: ищет контейнеры и/или вагоны, 
+    логирует запрос, отправляет результат.
     """
     message = update.message
     user = update.effective_user
@@ -75,7 +96,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     search_terms = normalize_text_input(message.text)
     if not search_terms:
-        await message.reply_text("Пожалуйста, введите номер контейнера или другой запрос.")
+        await message.reply_text("Пожалуйста, введите корректный номер контейнера (XXXU1234567) или вагона (8 цифр) для поиска.")
         return
 
     query_text_log = ", ".join(search_terms)
@@ -87,16 +108,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as log_err:
         logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
 
-    tracking_results = await get_tracking_data_for_containers(search_terms)
+    # 1. Разделяем запросы на контейнеры и вагоны
+    container_numbers: List[str] = [term for term in search_terms if len(term) == 11 and term[3] == 'U']
+    wagon_numbers: List[str] = [term for term in search_terms if len(term) == 8 and term.isdigit()]
+    
+    # 2. Получаем дислокацию
+    tracking_results: List[Tracking] = []
+    
+    if container_numbers:
+        # Ищем по контейнерам
+        tracking_results.extend(await get_tracking_data_for_containers(container_numbers))
+        
+    if wagon_numbers:
+        # Ищем по вагонам (получаем контейнеры, которые в нем едут)
+        tracking_results.extend(await get_tracking_data_by_wagons(wagon_numbers))
 
-    if not tracking_results:
-        await message.reply_text(f"Ничего не найдено по номерам: {query_text_log}")
+    # Удаляем дубликаты, если один и тот же контейнер был найден и по номеру контейнера, и по номеру вагона
+    unique_container_numbers = set()
+    final_unique_results: List[Tracking] = []
+    for result in tracking_results:
+        if result.container_number not in unique_container_numbers:
+            unique_container_numbers.add(result.container_number)
+            final_unique_results.append(result)
+
+    if not final_unique_results:
+        await message.reply_text(f"Актуальная дислокация не найдена по номерам: {query_text_log}")
         return
 
-    # --- Логика: ОДИН КОНТЕЙНЕР ---
-    if len(tracking_results) == 1:
-        result = tracking_results[0]
-
+    # --- Логика: ОДИН КОНТЕЙНЕР (для подробного отчета) ---
+    if len(final_unique_results) == 1 and len(search_terms) == 1:
+        result = final_unique_results[0]
+        
         # --- Получаем номер поезда ---
         train_number = await get_train_for_container(result.container_number)
         train_display = f"Поезд: `{train_number}`\n" if train_number else ""
@@ -135,7 +177,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📦 **Статус контейнера: {result.container_number}**\n"
             f"═════════════════════\n"
             f"📍 *Маршрут:*\n"
-            f"{train_display}" # Строка с поездом
+            f"{train_display}" 
             f"Отпр: `{result.from_station}`\n"
             f"Назн: `{result.to_station}`\n"
             f"═════════════════════\n"
@@ -156,9 +198,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=create_single_container_excel_keyboard(result.container_number)
         )
 
-    # --- Логика: МНОГО КОНТЕЙНЕРОВ (Ответ Excel) ---
+    # --- Логика: МНОГО КОНТЕЙНЕРОВ/ВАГОНОВ (Ответ Excel) ---
     else:
-        # ... (логика формирования Excel остается прежней) ...
         final_report_data = []
         EXCEL_HEADERS = [
             'Номер контейнера', 'Станция отправления', 'Станция назначения',
@@ -167,7 +208,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'Тип вагона', 'Дорога операции'
         ]
         excel_columns = EXCEL_HEADERS
-        for db_row in tracking_results:
+        for db_row in final_unique_results: 
             recalculated_distance = await get_remaining_distance_on_route(
                 start_station=db_row.from_station,
                 end_station=db_row.to_station,
@@ -200,7 +241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  await message.reply_document(
                      document=f,
                      filename=filename,
-                     caption=f"Найдены данные по {len(final_report_data)} контейнерам."
+                     caption=f"Найдена дислокация по {len(final_unique_results)} контейнерам/вагонам."
                  )
              logger.info(f"Отправлен Excel отчет по запросу пользователя {user.id}")
         except Exception as send_err:
@@ -213,10 +254,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  except OSError as e:
                       logger.error(f"Не удалось удалить временный файл {file_path}: {e}")
 
-# --- Обработчик кнопки скачивания Excel для одного контейнера ---
+# <<< КОНЕЦ ИЗМЕНЕННОЙ ФУНКЦИИ handle_message >>>
+
 
 async def handle_single_container_excel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ... (код остается прежним) ...
+    """
+    Обрабатывает колбэк для скачивания Excel-отчета по одному контейнеру.
+    """
     query = update.callback_query
     if not query or not query.data or not query.data.startswith("get_excel_single_") or not update.effective_user:
         return
