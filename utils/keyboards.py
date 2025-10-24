@@ -6,9 +6,9 @@ from models import UserEmail # Импортируем модель UserEmail д�
 
 # Главное меню
 main_menu_keyboard = ReplyKeyboardMarkup([
-    ["📦 Отслеживание", "📄 Мои подписки"], # Можно заменить "Отслеживание" на "Дислокация", если так понятнее
-    ["🚆 Мои поезда", "📥 Получить базу"], # "Получить базу" - возможно, стоит переименовать или убрать?
-    ["⚙️ Настройки"] # Добавим кнопку Настроек
+    ["📦 Отслеживание", "📄 Мои подписки"], 
+    ["🚆 Мои поезда", "📥 Получить базу"], 
+    ["⚙️ Настройки"] 
 ], resize_keyboard=True)
 
 # Меню настроек
@@ -38,7 +38,6 @@ def create_time_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🕘 09:00", callback_data="time_09:00"),
             InlineKeyboardButton("🕓 16:00", callback_data="time_16:00")
         ],
-        # Можно добавить больше стандартных времен или убрать кнопку ручного ввода, если она не нужна
         # [InlineKeyboardButton("⏰ Указать время вручную", callback_data="time_manual")] 
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -71,6 +70,15 @@ def create_yes_no_inline_keyboard(yes_callback_data: str, no_callback_data: str)
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ BROADCAST ---
+def create_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Создает Inline клавиатуру для подтверждения рассылки."""
+    return create_yes_no_inline_keyboard(
+        yes_callback_data="broadcast_confirm_yes",
+        no_callback_data="broadcast_confirm_no"
+    )
+# -----------------------------------
 
 # Клавиатура подтверждения отмены отслеживания (пример использования новой функции)
 def cancel_tracking_confirm_keyboard() -> InlineKeyboardMarkup:
