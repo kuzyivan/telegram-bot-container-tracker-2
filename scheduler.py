@@ -1,5 +1,5 @@
 # scheduler.py
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Optional, Mapping
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -9,18 +9,21 @@ import config
 from utils.notify import notify_admin
 from logger import get_logger
 from services.notification_service import NotificationService
-from services.dislocation_importer import check_and_process_dislocation
+# Обновляем импорт: check_and_process_dislocation теперь требует bot
+from services.dislocation_importer import check_and_process_dislocation 
 from services.terminal_importer import check_and_process_terminal_report
 from populate_stations_cache import job_populate_stations_cache
+from telegram import Bot
 
 logger = get_logger(__name__)
-TZ = timezone("Asia/Vladivostok")
+# Устанавливаем часовой пояс Владивостока (или другой, указанный в вашей конфигурации)
+TZ = timezone("Asia/Vladivostok") 
 
 JOB_DEFAULTS = {"coalesce": True, "max_instances": 1, "misfire_grace_time": 300}
 scheduler = AsyncIOScheduler(timezone=TZ, job_defaults=JOB_DEFAULTS)
 
 def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mapping] = None) -> str:
-    """Форматирует сообщение для лога и уведомления."""
+    """Форматирует сообщение о завершении импорта терминала."""
     header = "✅ <b>Обновление базы терминала завершено</b>\n"
     base = f"<b>Время (Владивосток):</b> {started_dt.strftime('%d.%m %H:%M')}\n"
     
@@ -36,8 +39,8 @@ def _format_terminal_import_message(started_dt: datetime, stats: Optional[Mappin
     
     return header + base + "\n".join(pretty)
 
-async def job_send_notifications(bot, target_time: time):
-    """Задача на рассылку уведомлений."""
+async def job_send_notifications(bot: Bot, target_time: time):
+    """Задача на рассылку плановых уведомлений."""
     time_str = target_time.strftime('%H:%M')
     logger.info(f"🔔 Запуск задачи на рассылку для {time_str}")
     
@@ -53,24 +56,25 @@ async def job_send_notifications(bot, target_time: time):
         logger.critical(f"❌ Критическая ошибка в задаче рассылки для {time_str}: {e}", exc_info=True)
 
 
-# ✅ НОВАЯ ФУНКЦИЯ: Проверка при запуске (для немедленного вызова)
-async def job_dislocation_check_on_start():
+async def job_dislocation_check_on_start(bot: Bot): 
+    """Задача на ПЕРВОНАЧАЛЬНУЮ проверку дислокации (при старте)."""
     logger.info("⚡️ Scheduler: Запуск ПЕРВОНАЧАЛЬНОЙ проверки дислокации (при старте)...")
     try:
-        await check_and_process_dislocation()
+        # Передаем bot для рассылки событий
+        await check_and_process_dislocation(bot) 
         logger.info("✅ Scheduler: Первоначальная проверка дислокации завершена.")
     except Exception as e:
         logger.error(f"❌ Scheduler: Ошибка в задаче ПЕРВОНАЧАЛЬНОЙ проверки дислокации: {e}", exc_info=True)
 
 
-# ПЕРИОДИЧЕСКАЯ проверка
-async def job_periodic_dislocation_check():
-    """Задача на проверку почты и обработку дислокации."""
+async def job_periodic_dislocation_check(bot: Bot):
+    """Задача на периодическую проверку почты и обработку дислокации."""
     logger.info("🕒 Scheduler: Запуск периодической проверки дислокации...")
     try:
         logger.info("[Dislocation Import] Запуск проверки почты и обработки...")
         
-        await check_and_process_dislocation()
+        # Передаем bot для рассылки событий
+        await check_and_process_dislocation(bot) 
         
         logger.info("✅ Scheduler: Периодическая проверка дислокации завершена.")
     except Exception as e:
@@ -97,29 +101,35 @@ async def job_daily_terminal_import():
         error_message = (f"❌ <b>Ошибка обновления базы терминала</b>\n<b>Время:</b> {started.strftime('%d.%m %H:%M')}\n<code>{e}</code>")
         await notify_admin(error_message, silent=False, parse_mode="HTML")
 
-def start_scheduler(bot):
+def start_scheduler(bot: Bot): # <<< ПРИНИМАЕТ Bot
     """Регистрирует и запускает все задачи планировщика."""
+    
+    # 1. Плановые уведомления
     scheduler.add_job(job_send_notifications, 'cron', hour=9, minute=0, args=[bot, time(9, 0)], id="notify_for_09", replace_existing=True, jitter=600)
     scheduler.add_job(job_send_notifications, 'cron', hour=16, minute=0, args=[bot, time(16, 0)], id="notify_for_16", replace_existing=True, jitter=600)
-    scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', id="dislocation_check_20min", replace_existing=True, jitter=10) 
+    
+    # 2. ПЕРИОДИЧЕСКАЯ ПРОВЕРКА ДИСЛОКАЦИИ (передаем bot)
+    # Запуск каждые 20 минут (*/20)
+    scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', args=[bot], id="dislocation_check_20min", replace_existing=True, jitter=10) 
+    
+    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
 
-    # --- ✅ Блок фонового обновления кэша станций OSM отключен ---
-    # if config.STATIONS_CACHE_CRON_SCHEDULE:
-    #     try:
-    #         trigger = CronTrigger.from_crontab(config.STATIONS_CACHE_CRON_SCHEDULE, timezone=TZ)
-    #         scheduler.add_job(job_populate_stations_cache, trigger, id="stations_cacher_periodic", replace_existing=True, jitter=120)
-    #         logger.info(f"🟢 Задача кеширования станций OSM запланирована: '{config.STATIONS_CACHE_CRON_SCHEDULE}'")
-    #     except Exception as e:
-    #         logger.error(f"❌ Не удалось запланировать задачу кеширования станций: {e}")
-    # else:
-    #     logger.info("ℹ️ Фоновое кеширование станций OSM отключено в конфигурации.")
-    
+    if config.STATIONS_CACHE_CRON_SCHEDULE: 
+        try:
+            trigger = CronTrigger.from_crontab(config.STATIONS_CACHE_CRON_SCHEDULE, timezone=TZ)
+            scheduler.add_job(job_populate_stations_cache, trigger, id="stations_cacher_periodic", replace_existing=True, jitter=120)
+            logger.info(f"🟢 Задача кеширования станций OSM запланирована: '{config.STATIONS_CACHE_CRON_SCHEDULE}'")
+        except Exception as e:
+            logger.error(f"❌ Не удалось запланировать задачу кеширования станций: {e}")
+    else:
+        logger.info("ℹ️ Фоновое кеширование станций OSM отключено в конфигурации.")
+        
     scheduler.start()
     logger.info("🟢 Планировщик запущен со всеми задачами.")
     local_time = datetime.now(TZ)
     logger.info(f"🕒 Локальное время Владивостока: {local_time}")
     logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
     
-    # ✅ ВОЗВРАЩАЕМ ФУНКЦИЮ ДЛЯ ЗАПУСКА В post_init
+    # Возвращаем функцию немедленного запуска для bot.py
     return job_dislocation_check_on_start

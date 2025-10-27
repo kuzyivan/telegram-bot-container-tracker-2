@@ -12,6 +12,8 @@ from models import Tracking
 from sqlalchemy import update, insert 
 from config import TRACKING_REPORT_COLUMNS
 from datetime import datetime
+from telegram import Bot # <<< НОВЫЙ ИМПОРТ
+from services.notification_service import NotificationService # <<< НОВЫЙ ИМПОРТ
 
 logger = get_logger(__name__)
 imap_service = ImapService()
@@ -89,10 +91,6 @@ async def process_dislocation_file(filepath: str) -> int:
                         
                         mapped_key = COLUMN_MAPPING[key_ru]
                         
-                        # ✅ ИСПРАВЛЕНИЕ ОШИБКИ:
-                        # Мы УБРАЛИ 'container_number' из этого списка.
-                        # Он уже обработан выше и будет передан в INSERT отдельно,
-                        # что и вызывало ошибку "got multiple values".
                         if mapped_key in ['wagon_number', 'waybill']:
                             # Преобразуем ЛЮБОЕ значение в строку и убираем .0
                             cleaned_record[mapped_key] = str(value).removesuffix('.0')
@@ -124,25 +122,24 @@ async def process_dislocation_file(filepath: str) -> int:
 
                 if result.rowcount == 0:
                     # 2. Если не обновили (не нашли), то вставляем новую запись (INSERT)
-                    # Теперь эта строка не вызовет ошибки
                     insert_stmt = insert(Tracking).values(container_number=container_number, **cleaned_record)
                     await session.execute(insert_stmt)
                 
                 inserted_count += 1
             
-            # Запускаем обработчик событий поезда
+            # Запускаем обработчик событий поезда (логирование)
             try:
                 await process_dislocation_for_train_events(records_to_insert)
             except Exception as e:
-                logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
+                logger.error(f"❌ Ошибка обработки файла дислокации {filepath} при логировании событий поезда: {e}", exc_info=True)
 
             logger.info(f"✅ Таблица 'tracking' успешно обновлена. Записей: {inserted_count}.")
 
     return inserted_count
 
 
-async def check_and_process_dislocation():
-    """Проверяет почту на наличие новых файлов дислокации и обрабатывает их."""
+async def check_and_process_dislocation(bot_instance: Bot): # <<< ПРИНИМАЕМ Bot
+    """Проверяет почту на наличие новых файлов дислокации, обрабатывает их и рассылает уведомления."""
     
     try:
         # Передаем REGEX для темы
@@ -155,7 +152,13 @@ async def check_and_process_dislocation():
 
         if filepath:
             try:
+                # 1. Обрабатываем файл (события логируются в TrainEventLog)
                 await process_dislocation_file(filepath)
+                
+                # 2. НЕМЕДЛЕННАЯ РАССЫЛКА уведомлений о новых событиях
+                service = NotificationService(bot_instance)
+                await service.send_aggregated_train_event_notifications()
+                
             except Exception as e:
                 logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
             finally:

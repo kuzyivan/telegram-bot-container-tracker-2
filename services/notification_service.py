@@ -1,19 +1,24 @@
 # services/notification_service.py
 from datetime import time, datetime
 import asyncio
-import os # Для удаления временного файла
+import os 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from telegram import Bot
-from typing import List, Any # Для типизации Excel-данных
+# Добавлены Dict, Tuple
+from typing import List, Any, Dict, Tuple 
 
 from db import SessionLocal
-# Импортируем SubscriptionEmail для корректной загрузки связей
+# Импортируем Subscription, Tracking, SubscriptionEmail
 from models import Subscription, Tracking, SubscriptionEmail 
+# Импортируем TerminalContainer из его файла
+from model.terminal_container import TerminalContainer 
 from logger import get_logger
 # Импортируем утилиты для работы с Excel и почтой
 from utils.send_tracking import create_excel_file
 from utils.email_sender import send_email 
+# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавлен импорт для использования оператора .overlap
+from sqlalchemy.dialects.postgresql import array_overlap 
 
 logger = get_logger(__name__)
 
@@ -25,6 +30,7 @@ class NotificationService:
         """
         Отправляет уведомления пользователям, чьи подписки соответствуют target_time.
         Возвращает (отправлено_сообщений_в_тг, всего_активных_подписок).
+        (Логика осталась прежней, но добавлена для полноты файла)
         """
         sent_count = 0
         total_active_subscriptions = 0
@@ -87,7 +93,6 @@ class NotificationService:
                         ])
                 
                 # 3. Форматирование и отправка сообщения в Telegram
-                # (Логика Telegram остается прежней и пропускается для краткости)
                 if container_data_list:
                     message_parts = [f"🔔 **Отчет по подписке: {sub.subscription_name}** 🔔"]
                     for info in container_data_list:
@@ -122,18 +127,16 @@ class NotificationService:
                         # Собираем только подтвержденные email
                         email_recipients = [se.email.email for se in sub.target_emails if se.email.is_verified]
                         
-                        # === НОВЫЙ ЛОГ ДЛЯ ОТЛАДКИ ===
                         if sub.target_emails:
                             all_related_emails = [f"{se.email.email} (Verified: {se.email.is_verified})" for se in sub.target_emails]
                             logger.info(f"DEBUG [Email Check] Подписка {sub.id}. Связанные Email: {', '.join(all_related_emails)}. Получатели: {', '.join(email_recipients) if email_recipients else 'NONE'}")
-                        # ============================
                         
                         file_path = None
                         try:
                             # Проверяем, есть ли хотя бы один получатель
                             if email_recipients:
                                 
-                                logger.info(f"DEBUG [Excel Gen] Начинаю генерацию Excel для подписки {sub.id}.") # <-- НОВЫЙ ЛОГ
+                                logger.info(f"DEBUG [Excel Gen] Начинаю генерацию Excel для подписки {sub.id}.") 
                                 
                                 # Генерация Excel в отдельном потоке (т.к. Pandas/openpyxl синхронны)
                                 file_path = await asyncio.to_thread(
@@ -142,7 +145,7 @@ class NotificationService:
                                     EXCEL_HEADERS
                                 )
                                 
-                                logger.info(f"DEBUG [Email Send] Начинаю отправку Email с вложением: {os.path.basename(file_path)}.") # <-- НОВЫЙ ЛОГ
+                                logger.info(f"DEBUG [Email Send] Начинаю отправку Email с вложением: {os.path.basename(file_path)}.") 
                                 
                                 # Отправка Email в отдельном потоке (т.к. send_email синхронна)
                                 await asyncio.to_thread(
@@ -167,3 +170,99 @@ class NotificationService:
         logger.info(f"✅ [Notification] Рассылка завершена. Итого: Отправлено сообщений: {sent_count}, Обработано подписок: {total_active_subscriptions}.")
         
         return sent_count, total_active_subscriptions
+
+# =========================================================================
+# НОВЫЙ МЕТОД ДЛЯ АГРЕГИРОВАННОЙ РАССЫЛКИ СОБЫТИЙ ПОЕЗДА
+# =========================================================================
+    async def send_aggregated_train_event_notifications(self) -> int:
+        """
+        Отправляет агрегированные уведомления о незаотправленных событиях по поездам.
+        Одно уведомление на уникальную комбинацию Поезд + Событие + Станция + Время.
+        """
+        # Импорт необходимых функций и моделей (для уменьшения циклической зависимости)
+        from services.train_event_notifier import get_unsent_train_events, mark_event_as_sent
+        from models import TrainEventLog # Импортируем, если нужно
+
+        # 1. Получаем все незаотправленные события
+        events = await get_unsent_train_events()
+        if not events:
+            logger.info("[TrainEventNotify] Нет новых событий для отправки.")
+            return 0
+        
+        # 2. Группировка событий по уникальному ключу
+        aggregated_events: Dict[Tuple[str, str, str, datetime], Dict[str, Any]] = {}
+        for event in events:
+            # Ключ для агрегации: округляем время до минуты
+            event_time_key = event.event_time.replace(second=0, microsecond=0, tzinfo=None)
+            key = (event.train_number, event.event_description, event.station, event_time_key)
+            
+            if key not in aggregated_events:
+                aggregated_events[key] = {
+                    'earliest_time': event.event_time,
+                    'log_ids': [event.id]
+                }
+            else:
+                 if event.event_time < aggregated_events[key]['earliest_time']:
+                      aggregated_events[key]['earliest_time'] = event.event_time
+                 aggregated_events[key]['log_ids'].append(event.id)
+        
+        sent_notifications = 0
+
+        for (train_number, event_description, station, _), data in aggregated_events.items():
+            
+            # 3. Поиск пользователей, отслеживающих контейнеры этого поезда
+            user_ids_to_notify = []
+            containers_in_train = []
+            
+            async with SessionLocal() as session:
+                 # 3.1. Находим все контейнеры, связанные с этим номером поезда в TerminalContainer
+                container_results = await session.execute(
+                    select(TerminalContainer.container_number)
+                    .where(TerminalContainer.train == train_number)
+                )
+                containers_in_train = container_results.scalars().all()
+                
+                # 3.2. Ищем уникальных пользователей, отслеживающих хотя бы один из этих контейнеров
+                if containers_in_train:
+                    sub_result = await session.execute(
+                        select(Subscription.user_telegram_id)
+                        # Используем оператор overlap для проверки пересечения списков
+                        .where(Subscription.containers.overlap(containers_in_train))
+                    )
+                    user_ids_to_notify = sub_result.scalars().unique().all()
+            
+            if not user_ids_to_notify:
+                logger.debug(f"[TrainEventNotify] Поезд {train_number} не отслеживается. Пропуск.")
+                # Отмечаем логи как отправленные, чтобы не проверять их повторно
+                for log_id in data['log_ids']:
+                     await mark_event_as_sent(log_id)
+                continue
+
+            # 4. Формирование сообщения (одно на поезд/событие)
+            message_text = (
+                f"🚨 **Обнаружено событие поезда!** 🚨\n\n"
+                f"Поезд: **{train_number}**\n"
+                f"Событие: **{event_description}**\n"
+                f"Станция: **{station}**\n"
+                f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M')}`\n\n"
+                f"*(Касается {len(containers_in_train)} контейнеров)*"
+            )
+
+            # 5. Отправка уведомления и обновление статуса
+            for user_id in user_ids_to_notify:
+                try:
+                    await self.bot.send_message(
+                        chat_id=user_id,
+                        text=message_text,
+                        parse_mode="Markdown"
+                    )
+                    sent_notifications += 1
+                except Exception as e:
+                    logger.error(f"[TrainEventNotify] Ошибка отправки пользователю {user_id}: {e}")
+
+            # 6. Отмечаем все логи этого события как отправленные
+            for log_id in data['log_ids']:
+                 await mark_event_as_sent(log_id)
+            
+        logger.info(f"✅ [TrainEventNotify] Рассылка агрегированных событий поезда завершена.")
+        return sent_notifications
