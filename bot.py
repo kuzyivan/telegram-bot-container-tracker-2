@@ -85,7 +85,7 @@ def main():
     application.add_handler(CommandHandler("exportstats", exportstats))
     application.add_handler(CommandHandler("tracking", tracking))
     application.add_handler(CommandHandler("upload_file", upload_file_command))
-    application.add_handler(CommandHandler("force_notify", force_notify_handler)) # <--- РЕГИСТРАЦИЯ НОВОЙ КОМАНДЫ
+    application.add_handler(CommandHandler("force_notify", force_notify_handler))
     
     # 3. Команды пользователя
     application.add_handler(CommandHandler("start", start))
@@ -94,11 +94,9 @@ def main():
     
     # 4. Колбэки
     application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
-    # ✅ РЕГИСТРАЦИЯ НОВОГО ОБРАБОТЧИКА: для кнопки скачивания Excel
     application.add_handler(CallbackQueryHandler(handle_single_container_excel_callback, pattern="^get_excel_single_")) 
     
     # 5. Обработчики сообщений
-    # ✅ КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ REGEX: Упрощаем до ключевых слов для надежности
     application.add_handler(MessageHandler(
         filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
         reply_keyboard_handler
@@ -115,17 +113,21 @@ def main():
     application.add_error_handler(error_handler)
 
     async def post_init(app: Application):
-        # --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ---
-        await init_db() # Гарантируем, что все таблицы существуют перед запуском
-        # -----------------------------
+        # --- Инициализация БД ---
+        await init_db() 
+        # ------------------------
         
         await set_bot_commands(app)
         
+        # Получаем функцию немедленного запуска
         dislocation_check_on_start_func = start_scheduler(app.bot)
         
         if dislocation_check_on_start_func:
             logger.info("⚡️ Запуск немедленной проверки дислокации после старта...")
-            await dislocation_check_on_start_func()
+            
+            # --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Передаем аргумент 'bot' ---
+            await dislocation_check_on_start_func(app.bot) 
+            # --------------------------------------------------------
             
         logger.info("✅ Бот полностью настроен и запущен.")
 
