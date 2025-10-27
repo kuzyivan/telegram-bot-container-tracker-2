@@ -17,8 +17,7 @@ from logger import get_logger
 # Импортируем утилиты для работы с Excel и почтой
 from utils.send_tracking import create_excel_file
 from utils.email_sender import send_email 
-# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавлен импорт для использования оператора .overlap
-from sqlalchemy.dialects.postgresql import array_overlap 
+# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: УДАЛЕН ошибочный импорт array_overlap
 
 logger = get_logger(__name__)
 
@@ -29,7 +28,6 @@ class NotificationService:
     async def send_scheduled_notifications(self, target_time: time) -> tuple[int, int]:
         """
         Отправляет уведомления пользователям, чьи подписки соответствуют target_time.
-        Возвращает (отправлено_сообщений_в_тг, всего_активных_подписок).
         (Логика осталась прежней, но добавлена для полноты файла)
         """
         sent_count = 0
