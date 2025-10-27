@@ -4,6 +4,8 @@ from logger import get_logger
 logger = get_logger(__name__)
 
 from telegram import BotCommand, BotCommandScopeDefault, BotCommandScopeChat, Update
+# Добавляем импорт для обработки ошибки
+from telegram.error import RetryAfter
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 )
@@ -19,7 +21,6 @@ from handlers.menu_handlers import start, reply_keyboard_handler, handle_sticker
 from handlers.email_management_handler import get_email_conversation_handler, get_email_command_handlers
 from handlers.subscription_management_handler import get_subscription_management_handlers
 from handlers.tracking_handlers import tracking_conversation_handler
-# ✅ НОВЫЙ ИМПОРТ: handle_single_container_excel_callback
 from handlers.dislocation_handlers import handle_message, handle_single_container_excel_callback 
 from handlers.broadcast import broadcast_conversation_handler
 from handlers.train import setup_handlers as setup_train_handlers
@@ -31,7 +32,7 @@ from handlers.distance_handlers import distance_conversation_handler
 from handlers.admin.panel import admin_panel, admin_panel_callback
 from handlers.admin.uploads import upload_file_command, handle_admin_document
 from handlers.admin.exports import stats, exportstats, tracking
-from handlers.admin.notifications import force_notify_handler # <--- НОВЫЙ ИМПОРТ
+from handlers.admin.notifications import force_notify_handler 
 
 # --- ИМПОРТ init_db ---
 from db import init_db
@@ -49,8 +50,6 @@ async def set_bot_commands(application: Application):
         BotCommand("my_emails", "Мои Email-адреса"),
         BotCommand("my_subscriptions", "Мои подписки")
     ]
-    await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
-    
     admin_commands = user_commands + [
         BotCommand("admin", "Панель администратора"),
         BotCommand("stats", "Статистика за сутки"),
@@ -59,8 +58,17 @@ async def set_bot_commands(application: Application):
         BotCommand("train", "Отчёт по поезду"),
         BotCommand("upload_file", "Инструкция по загрузке файлов")
     ]
-    await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
-    logger.info("✅ Команды для пользователей и администратора установлены.")
+    
+    try:
+        await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+        await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=ADMIN_CHAT_ID))
+        logger.info("✅ Команды для пользователей и администратора установлены.")
+    except RetryAfter as e:
+        # Обрабатываем Flood Control: команды обновятся при следующей успешной попытке
+        logger.warning(f"⚠️ Пропущена установка команд из-за Flood Control: {e}. Повторится позже.")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка при установке команд: {e}")
+
 
 def main():
     logger.info("🚦 Старт бота!")
@@ -125,9 +133,9 @@ def main():
         if dislocation_check_on_start_func:
             logger.info("⚡️ Запуск немедленной проверки дислокации после старта...")
             
-            # --- КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Передаем аргумент 'bot' ---
+            # --- ИСПРАВЛЕНИЕ: Передаем аргумент 'bot' ---
             await dislocation_check_on_start_func(app.bot) 
-            # --------------------------------------------------------
+            # --------------------------------------------
             
         logger.info("✅ Бот полностью настроен и запущен.")
 
