@@ -82,7 +82,7 @@ def find_container_column(df: pd.DataFrame) -> str | None:
             return col
 
     # Если не нашли, ищем по вариантам
-    # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 115): Явно приводим к str для ключей и значений
+    # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 115): Гарантируем, что оба элемента - строки.
     cols_norm = {str(c).strip().lower(): str(c) for c in df.columns}
     for cand in candidates:
         if cand in cols_norm:
@@ -292,7 +292,7 @@ async def _collect_containers_from_excel(file_path: str) -> Dict[str, str]:
                 client = normalize_client_name(row.get(client_col_header))
 
                 if cn and client:
-                    # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 393): Гарантируем, что значение - str.
+                    # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 391): Гарантируем, что значение - str.
                     container_client_map[cn] = str(client) 
         except Exception as e:
             logger.error(f"[train_importer] Ошибка при чтении листа '{sheet}': {e}", exc_info=True)
@@ -355,7 +355,7 @@ async def check_and_process_terminal_report() -> Optional[Dict[str, Any]]:
     
     # 1. Поиск отчета за сегодня
     today_str = _get_vladivostok_date_str(days_offset=0)
-    # ✅ ИСПРАВЛЕНИЕ PYLANCE: Используем fr-строку для корректной обработки \s*
+    # Используем fr-строку для корректной обработки \s*
     subject_today = fr"{SUBJECT_FILTER_TERMINAL}\s*{today_str}"
     logger.info(f"Ищу '{subject_today}'...")
     filepath = await asyncio.to_thread(
@@ -368,7 +368,7 @@ async def check_and_process_terminal_report() -> Optional[Dict[str, Any]]:
     # 2. Поиск отчета за вчера, если сегодня не найден
     if not filepath:
         yesterday_str = _get_vladivostok_date_str(days_offset=1)
-        # ✅ ИСПРАВЛЕНИЕ PYLANCE: Используем fr-строку для корректной обработки \s*
+        # Используем fr-строку для корректной обработки \s*
         subject_yesterday = fr"{SUBJECT_FILTER_TERMINAL}\s*{yesterday_str}"
         logger.info(f"Отчет за сегодня не найден. Ищу '{subject_yesterday}'...")
         filepath = await asyncio.to_thread(
