@@ -162,10 +162,13 @@ async def process_dislocation_file(filepath: str):
     inserted_count = 0
     events_to_log = [] 
 
-    # --- ИСПРАВЛЕНИЕ Pylance (1) ---
-    # Добавляем () для ВЫЗОВА "фабрики" сессий
-    async with async_sessionmaker() as session:
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+    # --- ИСПРАВЛЕНИЕ ОШИБКИ TypeError: 'async_sessionmaker' object does not support...
+    # (Pylance был неправ, скобки () НУЖНЫ, но использовать нужно try/finally)
+    # (Ваш db.py использует старый 'sessionmaker' из orm, а не новый 'async_sessionmaker')
+    
+    # Создаем сессию, ВЫЗЫВАЯ фабрику
+    session = async_sessionmaker()
+    try:
         
         # 3. Собираем номера контейнеров и предзагружаем их из БД
         container_numbers_from_file = [
@@ -264,18 +267,21 @@ async def process_dislocation_file(filepath: str):
                 ))
                 inserted_count += 1
                 
-        try:
-            if events_to_log:
-                # Используем стандартный session.add_all
-                session.add_all(events_to_log)
-            
-            await session.commit()
-            logger.info(f"Успешно сохранено в БД: {inserted_count} новых, {updated_count} обновленных.")
-            
-        except Exception as e:
-            await session.rollback()
-            logger.error(f"Ошибка при сохранении в БД: {e}", exc_info=True)
-            return 0
+        # --- (Часть блока try/finally) ---
+        if events_to_log:
+            # Используем стандартный session.add_all
+            session.add_all(events_to_log)
+        
+        await session.commit()
+        logger.info(f"Успешно сохранено в БД: {inserted_count} новых, {updated_count} обновленных.")
+        
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Ошибка при сохранении в БД: {e}", exc_info=True)
+        return 0
+    finally:
+        await session.close()
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ TypeError ---
 
     logger.info(f"[Dislocation Import] Обработка {filepath} завершена.")
     return inserted_count + updated_count
