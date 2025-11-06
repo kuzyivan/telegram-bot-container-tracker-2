@@ -98,7 +98,22 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     logger.info(f"Чтение файла дислокации: {filepath}")
     
     try:
-        df = pd.read_excel(filepath, skiprows=3, header=0, engine='openpyxl')
+        # --- ✅ ИСПРАВЛЕНИЕ ДЛЯ DataError: Читаем все текстовые колонки как 'str' ---
+        # Определяем, какие колонки из Excel должны быть текстом
+        excel_cols_as_str = [
+            'Грузоотправитель (ТГНЛ)', 'Грузоотправитель (ОКПО)', 'Грузоотправитель (наим)',
+            'Грузополучатель (ТГНЛ)', 'Грузополучатель (ОКПО)', 'Грузополучатель (наим)',
+            'Код груза ГНГ', 'Номер поезда', 'Номер вагона', 'Номер накладной',
+            'Идентификатор отправки', 'Грузоотправитель', 'Грузополучатель',
+            'Индекс поезда с наименованиями станций'
+        ]
+        
+        # Создаем словарь dtype
+        # { 'Грузоотправитель (ТГНЛ)': str, 'Грузоотправитель (ОКПО)': str, ... }
+        dtype_map = {col: str for col in excel_cols_as_str}
+        
+        df = pd.read_excel(filepath, skiprows=3, header=0, engine='openpyxl', dtype=dtype_map)
+        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         if 'Идентификатор отправки' in df.columns or 'Тип контейнера' in df.columns:
             logger.info(f"Обнаружен НОВЫЙ формат дислокации (РЖД, 45 столбцов).")
@@ -165,23 +180,13 @@ async def process_dislocation_file(filepath: str):
             )).scalars().all()
             tracking_map = {t.container_number: t for t in existing_trackings}
 
-            # --- ✅ НОВЫЙ БЛОК: Список полей, которые ДОЛЖНЫ быть СТРОКАМИ ---
-            STRING_COLS_TO_CONVERT = [
-                'sender_tgnl', 'sender_okpo', 'sender_name',
-                'receiver_tgnl', 'receiver_okpo', 'receiver_name',
-                'cargo_gng_code', 'train_number', 'wagon_number', 'waybill',
-                'dispatch_id', 'sender_name_short', 'receiver_name_short',
-                'train_index_full'
-            ]
-            # -----------------------------------------------------------
-
             for row_data in data_rows:
                 
                 container_number = row_data.get('container_number')
                 if not container_number:
                     continue
 
-                # --- Приведение типов (Старый блок) ---
+                # --- Приведение типов ---
                 if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
                     row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
                 
@@ -203,14 +208,10 @@ async def process_dislocation_file(filepath: str):
                         try:
                             row_data[key] = int(row_data[key])
                         except (ValueError, TypeError):
-                            row_data[key] = None
+                            row_data[key] = None 
                 
-                # --- ✅ НОВЫЙ БЛОК: Принудительное приведение к СТРОКЕ ---
-                for col_name in STRING_COLS_TO_CONVERT:
-                    if col_name in row_data and row_data[col_name] is not None:
-                        # Конвертируем в строку и убираем '.0' если pandas прочел как float
-                        row_data[col_name] = str(row_data[col_name]).removesuffix('.0')
-                # -----------------------------------------------------------
+                # --- ❌ СТАРЫЙ БЛОК ПРИВЕДЕНИЯ К СТРОКЕ (УДАЛЕН) ---
+                # Он больше не нужен, т.к. pandas уже прочел их как строки
                 
                 existing_entry = tracking_map.get(container_number)
                 new_operation_date = row_data.get('operation_date') 
