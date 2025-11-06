@@ -18,6 +18,9 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
     """
     Получает ПОСЛЕДНЮЮ запись о дислокации для каждого 
     контейнера из списка.
+    
+    (Версия 3 - Исправлена ошибка 'function to_timestamp(timestamp... does not exist'
+     и ошибка 'AttributeError: 'async_sessionmaker' object has no attribute 'execute'')
     """
     if not container_numbers:
         return []
@@ -28,16 +31,27 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
     session = async_sessionmaker()
     try:
         
-        # --- ИСПРАВЛЕННЫЙ ЗАПРОС (сортировка по operation_date) ---
+        # --- ИСПРАВЛЕННЫЙ ЗАПРОС ---
+        # Создаем подзапрос (Common Table Expression - CTE)
         subquery = select(
             Tracking,
             func.row_number().over(
                 partition_by=Tracking.container_number,
+                
+                # --- ИСПРАВЛЕНИЕ ---
+                # Раньше было: func.TO_TIMESTAMP(Tracking.operation_date, ...).desc()
+                # Это вызывало ошибку, так как operation_date - УЖЕ TIMESTAMP.
+                # Теперь мы сортируем напрямую по полю.
                 order_by=Tracking.operation_date.desc()
+                # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+                
             ).label('rn')
         ).where(Tracking.container_number.in_(container_numbers)).subquery()
 
+        # Создаем псевдоним (alias) для CTE
         t_aliased = aliased(Tracking, subquery)
+
+        # Выбираем только те строки, где rn = 1 (т.е. самые последние)
         stmt = select(t_aliased).where(subquery.c.rn == 1)
 
         # Теперь .execute() вызывается у ЭКЗЕМПЛЯРА сессии
@@ -66,7 +80,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
     # --- ИСПРАВЛЕНИЕ: Вызываем фабрику ---
     session = async_sessionmaker()
     try:
-        # (Ваша логика запроса подписок...)
+        # Выбираем User.telegram_id, Subscription.id, Subscription.containers
         stmt_subscriptions = (
             select(
                 User.telegram_id,
@@ -85,7 +99,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
             logger.info("[Queries] Активных подписок не найдено.")
             return []
 
-        # (Ваша логика запроса email'ов...)
+        # Выбираем email'ы для этих подписок
         subscription_ids = [sub["subscription_id"] for sub in subscriptions_data]
         
         stmt_emails = (
@@ -95,11 +109,12 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
             )
             .join(UserEmail, UserEmail.id == SubscriptionEmail.email_id)
             .where(SubscriptionEmail.subscription_id.in_(subscription_ids))
-            .where(UserEmail.is_verified == True)
+            .where(UserEmail.is_verified == True) # Только верифицированные email
         )
         
         result_emails = await session.execute(stmt_emails)
         
+        # Группируем email'ы по subscription_id
         emails_map: Dict[int, List[str]] = {}
         for row in result_emails.mappings().all():
             sub_id = row["subscription_id"]
@@ -107,6 +122,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
                 emails_map[sub_id] = []
             emails_map[sub_id].append(row["email"])
 
+        # Собираем финальный результат
         final_subscriptions: List[Dict[str, Any]] = []
         for sub in subscriptions_data:
             sub_id = sub["subscription_id"]
@@ -114,7 +130,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
                 "telegram_id": sub["telegram_id"],
                 "subscription_name": sub["subscription_name"],
                 "containers": sub["containers"],
-                "emails": emails_map.get(sub_id, [])
+                "emails": emails_map.get(sub_id, []) # Добавляем список email'ов
             })
 
         logger.info(f"[Queries] Найдено {len(final_subscriptions)} активных подписок для обработки.")
