@@ -10,7 +10,10 @@ from sqlalchemy.future import select
 # Файлы 'db.py', 'models.py' и 'logger.py' находятся в корне проекта.
 from db import async_sessionmaker
 from models import Tracking, TrainEventLog
-from logger import logger
+# --- ИСПРАВЛЕНИЕ ЛОГГЕРА ---
+import logging
+logger = logging.getLogger(__name__)
+# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 from datetime import datetime
 # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
@@ -148,7 +151,10 @@ async def process_dislocation_file(filepath: str):
     inserted_count = 0
     events_to_log = [] 
 
-    async with async_sessionmaker() as session:
+    # --- ИСПРАВЛЕНИЕ ОШИБКИ Pylance ---
+    # Убираем скобки () после async_sessionmaker
+    async with async_sessionmaker as session:
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         # 3. Собираем номера контейнеров и предзагружаем их из БД
         container_numbers_from_file = [
