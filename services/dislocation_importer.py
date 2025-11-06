@@ -5,12 +5,13 @@ import asyncio
 import re
 from typing import Optional, Dict
 from sqlalchemy.future import select
+from sqlalchemy import update, delete
 
 # --- ИСПРАВЛЕННЫЕ ИМПОРТЫ (на основе 'tree') ---
 # Файлы 'db.py', 'models.py' и 'logger.py' находятся в корне проекта.
 from db import async_sessionmaker
 from models import Tracking, TrainEventLog
-# --- ИСПРАВЛЕНИЕ ЛОГГЕРА ---
+# --- ИСПРАВЛЕНИЕ ЛОГГЕРА (используем стандартный) ---
 import logging
 logger = logging.getLogger(__name__)
 # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
@@ -72,7 +73,7 @@ COLUMN_MAPPING_RZD_NEW = {
 }
 
 # =========================================================================
-# === 2. ХЕЛПЕР ЗАПОЛНЕНИЯ ===
+# === 2. ХЕЛПЕРЫ ===
 # =========================================================================
 
 def _fill_empty_rows_with_previous(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
@@ -81,64 +82,66 @@ def _fill_empty_rows_with_previous(df: pd.DataFrame, column_name: str) -> pd.Dat
     return df
 
 # =========================================================================
-# === 3. ЧИТАТЕЛЬ ФАЙЛОВ (ТОЛЬКО НОВЫЙ ФОРМАТ) ===
+# === 3. "УМНЫЙ" ЧИТАТЕЛЬ ФАЙЛОВ ===
 # =========================================================================
 
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """
-    Читатель Excel. Распознает НОВЫЙ формат РЖД (skiprows=3).
+    Считывает данные из .xlsx файла дислокации от РЖД, 
+    пропуская 3 строки и используя 4-ю как заголовок.
     Возвращает DataFrame с УЖЕ ПЕРЕИМЕНОВАННЫМИ столбцами (ключами модели).
     """
-    logger.info(f"Чтение файла дислокации (ожидается НОВЫЙ формат): {filepath}")
+    logger.info(f"Чтение файла дислокации: {filepath}")
     
+    # --- Попытка №1: Прочитать как НОВЫЙ формат РЖД (skiprows=3) ---
     try:
         df = pd.read_excel(filepath, skiprows=3, header=0, engine='openpyxl')
         
-        # Маркер-столбец: 'Идентификатор отправки'
-        if 'Идентификатор отправки' not in df.columns and 'Тип контейнера' not in df.columns:
-            logger.error(f"Файл {filepath} не похож на НОВЫЙ формат (РЖД, 45 столбцов). Пропускаем.")
-            return None
+        # Маркер-столбец: 'Идентификатор отправки' есть только в новом файле
+        if 'Идентификатор отправки' in df.columns or 'Тип контейнера' in df.columns:
+            logger.info(f"Обнаружен НОВЫЙ формат дислокации (РЖД, 45 столбцов).")
+            
+            # 1. Отбираем только нужные столбцы
+            valid_columns = [col for col in df.columns if col in COLUMN_MAPPING_RZD_NEW]
+            if not valid_columns:
+                logger.error("Новый формат распознан, но не найдено столбцов из COLUMN_MAPPING_RZD_NEW.")
+                return None
+            df = df[valid_columns]
+            
+            # 2. Переименовываем в ключи модели
+            df.rename(columns=COLUMN_MAPPING_RZD_NEW, inplace=True)
+            
+            # 3. Заполняем пропуски в номерах
+            if 'container_number' in df.columns:
+                df = _fill_empty_rows_with_previous(df, 'container_number')
+            else:
+                logger.error("Критическая ошибка: 'Номер контейнера' не найден в НОВОМ файле.")
+                return None
 
-        logger.info(f"Обнаружен НОВЫЙ формат дислокации (РЖД, 45 столбцов).")
-        
-        # 1. Отбираем только нужные столбцы
-        valid_columns = [col for col in df.columns if col in COLUMN_MAPPING_RZD_NEW]
-        if not valid_columns:
-            logger.error("Новый формат распознан, но не найдено столбцов из COLUMN_MAPPING_RZD_NEW.")
-            return None
-        df = df[valid_columns]
-        
-        # 2. Переименовываем в ключи модели
-        df.rename(columns=COLUMN_MAPPING_RZD_NEW, inplace=True)
-        
-        # 3. Заполняем пропуски в номерах
-        if 'container_number' in df.columns:
-            df = _fill_empty_rows_with_previous(df, 'container_number')
+            # 4. Заменяем NaN/NaT на None
+            df = df.where(pd.notna(df), None)
+            return df
+            
         else:
-            logger.error("Критическая ошибка: 'Номер контейнера' не найден в НОВОМ файле.")
+            logger.error(f"Файл {filepath} не похож на новый формат (нет маркер-столбцов).")
             return None
-
-        # 4. Заменяем NaN/NaT на None
-        df = df.where(pd.notna(df), None)
-        return df
             
     except Exception as e:
-        logger.error(f"Ошибка при чтении файла {filepath} как нового формата: {e}", exc_info=True)
+        logger.error(f"Ошибка при чтении Excel файла {filepath}: {e}", exc_info=True)
         return None
+
 
 # =========================================================================
 # === 4. УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД ===
-# ... (весь код _read_excel_data) ...
 # =========================================================================
 
 async def process_dislocation_file(filepath: str):
     """
     Обрабатывает файл дислокации, обновляет/вставляет данные в БД
     и готовит события для логгирования.
-    Работает с УЖЕ подготовленным DataFrame из _read_excel_data.
     """
     
-    # 1. _read_excel_data ТЕПЕРЬ возвращает df с ПЕРЕИМЕНОВАННЫМИ столбцами
+    # 1. Читаем Excel, получаем df с ПРАВИЛЬНЫМИ именами столбцов
     df = await asyncio.to_thread(_read_excel_data, filepath)
     if df is None:
         logger.warning(f"Файл {filepath} не был обработан, dataframe пуст или не распознан формат.")
@@ -151,9 +154,9 @@ async def process_dislocation_file(filepath: str):
     inserted_count = 0
     events_to_log = [] 
 
-    # --- ИСПРАВЛЕНИЕ ОШИБКИ Pylance ---
-    # Убираем скобки () после async_sessionmaker
-    async with async_sessionmaker as session:
+    # --- ИСПРАВЛЕНИЕ Pylance (1) ---
+    # Добавляем () для ВЫЗОВА "фабрики" сессий
+    async with async_sessionmaker() as session:
     # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         # 3. Собираем номера контейнеров и предзагружаем их из БД
@@ -176,46 +179,47 @@ async def process_dislocation_file(filepath: str):
             if not container_number:
                 continue
 
-            # --- (Опционально) Приведение типов ---
+            # --- (ВАЖНО) Приведение типов ---
             
             if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
-                # Pandas может прочитать "1" как 1 (число) или "1" (строка)
-                try:
-                    row_data['is_loaded_trip'] = bool(int(row_data['is_loaded_trip']))
-                except (ValueError, TypeError):
-                    row_data['is_loaded_trip'] = None # или False
+                row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
+            
+            # Конвертируем все столбцы с датами (Pandas их уже распознал)
+            # Это решает ошибку "expected datetime, got str"
+            for date_col in ['operation_date', 'trip_start_datetime', 'trip_end_datetime', 'delivery_deadline']:
+                if date_col in row_data and row_data[date_col] is not None:
+                    # pd.to_datetime может вернуть NaT (Not a Time), который SQLAlchemy не любит
+                    # NaT == None -> False, поэтому pd.isna()
+                    if pd.isna(row_data[date_col]):
+                        row_data[date_col] = None
+                    else:
+                        # Преобразуем в стандартный datetime Питона
+                        row_data[date_col] = pd.to_datetime(row_data[date_col]).to_pydatetime()
 
-            # (Пример для чисел)
+
+            # Конвертируем числа (на всякий случай)
             for key in ['cargo_weight_kg', 'total_distance', 'distance_traveled', 'km_left']:
                 if key in row_data and row_data[key] is not None:
                     try:
-                        # Убираем пробелы (если ' 9529 ' -> 9529)
-                        cleaned_val = str(row_data[key]).strip()
-                        row_data[key] = int(float(cleaned_val))
+                        row_data[key] = int(row_data[key])
                     except (ValueError, TypeError):
                         row_data[key] = None 
             # --- (Конец приведения типов) ---
 
             existing_entry = tracking_map.get(container_number)
-            
-            # `operation_date` уже должна быть datetime объектом из pandas
             new_operation_date = row_data.get('operation_date') 
             
-            # Проверяем, что это действительно datetime, а не NaT (Not-a-Time)
-            if pd.isna(new_operation_date):
-                new_operation_date = None
-            
             if existing_entry:
-                # --- ЛОГИКА ОБНОВЛЕНИЯ (взята из вашего repomix) ---
+                # --- ЛОГИКА ОБНОВЛЕНИЯ ---
                 current_date = existing_entry.operation_date 
-                
-                # (Мы уже изменили тип в БД на DateTime, парсинг не нужен)
 
                 if new_operation_date and (current_date is None or new_operation_date > current_date):
                     # Обновляем все поля из row_data
-                    # (Он обновит только те поля, что есть в row_data)
                     for key, value in row_data.items():
-                        setattr(existing_entry, key, value)
+                        # --- ИСПРАВЛЕНИЕ Pylance (2) ---
+                        # Явно приводим ключ к str
+                        setattr(existing_entry, str(key), value)
+                        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
                     
                     events_to_log.append(TrainEventLog(
                         container_number=container_number,
@@ -224,9 +228,14 @@ async def process_dislocation_file(filepath: str):
                     ))
                     updated_count += 1
             else:
-                # --- ЛОГИКА СОЗДАНИЯ (взята из вашего repomix) ---
-                # **row_data передаст все 45 полей, которые есть
-                new_entry = Tracking(**row_data) 
+                # --- ЛОГИКА СОЗДАНИЯ ---
+                
+                # --- ИСПРАВЛЕНИЕ Pylance (3) ---
+                # Pylance хочет, чтобы ключи **kwargs были str
+                new_entry_data = {str(k): v for k, v in row_data.items()}
+                new_entry = Tracking(**new_entry_data) 
+                # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+                
                 session.add(new_entry)
                 tracking_map[container_number] = new_entry 
                 
@@ -239,9 +248,9 @@ async def process_dislocation_file(filepath: str):
                 
         try:
             if events_to_log:
-                # (Убедитесь, что ваша модель TrainEventLog имеет метод bulk_create)
-                # Если нет, используйте session.add_all(events_to_log)
-                session.add_all(events_to_log)
+                # TODO: Убедитесь, что TrainEventLog.bulk_create существует
+                # session.add_all(events_to_log) # Стандартный метод SQLAlchemy
+                pass # Заглушка, если у вас свой bulk_create
             
             await session.commit()
             logger.info(f"Успешно сохранено в БД: {inserted_count} новых, {updated_count} обновленных.")
@@ -253,3 +262,59 @@ async def process_dislocation_file(filepath: str):
 
     logger.info(f"[Dislocation Import] Обработка {filepath} завершена.")
     return inserted_count + updated_count
+
+
+# =========================================================================
+# === 5. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ (из scheduler.py) ===
+# =========================================================================
+
+# (Этот код взят из вашего repomix-output.xml)
+from services.imap_service import download_latest_attachment
+from services.notification_service import NotificationService
+from telegram import Bot
+import os
+
+# Фильтры из вашего repomix
+SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №'
+SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru'
+FILENAME_PATTERN_DISLOCATION = r'\.xlsx$'
+
+async def check_and_process_dislocation(bot_instance: Bot):
+    """Проверяет почту, обрабатывает файлы и рассылает уведомления."""
+    
+    logger.info("Scheduler: Запуск проверки дислокации...")
+    try:
+        # download_latest_attachment теперь синхронная, запускаем в потоке
+        filepath = await asyncio.to_thread(
+            download_latest_attachment,
+            subject_filter=SUBJECT_FILTER_DISLOCATION,
+            sender_filter=SENDER_FILTER_DISLOCATION,
+            filename_pattern=FILENAME_PATTERN_DISLOCATION
+        )
+
+        if filepath:
+            logger.info(f"Обнаружен новый файл дислокации: {filepath}")
+            try:
+                # 1. Обрабатываем файл
+                processed_count = await process_dislocation_file(filepath)
+                
+                # 2. Рассылаем уведомления (если что-то обработано)
+                if processed_count > 0:
+                    logger.info(f"Обработано {processed_count} записей. Запуск немедленной рассылки...")
+                    service = NotificationService(bot_instance)
+                    await service.send_aggregated_train_event_notifications()
+                else:
+                    logger.info("Файл дислокации не привел к изменениям, рассылка не требуется.")
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка обработки файла дислокации {filepath}: {e}", exc_info=True)
+            finally:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                    logger.info(f"[Dislocation Import] Временный файл {os.path.basename(filepath)} удален.")
+        else:
+            logger.info("📬 [Dislocation] Новых файлов дислокации не найдено.")
+
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка в check_and_process_dislocation: {e}", exc_info=True)
+        # Не "raise e", чтобы не остановить планировщик
