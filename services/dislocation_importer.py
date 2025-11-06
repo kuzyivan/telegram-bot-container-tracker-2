@@ -3,6 +3,7 @@
 import pandas as pd
 import asyncio
 import re
+import os  # <-- ПЕРЕМЕЩАЕМ ИМПОРТ OS ВВЕРХ
 from typing import Optional, Dict
 from sqlalchemy.future import select
 from sqlalchemy import update, delete
@@ -17,6 +18,13 @@ logger = logging.getLogger(__name__)
 # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 from datetime import datetime
 # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
+# --- ОПРЕДЕЛЯЕМ ПАПКУ ДЛЯ ЗАГРУЗОК ---
+# handlers/admin/uploads.py ожидает найти эту переменную здесь.
+DOWNLOAD_DIR = "downloads"
+# Убедимся, что папка существует при старте
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+# ---
 
 
 # =========================================================================
@@ -274,7 +282,7 @@ async def process_dislocation_file(filepath: str):
 # =========================================================================
 
 from telegram import Bot
-import os
+# import os # <-- УДАЛЕНО, так как перенесено вверх
 
 # Фильтры из вашего repomix
 SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №'
