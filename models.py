@@ -5,7 +5,7 @@
 """
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
-    String, Float, Integer, BigInteger, DateTime, Time, ARRAY, ForeignKey, Text, Boolean
+    String, Float, Integer, BigInteger, DateTime, Time, ARRAY, ForeignKey, Text, Boolean, Date
 )
 from sqlalchemy.sql import func
 from datetime import datetime, date, time
@@ -36,12 +36,8 @@ class UserEmail(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
     
-    # Снято UNIQUE для возможности дублирования адресов у разных пользователей
     email: Mapped[str] = mapped_column(String, index=True) 
-    
-    # Поле для статуса подтверждения (False по умолчанию для новых)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False) 
-    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Связь обратно к User
@@ -101,22 +97,93 @@ class SubscriptionEmail(Base):
     email: Mapped["UserEmail"] = relationship() # Односторонняя связь к UserEmail
 
 
-# --- Модели Слежения ---
+# =========================================================================
+# === 4. ОБНОВЛЕННАЯ МОДЕЛЬ TRACKING (45+ полей) ===
+# =========================================================================
 class Tracking(Base):
+    """
+    Модель для хранения данных дислокации.
+    Поддерживает как старый (10-12 полей), так и новый (45 полей) формат РЖД.
+    """
     __tablename__ = "tracking"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    container_number: Mapped[str] = mapped_column(String(11), index=True)
+    # --- Системные и основные поля ---
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    container_number: Mapped[str] = mapped_column(String(11), index=True, nullable=False)
+    
+    # --- Данные о рейсе (из нового файла) ---
+    trip_start_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    trip_end_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+
+    # --- Данные Отправления ---
+    from_state: Mapped[str | None] = mapped_column(String)
+    from_road: Mapped[str | None] = mapped_column(String)
     from_station: Mapped[str | None] = mapped_column(String)
+    
+    # --- Данные Назначения ---
+    to_country: Mapped[str | None] = mapped_column(String)
+    to_road: Mapped[str | None] = mapped_column(String)
     to_station: Mapped[str | None] = mapped_column(String)
+
+    # --- Данные о Грузоотправителе ---
+    sender_tgnl: Mapped[str | None] = mapped_column(String)
+    sender_name_short: Mapped[str | None] = mapped_column(String)
+    sender_okpo: Mapped[str | None] = mapped_column(String(10))
+    sender_name: Mapped[str | None] = mapped_column(String)
+
+    # --- Данные о Грузополучателе ---
+    receiver_tgnl: Mapped[str | None] = mapped_column(String)
+    receiver_name_short: Mapped[str | None] = mapped_column(String)
+    receiver_okpo: Mapped[str | None] = mapped_column(String(10))
+    receiver_name: Mapped[str | None] = mapped_column(String)
+
+    # --- Данные о Грузе ---
+    container_type: Mapped[str | None] = mapped_column(String)
+    cargo_name: Mapped[str | None] = mapped_column(String)
+    cargo_gng_code: Mapped[str | None] = mapped_column(String(12))
+    cargo_weight_kg: Mapped[int | None] = mapped_column(Integer)
+    is_loaded_trip: Mapped[bool | None] = mapped_column(Boolean)
+
+    # --- Данные о Текущей Дислокации ---
     current_station: Mapped[str | None] = mapped_column(String)
     operation: Mapped[str | None] = mapped_column(String)
-    operation_date: Mapped[str | None] = mapped_column(String) # Или DateTime, если формат всегда одинаков
-    waybill: Mapped[str | None] = mapped_column(String)
-    km_left: Mapped[int | None] = mapped_column(Integer)
-    forecast_days: Mapped[float | None] = mapped_column(Float)
-    wagon_number: Mapped[str | None] = mapped_column(String)
     operation_road: Mapped[str | None] = mapped_column(String)
+    operation_mnemonic: Mapped[str | None] = mapped_column(String(10))
+    operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), index=True) # Важно для сортировки
+    container_state: Mapped[str | None] = mapped_column(String)
+
+    # --- Данные о Поезде и Вагоне ---
+    train_index_full: Mapped[str | None] = mapped_column(String)
+    train_number: Mapped[str | None] = mapped_column(String, index=True)
+    wagon_number: Mapped[str | None] = mapped_column(String, index=True)
+    seals_count: Mapped[int | None] = mapped_column(Integer)
+    
+    # --- Данные о Приеме/Сдаче ---
+    accept_state: Mapped[str | None] = mapped_column(String)
+    surrender_state: Mapped[str | None] = mapped_column(String)
+    accept_road: Mapped[str | None] = mapped_column(String)
+    surrender_road: Mapped[str | None] = mapped_column(String)
+    
+    # --- Данные о Доставке и Расстояниях ---
+    delivery_deadline: Mapped[date | None] = mapped_column(Date) # 'Нормативный срок доставки' (21.01.2025)
+    total_distance: Mapped[int | None] = mapped_column(Integer)
+    distance_traveled: Mapped[int | None] = mapped_column(Integer)
+    km_left: Mapped[int | None] = mapped_column(Integer) # 'Расстояние оставшееся'
+    
+    # --- Данные о Простое ---
+    last_op_idle_time_str: Mapped[str | None] = mapped_column(String)
+    last_op_idle_days: Mapped[float | None] = mapped_column(Float)
+    
+    # --- Идентификаторы ---
+    waybill: Mapped[str | None] = mapped_column(String) # 'Номер накладной' (ЭЛ970932)
+    dispatch_id: Mapped[str | None] = mapped_column(String) # 'Идентификатор отправки'
+    waybill_id: Mapped[int | None] = mapped_column(BigInteger, index=True) # 'Идентификатор накладной' (1576096824)
+
+    # --- Старое поле (на всякий случай, если оно используется) ---
+    forecast_days: Mapped[float | None] = mapped_column(Float)
+
+# =========================================================================
+
 
 # --- Модель Кеша Станций ---
 class StationsCache(Base):
