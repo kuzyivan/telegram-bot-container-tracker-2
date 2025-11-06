@@ -16,7 +16,8 @@ from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
 from queries.containers import get_tracking_data_by_wagons 
 from services.railway_router import get_remaining_distance_on_route
-from utils.send_tracking import create_excel_file, get_vladivostok_filename
+# ✅ ИЗМЕНЕНИЕ: Импортируем НОВУЮ функцию create_excel_file_from_strings
+from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
 import config
 from utils.keyboards import create_single_container_excel_keyboard
@@ -70,13 +71,12 @@ async def get_train_for_container(container_number: str) -> str | None:
 
 # --- ✅ НОВАЯ Вспомогательная функция для форматирования даты в Excel ---
 def _format_dt_for_excel(dt: Optional[datetime]) -> str:
-    """Форматирует datetime в строку 'ДД.ММ.ГГГГ ЧЧ:ММ' для Excel, обрабатывает None."""
+    """Форматирует datetime в строку 'ДД-ММ-ГГГГ ЧЧ:ММ' для Excel, обрабатывает None."""
     if dt is None:
-        return "" # Возвращаем пустую строку, а не "н/д"
+        return "" # Возвращаем пустую строку
     try:
-        # Форматируем как 'ДД.ММ.ГГГГ ЧЧ:ММ'
-        # (Мы не добавляем (UTC), так как Excel может воспринять это как часть даты)
-        return dt.strftime('%d.%m.%Y %H:%M')
+        # ✅ ИЗМЕНЕНО: Используем дефис '-'
+        return dt.strftime('%d-%m-%Y %H:%M')
     except Exception:
         return str(dt) # Запасной вариант
 # --- Конец новой функции ---
@@ -226,21 +226,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
             wagon_number_raw = db_row.wagon_number
-            wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
+            wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" # Используем "" для Excel
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
-            railway_display_name = db_row.operation_road
+            railway_display_name = db_row.operation_road or ""
             
             # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
             excel_row = [
                  db_row.container_number,
                  _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
-                 db_row.from_station, 
-                 db_row.to_station,
-                 db_row.current_station, 
-                 db_row.operation, 
+                 db_row.from_station or "", 
+                 db_row.to_station or "",
+                 db_row.current_station or "", 
+                 db_row.operation or "", 
                  _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
-                 db_row.last_op_idle_time_str,
-                 db_row.waybill, 
+                 db_row.last_op_idle_time_str or "",
+                 db_row.waybill or "", 
                  km_left,
                  wagon_number_cleaned, 
                  wagon_type_for_excel, 
@@ -250,8 +250,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_path = None
         try:
+             # ✅ ИЗМЕНЕНИЕ: Вызываем НОВУЮ функцию
              file_path = await asyncio.to_thread(
-                 create_excel_file,
+                 create_excel_file_from_strings, # <--- ИЗМЕНЕНО
                  final_report_data,
                  excel_columns
              )
@@ -301,9 +302,9 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     )
     km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
     wagon_number_raw = db_row.wagon_number
-    wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
+    wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" # Используем "" для Excel
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
-    railway_display_name = db_row.operation_road
+    railway_display_name = db_row.operation_road or ""
     
     EXCEL_HEADERS = [
         'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
@@ -316,13 +317,13 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     final_report_data = [[
          db_row.container_number,
          _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
-         db_row.from_station, 
-         db_row.to_station,
-         db_row.current_station, 
-         db_row.operation, 
+         db_row.from_station or "", 
+         db_row.to_station or "",
+         db_row.current_station or "", 
+         db_row.operation or "", 
          _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
-         db_row.last_op_idle_time_str,
-         db_row.waybill, 
+         db_row.last_op_idle_time_str or "",
+         db_row.waybill or "", 
          km_left,
          wagon_number_cleaned, 
          wagon_type_for_excel, 
@@ -331,8 +332,9 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
      
     file_path = None
     try:
+         # ✅ ИЗМЕНЕНИЕ: Вызываем НОВУЮ функцию
          file_path = await asyncio.to_thread(
-             create_excel_file,
+             create_excel_file_from_strings, # <--- ИЗМЕНЕНО
              final_report_data,
              EXCEL_HEADERS
          )
