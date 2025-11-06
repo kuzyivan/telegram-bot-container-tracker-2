@@ -162,9 +162,10 @@ async def process_dislocation_file(filepath: str):
     inserted_count = 0
     events_to_log = [] 
 
-    # --- ИСПРАВЛЕНИЕ ОШИБКИ TypeError: 'async_sessionmaker' object does not support...
-    # (Pylance был неправ, скобки () НУЖНЫ, но использовать нужно try/finally)
-    # (Ваш db.py использует старый 'sessionmaker' из orm, а не новый 'async_sessionmaker')
+    # --- ИСПРАВЛЕНИЕ ОШИБКИ TypeError: 'async_sessionmaker' object has no attribute 'execute'
+    # Pylance был неправ, скобки () НУЖНЫ, чтобы *создать* сессию.
+    # Ваш 'async_sessionmaker' (из db.py) не поддерживает 'async with'.
+    # Используем 'try/finally'
     
     # Создаем сессию, ВЫЗЫВАЯ фабрику
     session = async_sessionmaker()
@@ -176,97 +177,97 @@ async def process_dislocation_file(filepath: str):
         ]
         if not container_numbers_from_file:
             logger.warning(f"В файле {filepath} не найдено ни одной строки с номером контейнера.")
-            return 0
-            
-        existing_trackings = (await session.execute(
-            select(Tracking).where(Tracking.container_number.in_(set(container_numbers_from_file)))
-        )).scalars().all()
-        tracking_map = {t.container_number: t for t in existing_trackings}
+            # return 0 (не прерываем, чтобы сессия закрылась в 'finally')
+        else:
+            existing_trackings = (await session.execute(
+                select(Tracking).where(Tracking.container_number.in_(set(container_numbers_from_file)))
+            )).scalars().all()
+            tracking_map = {t.container_number: t for t in existing_trackings}
 
-        # 4. Итерируем по ГОТОВЫМ словарям
-        for row_data in data_rows:
-            
-            container_number = row_data.get('container_number')
-            if not container_number:
-                continue
+            # 4. Итерируем по ГОТОВЫМ словарям
+            for row_data in data_rows:
+                
+                container_number = row_data.get('container_number')
+                if not container_number:
+                    continue
 
-            # --- (ВАЖНО) Приведение типов ---
-            
-            if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
-                row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
-            
-            # Конвертируем все столбцы с датами (Pandas их уже распознал)
-            # Это решает ошибку "expected datetime, got str"
-            for date_col in ['operation_date', 'trip_start_datetime', 'trip_end_datetime', 'delivery_deadline']:
-                if date_col in row_data and row_data[date_col] is not None:
-                    # pd.to_datetime может вернуть NaT (Not a Time), который SQLAlchemy не любит
-                    # NaT == None -> False, поэтому pd.isna()
-                    if pd.isna(row_data[date_col]):
-                        row_data[date_col] = None
-                    else:
-                        # Преобразуем в стандартный datetime Питона
-                        try:
-                            row_data[date_col] = pd.to_datetime(row_data[date_col]).to_pydatetime()
-                        except:
-                            # Если pandas не смог, ставим None
+                # --- (ВАЖНО) Приведение типов ---
+                
+                if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
+                    row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
+                
+                # Конвертируем все столбцы с датами (Pandas их уже распознал)
+                # Это решает ошибку "expected datetime, got str"
+                for date_col in ['operation_date', 'trip_start_datetime', 'trip_end_datetime', 'delivery_deadline']:
+                    if date_col in row_data and row_data[date_col] is not None:
+                        # pd.to_datetime может вернуть NaT (Not a Time), который SQLAlchemy не любит
+                        # NaT == None -> False, поэтому pd.isna()
+                        if pd.isna(row_data[date_col]):
                             row_data[date_col] = None
+                        else:
+                            # Преобразуем в стандартный datetime Питона
+                            try:
+                                row_data[date_col] = pd.to_datetime(row_data[date_col]).to_pydatetime()
+                            except:
+                                # Если pandas не смог, ставим None
+                                row_data[date_col] = None
 
 
-            # Конвертируем числа (на всякий случай)
-            for key in ['cargo_weight_kg', 'total_distance', 'distance_traveled', 'km_left']:
-                if key in row_data and row_data[key] is not None:
-                    try:
-                        row_data[key] = int(row_data[key])
-                    except (ValueError, TypeError):
-                        row_data[key] = None 
-            # --- (Конец приведения типов) ---
+                # Конвертируем числа (на всякий случай)
+                for key in ['cargo_weight_kg', 'total_distance', 'distance_traveled', 'km_left']:
+                    if key in row_data and row_data[key] is not None:
+                        try:
+                            row_data[key] = int(row_data[key])
+                        except (ValueError, TypeError):
+                            row_data[key] = None 
+                # --- (Конец приведения типов) ---
 
-            existing_entry = tracking_map.get(container_number)
-            new_operation_date = row_data.get('operation_date') 
-            
-            if existing_entry:
-                # --- ЛОГИКА ОБНОВЛЕНИЯ ---
-                current_date = existing_entry.operation_date 
+                existing_entry = tracking_map.get(container_number)
+                new_operation_date = row_data.get('operation_date') 
+                
+                if existing_entry:
+                    # --- ЛОГИКА ОБНОВЛЕНИЯ ---
+                    current_date = existing_entry.operation_date 
 
-                if new_operation_date and (current_date is None or new_operation_date > current_date):
-                    # Обновляем все поля из row_data
-                    for key, value in row_data.items():
-                        # --- ИСПРАВЛЕНИЕ Pylance (2) ---
-                        # Явно приводим ключ к str
-                        setattr(existing_entry, str(key), value)
-                        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+                    if new_operation_date and (current_date is None or new_operation_date > current_date):
+                        # Обновляем все поля из row_data
+                        for key, value in row_data.items():
+                            # --- ИСПРАВЛЕНИЕ Pylance (2) ---
+                            # Явно приводим ключ к str
+                            setattr(existing_entry, str(key), value)
+                            # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+                        
+                        events_to_log.append(TrainEventLog(
+                            container_number=container_number,
+                            # (Обновлено на основе models.py)
+                            train_number=row_data.get('train_number', 'N/A'),
+                            event_description=row_data.get('operation', 'Обновление'),
+                            station=row_data.get('current_station', 'N/A'),
+                            event_time=new_operation_date
+                        ))
+                        updated_count += 1
+                else:
+                    # --- ЛОГИКА СОЗДАНИЯ ---
+                    
+                    # --- ИСПРАВЛЕНИЕ Pylance (3) ---
+                    # Pylance хочет, чтобы ключи **kwargs были str
+                    new_entry_data = {str(k): v for k, v in row_data.items()}
+                    new_entry = Tracking(**new_entry_data) 
+                    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+                    
+                    session.add(new_entry)
+                    tracking_map[container_number] = new_entry 
                     
                     events_to_log.append(TrainEventLog(
                         container_number=container_number,
                         # (Обновлено на основе models.py)
                         train_number=row_data.get('train_number', 'N/A'),
-                        event_description=row_data.get('operation', 'Обновление'),
+                        event_description="Запись создана",
                         station=row_data.get('current_station', 'N/A'),
-                        event_time=new_operation_date
+                        event_time=new_operation_date if new_operation_date else datetime.now() # (На всякий случай)
                     ))
-                    updated_count += 1
-            else:
-                # --- ЛОГИКА СОЗДАНИЯ ---
-                
-                # --- ИСПРАВЛЕНИЕ Pylance (3) ---
-                # Pylance хочет, чтобы ключи **kwargs были str
-                new_entry_data = {str(k): v for k, v in row_data.items()}
-                new_entry = Tracking(**new_entry_data) 
-                # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
-                
-                session.add(new_entry)
-                tracking_map[container_number] = new_entry 
-                
-                events_to_log.append(TrainEventLog(
-                    container_number=container_number,
-                    # (Обновлено на основе models.py)
-                    train_number=row_data.get('train_number', 'N/A'),
-                    event_description="Запись создана",
-                    station=row_data.get('current_station', 'N/A'),
-                    event_time=new_operation_date if new_operation_date else datetime.now() # (На всякий случай)
-                ))
-                inserted_count += 1
-                
+                    inserted_count += 1
+                    
         # --- (Часть блока try/finally) ---
         if events_to_log:
             # Используем стандартный session.add_all
@@ -304,15 +305,16 @@ async def check_and_process_dislocation(bot_instance: Bot):
     
     # --- ИСПРАВЛЕНИЕ ЦИКЛИЧЕСКОГО ИМПОРТА ---
     # Импортируем сервисы ВНУТРИ функции, а не снаружи
-    from .imap_service import download_latest_attachment
-    from .notification_service import NotificationService
+    from services import imap_service
+    from services import notification_service
     # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
     
     logger.info("Scheduler: Запуск проверки дислокации...")
     try:
-        # download_latest_attachment теперь синхронная, запускаем в потоке
+        # --- ИСПРАВЛЕНИЕ ВЫЗОВА:
+        # Вызываем функцию/метод НА ИМПОРТИРОВАННОМ МОДУЛЕ
         filepath = await asyncio.to_thread(
-            download_latest_attachment,
+            imap_service.download_latest_attachment,
             subject_filter=SUBJECT_FILTER_DISLOCATION,
             sender_filter=SENDER_FILTER_DISLOCATION,
             filename_pattern=FILENAME_PATTERN_DISLOCATION
@@ -327,7 +329,8 @@ async def check_and_process_dislocation(bot_instance: Bot):
                 # 2. Рассылаем уведомления (если что-то обработано)
                 if processed_count > 0:
                     logger.info(f"Обработано {processed_count} записей. Запуск немедленной рассылки...")
-                    service = NotificationService(bot_instance)
+                    # --- ИСПРАВЛЕНИЕ ВЫЗОВА:
+                    service = notification_service.NotificationService(bot_instance)
                     await service.send_aggregated_train_event_notifications()
                 else:
                     logger.info("Файл дислокации не привел к изменениям, рассылка не требуется.")

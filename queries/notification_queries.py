@@ -20,14 +20,17 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
     контейнера из списка.
     
     (Версия 3 - Исправлена ошибка 'function to_timestamp(timestamp... does not exist'
-     и ошибка 'TypeError: 'async_sessionmaker' object does not support...')
+     и ошибка 'AttributeError: 'async_sessionmaker' object has no attribute 'execute'')
     """
     if not container_numbers:
         return []
         
     logger.info(f"[Queries] Поиск последних данных для {len(container_numbers)} контейнеров.")
     
-    # --- ИСПРАВЛЕНИЕ ОШИБКИ TypeError: 'async_sessionmaker' object does not support...
+    # --- ИСПРАВЛЕНИЕ ОШИБКИ AttributeError: 'async_sessionmaker' object has no attribute 'execute'
+    # Pylance был неправ, скобки () НУЖНЫ, чтобы *создать* сессию.
+    # Ваш 'async_sessionmaker' (из db.py) не поддерживает 'async with'.
+    # Используем 'try/finally'
     session = async_sessionmaker()
     try:
         
@@ -62,7 +65,7 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
         return []
     finally:
         await session.close()
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ TypeError ---
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ AttributeError ---
 
 
 # =========================================================================
