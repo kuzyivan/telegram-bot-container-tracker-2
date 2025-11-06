@@ -6,32 +6,18 @@ import re
 from typing import Optional, Dict
 from sqlalchemy.future import select
 
-# --- Убедитесь, что все эти импорты у вас есть ---
-from .database import async_session_maker
-from .models.tracking import Tracking
-from .models.event_log import TrainEventLog # (Импорт вашей модели логгирования)
-from .logs.logger import logger
+# --- ИСПРАВЛЕННЫЕ ИМПОРТЫ (на основе 'tree') ---
+# Файлы 'db.py', 'models.py' и 'logger.py' находятся в корне проекта.
+from db import async_session_maker
+from models import Tracking, TrainEventLog
+from logger import logger
 from datetime import datetime
+# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
 
 # =========================================================================
-# === 1. КАРТЫ СОПОСТАВЛЕНИЯ ДЛЯ ДВУХ ФОРМАТОВ ===
+# === 1. КАРТА СОПОСТАВЛЕНИЯ ДЛЯ НОВОГО ФОРМАТА ===
 # =========================================================================
-
-# --- ВАШ СТАРЫЙ МЭППИНГ (из repomix) ---
-# (Переименован в _LEGACY)
-COLUMN_MAPPING_LEGACY = {
-    'номер_контейнера': 'container_number',
-    'станция_отправления': 'from_station',
-    'станция_назначения': 'to_station',
-    'станция_операции': 'current_station',
-    'операция': 'operation',
-    'дата_и_время_операции': 'operation_date',
-    'номер_накладной': 'waybill',
-    'расстояние_оставшееся': 'km_left',
-    'номер_вагона': 'wagon_number',
-    'дорога_операции': 'operation_road'
-    # (Добавьте сюда другие поля, если они были в старом файле)
-}
 
 # --- НОВЫЙ МЭППИНГ РЖД (45 полей) ---
 COLUMN_MAPPING_RZD_NEW = {
@@ -83,116 +69,58 @@ COLUMN_MAPPING_RZD_NEW = {
 }
 
 # =========================================================================
-# === 2. ХЕЛПЕРЫ ДЛЯ ОБОИХ ФОРМАТОВ ===
+# === 2. ХЕЛПЕР ЗАПОЛНЕНИЯ ===
 # =========================================================================
 
-# --- ВАША СТАРАЯ ФУНКЦИЯ НОРМАЛИЗАЦИИ (для LEGACY) ---
-def _normalize_column_names(col_name: str) -> str:
-    """Приводит имя столбца к нижнему регистру и заменяет пробелы на '_'."""
-    if not isinstance(col_name, str):
-        col_name = str(col_name)
-    col_name = col_name.lower().strip()
-    col_name = re.sub(r'\s+', '_', col_name) # Замена пробелов на '_'
-    return col_name
-
-# --- ВАША СТАРАЯ ФУНКЦИЯ ЗАПОЛНЕНИЯ (используется обоими) ---
 def _fill_empty_rows_with_previous(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
     """Заполняет пустые значения в указанном столбце предыдущими значениями."""
     df[column_name] = df[column_name].ffill()
     return df
 
 # =========================================================================
-# === 3. НОВЫЙ "УМНЫЙ" ЧИТАТЕЛЬ ФАЙЛОВ ===
+# === 3. ЧИТАТЕЛЬ ФАЙЛОВ (ТОЛЬКО НОВЫЙ ФОРМАТ) ===
 # =========================================================================
 
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """
-    "Умный" читатель Excel. Пытается распознать новый формат РЖД (skiprows=3),
-    если не удается - откатывается на чтение старого (legacy) формата (skiprows=6).
+    Читатель Excel. Распознает НОВЫЙ формат РЖД (skiprows=3).
     Возвращает DataFrame с УЖЕ ПЕРЕИМЕНОВАННЫМИ столбцами (ключами модели).
     """
-    logger.info(f"Чтение файла дислокации: {filepath}")
+    logger.info(f"Чтение файла дислокации (ожидается НОВЫЙ формат): {filepath}")
     
-    # --- Попытка №1: Прочитать как НОВЫЙ формат РЖД (skiprows=3) ---
     try:
         df = pd.read_excel(filepath, skiprows=3, header=0, engine='openpyxl')
         
-        # Маркер-столбец: 'Идентификатор отправки' есть только в новом файле
-        if 'Идентификатор отправки' in df.columns or 'Тип контейнера' in df.columns:
-            logger.info(f"Обнаружен НОВЫЙ формат дислокации (РЖД, 45 столбцов).")
-            
-            # 1. Отбираем только нужные столбцы
-            valid_columns = [col for col in df.columns if col in COLUMN_MAPPING_RZD_NEW]
-            if not valid_columns:
-                logger.error("Новый формат распознан, но не найдено столбцов из COLUMN_MAPPING_RZD_NEW.")
-                return None
-            df = df[valid_columns]
-            
-            # 2. Переименовываем в ключи модели
-            df.rename(columns=COLUMN_MAPPING_RZD_NEW, inplace=True)
-            
-            # 3. Заполняем пропуски в номерах
-            if 'container_number' in df.columns:
-                df = _fill_empty_rows_with_previous(df, 'container_number')
-            else:
-                logger.error("Критическая ошибка: 'Номер контейнера' не найден в НОВОМ файле.")
-                return None
-
-            # 4. Заменяем NaN/NaT на None
-            df = df.where(pd.notna(df), None)
-            return df
-            
-        else:
-            logger.info("Файл не похож на новый формат (нет маркер-столбцов). Попытка №2...")
-            
-    except Exception as e:
-        logger.warning(f"Не удалось прочитать как новый формат: {e}. Попытка №2...")
-
-    # --- Попытка №2: Прочитать как СТАРЫЙ (legacy) формат (skiprows=6) ---
-    try:
-        # ВАЖНО: skiprows=6, header=1 (как было в вашем старом проекте)
-        df = pd.read_excel(filepath, skiprows=6, header=1, engine='openpyxl')
-        
-        # 1. Нормализуем заголовки (как в старом коде)
-        df.columns = [_normalize_column_names(col) for col in df.columns]
-
-        # Маркер-столбец: 'номер_контейнера' (уже нормализованный)
-        if 'номер_контейнера' in df.columns:
-            logger.info(f"Обнаружен СТАРЫЙ (legacy) формат дислокации.")
-            
-            # 2. Отбираем нужные столбцы (по ключам старого мэппинга)
-            valid_columns = [col for col in df.columns if col in COLUMN_MAPPING_LEGACY]
-            if not valid_columns:
-                 logger.error("Старый формат распознан, но не найдено столбцов из COLUMN_MAPPING_LEGACY.")
-                 return None
-            df = df[valid_columns]
-            
-            # 3. Переименовываем в ключи модели
-            df.rename(columns=COLUMN_MAPPING_LEGACY, inplace=True)
-            
-            # 4. Заполняем пропуски в номерах
-            if 'container_number' in df.columns:
-                df = _fill_empty_rows_with_previous(df, 'container_number')
-            else:
-                logger.error("Критическая ошибка: 'номер_контейнера' не найден в СТАРОМ файле.")
-                return None
-
-            # 5. Заменяем NaN/NaT на None
-            df = df.where(pd.notna(df), None)
-            
-            # 6. (ВАЖНО ДЛЯ СТАРОГО ФОРМАТА) Конвертация даты из строки
-            # (Новый формат pandas(openpyxl) обычно делает это сам)
-            if 'operation_date' in df.columns:
-                df['operation_date'] = pd.to_datetime(df['operation_date'], format='%d.%m.%Y %H:%M', errors='coerce')
-                
-            return df
-        
-        else:
-            logger.error(f"Файл не похож ни на новый, ни на старый формат.")
+        # Маркер-столбец: 'Идентификатор отправки'
+        if 'Идентификатор отправки' not in df.columns and 'Тип контейнера' not in df.columns:
+            logger.error(f"Файл {filepath} не похож на НОВЫЙ формат (РЖД, 45 столбцов). Пропускаем.")
             return None
+
+        logger.info(f"Обнаружен НОВЫЙ формат дислокации (РЖД, 45 столбцов).")
+        
+        # 1. Отбираем только нужные столбцы
+        valid_columns = [col for col in df.columns if col in COLUMN_MAPPING_RZD_NEW]
+        if not valid_columns:
+            logger.error("Новый формат распознан, но не найдено столбцов из COLUMN_MAPPING_RZD_NEW.")
+            return None
+        df = df[valid_columns]
+        
+        # 2. Переименовываем в ключи модели
+        df.rename(columns=COLUMN_MAPPING_RZD_NEW, inplace=True)
+        
+        # 3. Заполняем пропуски в номерах
+        if 'container_number' in df.columns:
+            df = _fill_empty_rows_with_previous(df, 'container_number')
+        else:
+            logger.error("Критическая ошибка: 'Номер контейнера' не найден в НОВОМ файле.")
+            return None
+
+        # 4. Заменяем NaN/NaT на None
+        df = df.where(pd.notna(df), None)
+        return df
             
     except Exception as e:
-        logger.error(f"Ошибка при чтении файла {filepath} как старого формата: {e}", exc_info=True)
+        logger.error(f"Ошибка при чтении файла {filepath} как нового формата: {e}", exc_info=True)
         return None
 
 # =========================================================================
@@ -208,7 +136,6 @@ async def process_dislocation_file(filepath: str):
     """
     
     # 1. _read_excel_data ТЕПЕРЬ возвращает df с ПЕРЕИМЕНОВАННЫМИ столбцами
-    # (неважно, из старого или нового файла)
     df = await asyncio.to_thread(_read_excel_data, filepath)
     if df is None:
         logger.warning(f"Файл {filepath} не был обработан, dataframe пуст или не распознан формат.")
@@ -244,8 +171,6 @@ async def process_dislocation_file(filepath: str):
                 continue
 
             # --- (Опционально) Приведение типов ---
-            # (Этот код будет работать и для старых, и для новых данных,
-            # т.к. он проверяет наличие ключа)
             
             if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
                 # Pandas может прочитать "1" как 1 (число) или "1" (строка)
@@ -294,7 +219,7 @@ async def process_dislocation_file(filepath: str):
                     updated_count += 1
             else:
                 # --- ЛОГИКА СОЗДАНИЯ (взята из вашего repomix) ---
-                # **row_data передаст все 10 или 45 полей, которые есть
+                # **row_data передаст все 45 полей, которые есть
                 new_entry = Tracking(**row_data) 
                 session.add(new_entry)
                 tracking_map[container_number] = new_entry 
