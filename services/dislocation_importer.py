@@ -99,7 +99,6 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     
     try:
         # --- ✅ ИСПРАВЛЕНИЕ ДЛЯ DataError: Читаем все текстовые колонки как 'str' ---
-        # Определяем, какие колонки из Excel должны быть текстом
         excel_cols_as_str = [
             'Грузоотправитель (ТГНЛ)', 'Грузоотправитель (ОКПО)', 'Грузоотправитель (наим)',
             'Грузополучатель (ТГНЛ)', 'Грузополучатель (ОКПО)', 'Грузополучатель (наим)',
@@ -107,9 +106,6 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
             'Идентификатор отправки', 'Грузоотправитель', 'Грузополучатель',
             'Индекс поезда с наименованиями станций'
         ]
-        
-        # Создаем словарь dtype
-        # { 'Грузоотправитель (ТГНЛ)': str, 'Грузоотправитель (ОКПО)': str, ... }
         dtype_map = {col: str for col in excel_cols_as_str}
         
         df = pd.read_excel(filepath, skiprows=3, header=0, engine='openpyxl', dtype=dtype_map)
@@ -165,7 +161,6 @@ async def process_dislocation_file(filepath: str):
     inserted_count = 0
     events_to_log = [] 
 
-    # Используем фабрику сессий из db.py
     session = SessionLocal() # <--- ИСПРАВЛЕНО
     try:
         
@@ -180,28 +175,58 @@ async def process_dislocation_file(filepath: str):
             )).scalars().all()
             tracking_map = {t.container_number: t for t in existing_trackings}
 
+            # Список полей, которые ДОЛЖНЫ быть СТРОКАМИ
+            STRING_COLS_TO_CONVERT = [
+                'sender_tgnl', 'sender_okpo', 'sender_name',
+                'receiver_tgnl', 'receiver_okpo', 'receiver_name',
+                'cargo_gng_code', 'train_number', 'wagon_number', 'waybill',
+                'dispatch_id', 'sender_name_short', 'receiver_name_short',
+                'train_index_full'
+            ]
+            
+            # Форматы, которые мы ожидаем из Excel
+            dt_format_with_time = '%d.%m.%Y %H:%M'
+            dt_format_date_only = '%d.%m.%Y'
+
+
             for row_data in data_rows:
                 
                 container_number = row_data.get('container_number')
                 if not container_number:
                     continue
 
-                # --- Приведение типов ---
+                # --- Приведение типов (Новая, более строгая версия) ---
                 if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
                     row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
                 
+                # --- ✅ ИСПРАВЛЕНИЕ ОШИБКИ СРАВНЕНИЯ ДАТ ---
                 for date_col in ['operation_date', 'trip_start_datetime', 'trip_end_datetime', 'delivery_deadline']:
                     if date_col in row_data and row_data[date_col] is not None:
                         if pd.isna(row_data[date_col]):
                             row_data[date_col] = None
-                        else:
+                            continue
+                        
+                        try:
+                            # Сначала пытаемся распознать дату и время
+                            py_dt = datetime.strptime(str(row_data[date_col]), dt_format_with_time)
+                            row_data[date_col] = py_dt
+                        except ValueError:
                             try:
-                                py_dt = pd.to_datetime(row_data[date_col]).to_pydatetime()
-                                if py_dt.tzinfo:
-                                    py_dt = py_dt.replace(tzinfo=None)
+                                # Если не получилось, пытаемся распознать только дату
+                                py_dt = datetime.strptime(str(row_data[date_col]), dt_format_date_only)
                                 row_data[date_col] = py_dt
-                            except:
-                                row_data[date_col] = None
+                            except Exception as e:
+                                # Если оба формата не подошли, используем стандартный парсер pandas
+                                try:
+                                    # dayfirst=True исправляет UserWarning
+                                    py_dt = pd.to_datetime(row_data[date_col], dayfirst=True).to_pydatetime()
+                                    if py_dt.tzinfo:
+                                        py_dt = py_dt.replace(tzinfo=None)
+                                    row_data[date_col] = py_dt
+                                except Exception as e_pandas:
+                                    logger.warning(f"Не удалось распознать дату '{row_data[date_col]}' для {container_number}: {e_pandas}")
+                                    row_data[date_col] = None
+                # --- КОНЕЦ ИСПРАВЛЕНИЯ ДАТ ---
 
                 for key in ['cargo_weight_kg', 'total_distance', 'distance_traveled', 'km_left']:
                     if key in row_data and row_data[key] is not None:
@@ -210,8 +235,11 @@ async def process_dislocation_file(filepath: str):
                         except (ValueError, TypeError):
                             row_data[key] = None 
                 
-                # --- ❌ СТАРЫЙ БЛОК ПРИВЕДЕНИЯ К СТРОКЕ (УДАЛЕН) ---
-                # Он больше не нужен, т.к. pandas уже прочел их как строки
+                # --- ✅ ИСПРАВЛЕНИЕ DataError (дублируется из read_excel, для надежности) ---
+                for col_name in STRING_COLS_TO_CONVERT:
+                    if col_name in row_data and row_data[col_name] is not None:
+                        row_data[col_name] = str(row_data[col_name]).removesuffix('.0')
+                
                 
                 existing_entry = tracking_map.get(container_number)
                 new_operation_date = row_data.get('operation_date') 
@@ -219,6 +247,10 @@ async def process_dislocation_file(filepath: str):
                 if existing_entry:
                     # --- ЛОГИКА ОБНОВЛЕНИЯ ---
                     current_date = existing_entry.operation_date 
+                    
+                    # Логика сравнения:
+                    # 1. current_date ЕЩЕ НЕТ (None) -> Обновляем
+                    # 2. new_operation_date ЕСТЬ И ОНА > current_date -> Обновляем
                     if new_operation_date and (current_date is None or new_operation_date > current_date):
                         for key, value in row_data.items():
                             setattr(existing_entry, str(key), value)
@@ -256,9 +288,8 @@ async def process_dislocation_file(filepath: str):
     except Exception as e:
         await session.rollback()
         logger.error(f"Ошибка при сохранении в БД: {e}", exc_info=True)
-        return 0 # <--- Возвращаем 0, т.к. произошла ошибка
+        return 0 
     finally:
-        # Убедимся, что сессия закрыта
         await session.close()
 
     logger.info(f"[Dislocation Import] Обработка {filepath} завершена.")
@@ -272,26 +303,21 @@ async def process_dislocation_file(filepath: str):
 # Фильтры из вашего repomix
 SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru'
-# --- ИСПРАВЛЕНИЕ: Допускаем .xls и .xlsx ---
-FILENAME_PATTERN_DISLOCATION = r'\.(xlsx|xls)$' 
+FILENAME_PATTERN_DISLOCATION = r'\.(xlsx|xls)$' # Допускаем оба расширения
 
 async def check_and_process_dislocation(bot_instance: Bot):
     """Проверяет почту, обрабатывает файлы и рассылает уведомления."""
     
     logger.info("Scheduler: Запуск проверки дислокации...")
     try:
-        # --- ИСПРАВЛЕНИЕ ВЫЗОВА: ---
-        # 1. Создаем ЭКЗЕМПЛЯР класса (без аргументов)
         imap = ImapService()
         
-        # 2. Вызываем МЕТОД на экземпляре
         filepath = await asyncio.to_thread(
             imap.download_latest_attachment,
             subject_filter=SUBJECT_FILTER_DISLOCATION,
             sender_filter=SENDER_FILTER_DISLOCATION,
             filename_pattern=FILENAME_PATTERN_DISLOCATION
         )
-        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
         if filepath:
             logger.info(f"Обнаружен новый файл дислокации: {filepath}")
