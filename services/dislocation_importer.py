@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 
 # --- ИСПРАВЛЕННЫЕ ИМПОРТЫ (на основе 'tree') ---
 # Файлы 'db.py', 'models.py' и 'logger.py' находятся в корне проекта.
-from db import async_session_maker
+from db import async_sessionmaker
 from models import Tracking, TrainEventLog
 from logger import logger
 from datetime import datetime
@@ -125,8 +125,8 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
 
 # =========================================================================
 # === 4. УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД ===
+# ... (весь код _read_excel_data) ...
 # =========================================================================
-# (Этот код почти не меняется, он работает с УЖЕ ОБРАБОТАННЫМ DataFrame)
 
 async def process_dislocation_file(filepath: str):
     """
@@ -148,7 +148,7 @@ async def process_dislocation_file(filepath: str):
     inserted_count = 0
     events_to_log = [] 
 
-    async with async_session_maker() as session:
+    async with async_sessionmaker() as session:
         
         # 3. Собираем номера контейнеров и предзагружаем их из БД
         container_numbers_from_file = [
