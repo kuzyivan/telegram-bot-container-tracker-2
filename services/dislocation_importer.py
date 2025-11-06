@@ -202,7 +202,11 @@ async def process_dislocation_file(filepath: str):
                         row_data[date_col] = None
                     else:
                         # Преобразуем в стандартный datetime Питона
-                        row_data[date_col] = pd.to_datetime(row_data[date_col]).to_pydatetime()
+                        try:
+                            row_data[date_col] = pd.to_datetime(row_data[date_col]).to_pydatetime()
+                        except:
+                            # Если pandas не смог, ставим None
+                            row_data[date_col] = None
 
 
             # Конвертируем числа (на всякий случай)
