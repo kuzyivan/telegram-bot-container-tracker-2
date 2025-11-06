@@ -10,22 +10,19 @@ from sqlalchemy import update, delete
 from datetime import datetime
 
 # --- Импорты из вашего проекта ---
-from db import async_sessionmaker
+from db import async_sessionmaker, SessionLocal # Импортируем SessionLocal
 from models import Tracking, TrainEventLog
-from logger import get_logger # Используем get_logger вместо logging
+from logger import get_logger 
 from telegram import Bot
 from services.imap_service import ImapService # Импортируем КЛАСС
 from services import notification_service # Для вызова уведомлений
 
-logger = get_logger(__name__) # Используем ваш кастомный логгер
+logger = get_logger(__name__) 
 
 # --- ОПРЕДЕЛЯЕМ ПАПКУ ДЛЯ ЗАГРУЗОК ---
-# handlers/admin/uploads.py ожидает найти эту переменную здесь.
 DOWNLOAD_DIR = "downloads"
-# Убедимся, что папка существует при старте
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 # ---
-
 
 # =========================================================================
 # === 1. КАРТА СОПОСТАВЛЕНИЯ ДЛЯ НОВОГО ФОРМАТА ===
@@ -154,7 +151,7 @@ async def process_dislocation_file(filepath: str):
     events_to_log = [] 
 
     # Используем фабрику сессий из db.py
-    session = async_sessionmaker()
+    session = SessionLocal() # <--- ИСПРАВЛЕНО (используем SessionLocal)
     try:
         
         container_numbers_from_file = [
@@ -260,7 +257,8 @@ async def process_dislocation_file(filepath: str):
 # Фильтры из вашего repomix
 SUBJECT_FILTER_DISLOCATION = r'^Отчёт слежения TrackerBot №'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru'
-FILENAME_PATTERN_DISLOCATION = r'\.xlsx$'
+# --- ИСПРАВЛЕНИЕ: Допускаем .xls и .xlsx ---
+FILENAME_PATTERN_DISLOCATION = r'\.(xlsx|xls)$' 
 
 async def check_and_process_dislocation(bot_instance: Bot):
     """Проверяет почту, обрабатывает файлы и рассылает уведомления."""
@@ -309,4 +307,5 @@ async def check_and_process_dislocation(bot_instance: Bot):
         logger.error("     Убедитесь, что 'services/imap_service.py' содержит класс 'ImapService'.")
     except Exception as e:
         logger.error(f"❌ Критическая ошибка в check_and_process_dislocation: {e}", exc_info=True)
-        # Не "raise e", чтобы не остановить планировщик
+        # Не "raise e", чтобы не остановить планировщик тест
+        
