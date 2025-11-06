@@ -6,16 +6,14 @@ from telegram.ext import ContextTypes
 import re
 from typing import Optional, List
 from sqlalchemy import select
-from datetime import datetime # <--- Убедитесь, что datetime импортирован
+from datetime import datetime 
 
 from logger import get_logger
 from db import SessionLocal
-# ✅ ИСПРАВЛЕННЫЙ ИМПОРТ: Указываем правильный путь к TerminalContainer
 from models import UserRequest, Tracking
-from model.terminal_container import TerminalContainer # <<< ИСПРАВЛЕНО ЗДЕСЬ
+from model.terminal_container import TerminalContainer 
 from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
-# ✅ ИМПОРТ НОВОЙ ФУНКЦИИ
 from queries.containers import get_tracking_data_by_wagons 
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file, get_vladivostok_filename
@@ -42,7 +40,6 @@ def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     else:
         return 'Прочий'
 
-# <<< ИЗМЕНЕННАЯ ФУНКЦИЯ normalize_text_input (для фиксации: #wagon_input_fix) >>>
 def normalize_text_input(text: str) -> list[str]:
     """
     Извлекает и нормализует номера контейнеров (11 символов) или вагонов (8 цифр) из текста.
@@ -64,7 +61,6 @@ def normalize_text_input(text: str) -> list[str]:
             
     # Сортируем для единообразия
     return sorted(final_items)
-# <<< КОНЕЦ ИЗМЕНЕННОЙ ФУНКЦИИ >>>
 
 # --- Асинхронная функция для получения поезда ---
 async def get_train_for_container(container_number: str) -> str | None:
@@ -172,7 +168,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
         railway_abbreviation = get_railway_abbreviation(result.operation_road)
 
-        # <--- НОВОЕ: Форматируем 'Начало рейса' ---
+        # Форматируем 'Дату отправления'
         start_date_str = "н/д"
         if result.trip_start_datetime:
             try:
@@ -181,7 +177,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.warning(f"Ошибка форматирования trip_start_datetime: {e}")
         
-        # <--- НОВОЕ: Получаем 'Простой' ---
+        # Получаем 'Простой'
         idle_time_str = result.last_op_idle_time_str or "н/д"
 
         # --- Форматирование ответа ---
@@ -192,15 +188,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{train_display}" 
             f"Отпр: `{result.from_station}`\n"
             f"Назн: `{result.to_station}`\n"
-            f"**Начало рейса:** `{start_date_str}`\n" # <--- НОВОЕ
+            f"**Дата отправления:** `{start_date_str}`\n" # <--- ИЗМЕНЕНО
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
             f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
             f"**Операция:** `{result.operation}`\n"
-            f"**Дата/Время:** `{result.operation_date.strftime('%d.%m.%Y %H:%M (UTC)') if result.operation_date else 'н/д'}`\n" # <--- ОБНОВЛЕНО (добавлено UTC)
+            f"**Дата/Время:** `{result.operation_date.strftime('%d.%m.%Y %H:%M (UTC)') if result.operation_date else 'н/д'}`\n"
             f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n"
             f"**Накладная:** `{result.waybill}`\n"
-            f"**Простой (сут:ч:м):** `{idle_time_str}`\n" # <--- НОВОЕ
+            f"**Простой (сут:ч:м):** `{idle_time_str}`\n"
             f"═════════════════════\n"
             f"🛣️ *Прогноз:*\n"
             f"**{distance_label}** **{km_left_display or 'н/д'} км**\n"
@@ -216,9 +212,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         final_report_data = []
         
-        # <--- НОВОЕ: Обновлены заголовки Excel ---
+        # <--- ИЗМЕНЕНО: Обновлены заголовки Excel ---
         EXCEL_HEADERS = [
-            'Номер контейнера', 'Начало рейса', 'Станция отправления', 'Станция назначения',
+            'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
             'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
             'Номер накладной', 'Расстояние оставшееся', 'Вагон',
             'Тип вагона', 'Дорога операции'
@@ -239,16 +235,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
             railway_display_name = db_row.operation_road
             
-            # <--- НОВОЕ: Обновлен порядок и добавлены поля ---
+            # Обновлен порядок и добавлены поля
             excel_row = [
                  db_row.container_number,
-                 db_row.trip_start_datetime, # <--- НОВОЕ
+                 db_row.trip_start_datetime, # <-- (Дата отправления)
                  db_row.from_station, 
                  db_row.to_station,
                  db_row.current_station, 
                  db_row.operation, 
                  db_row.operation_date,
-                 db_row.last_op_idle_time_str, # <--- НОВОЕ
+                 db_row.last_op_idle_time_str,
                  db_row.waybill, 
                  km_left,
                  wagon_number_cleaned, 
@@ -314,24 +310,24 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
     railway_display_name = db_row.operation_road
     
-    # <--- НОВОЕ: Обновлены заголовки Excel ---
+    # <--- ИЗМЕНЕНО: Обновлены заголовки Excel ---
     EXCEL_HEADERS = [
-        'Номер контейнера', 'Начало рейса', 'Станция отправления', 'Станция назначения',
+        'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
         'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
         'Номер накладной', 'Расстояние оставшееся', 'Вагон',
         'Тип вагона', 'Дорога операции'
     ]
     
-    # <--- НОВОЕ: Обновлен порядок и добавлены поля ---
+    # Обновлен порядок и добавлены поля
     final_report_data = [[
          db_row.container_number,
-         db_row.trip_start_datetime, # <--- НОВОЕ
+         db_row.trip_start_datetime, # <-- (Дата отправления)
          db_row.from_station, 
          db_row.to_station,
          db_row.current_station, 
          db_row.operation, 
          db_row.operation_date,
-         db_row.last_op_idle_time_str, # <--- НОВОЕ
+         db_row.last_op_idle_time_str,
          db_row.waybill, 
          km_left,
          wagon_number_cleaned, 
