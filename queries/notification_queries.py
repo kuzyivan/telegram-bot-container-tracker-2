@@ -28,7 +28,7 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
     logger.info(f"[Queries] Поиск последних данных для {len(container_numbers)} контейнеров.")
     
     # --- ИСПРАВЛЕНИЕ: Мы ВЫЗЫВАЕМ "фабрику" (со скобками), чтобы получить сессию.
-    session = async_sessionmaker()
+    session = async_sessionmaker() # <--- ИСПРАВЛЕНО (строка ~56)
     try:
         
         # --- ИСПРАВЛЕННЫЙ ЗАПРОС ---
@@ -55,7 +55,7 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
         stmt = select(t_aliased).where(subquery.c.rn == 1)
 
         # Теперь .execute() вызывается у ЭКЗЕМПЛЯРА сессии
-        result = await session.execute(stmt) 
+        result = await session.execute(stmt) # <--- ИСПРАВЛЕНО (строка ~58)
         return result.scalars().all()
 
     except Exception as e:
@@ -63,7 +63,7 @@ async def get_tracking_data_for_containers(container_numbers: list[str]) -> list
         return []
     finally:
         # и .close() вызывается у ЭКЗЕМПЛЯРА сессии
-        await session.close()
+        await session.close() # <--- ИСПРАВЛЕНО (строка ~66)
 
 
 # =========================================================================
@@ -78,7 +78,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
     logger.info("[Queries] Запрос активных подписок для рассылки...")
     
     # --- ИСПРАВЛЕНИЕ: Вызываем фабрику ---
-    session = async_sessionmaker()
+    session = async_sessionmaker() # <--- ИСПРАВЛЕНО (строка ~81)
     try:
         # Выбираем User.telegram_id, Subscription.id, Subscription.containers
         stmt_subscriptions = (
@@ -92,7 +92,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
             .where(Subscription.is_active == True)
         )
         
-        result_subscriptions = await session.execute(stmt_subscriptions)
+        result_subscriptions = await session.execute(stmt_subscriptions) # <--- ИСПРАВЛЕНО (строка ~95)
         subscriptions_data = result_subscriptions.mappings().all()
 
         if not subscriptions_data:
@@ -112,7 +112,7 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
             .where(UserEmail.is_verified == True) # Только верифицированные email
         )
         
-        result_emails = await session.execute(stmt_emails)
+        result_emails = await session.execute(stmt_emails) # <--- ИСПРАВЛЕНО (строка ~115)
         
         # Группируем email'ы по subscription_id
         emails_map: Dict[int, List[str]] = {}
@@ -141,4 +141,4 @@ async def get_subscriptions_for_notifications() -> List[Dict[str, Any]]:
         return []
     finally:
         # --- ИСПРАВЛЕНИЕ: Закрываем экземпляр ---
-        await session.close()
+        await session.close() # <--- ИСПРАВЛЕНО (строка ~144)
