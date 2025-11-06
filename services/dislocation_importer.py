@@ -223,8 +223,11 @@ async def process_dislocation_file(filepath: str):
                     
                     events_to_log.append(TrainEventLog(
                         container_number=container_number,
-                        event_name=row_data.get('operation', 'Обновление'),
-                        event_description=f"Станция: {row_data.get('current_station')}, Вагон: {row_data.get('wagon_number')}"
+                        # (Обновлено на основе models.py)
+                        train_number=row_data.get('train_number', 'N/A'),
+                        event_description=row_data.get('operation', 'Обновление'),
+                        station=row_data.get('current_station', 'N/A'),
+                        event_time=new_operation_date
                     ))
                     updated_count += 1
             else:
@@ -241,16 +244,18 @@ async def process_dislocation_file(filepath: str):
                 
                 events_to_log.append(TrainEventLog(
                     container_number=container_number,
-                    event_name="Запись создана",
-                    event_description=f"Контейнер добавлен в слежение. Станция: {row_data.get('current_station')}"
+                    # (Обновлено на основе models.py)
+                    train_number=row_data.get('train_number', 'N/A'),
+                    event_description="Запись создана",
+                    station=row_data.get('current_station', 'N/A'),
+                    event_time=new_operation_date if new_operation_date else datetime.now() # (На всякий случай)
                 ))
                 inserted_count += 1
                 
         try:
             if events_to_log:
-                # TODO: Убедитесь, что TrainEventLog.bulk_create существует
-                # session.add_all(events_to_log) # Стандартный метод SQLAlchemy
-                pass # Заглушка, если у вас свой bulk_create
+                # Используем стандартный session.add_all
+                session.add_all(events_to_log)
             
             await session.commit()
             logger.info(f"Успешно сохранено в БД: {inserted_count} новых, {updated_count} обновленных.")
@@ -269,8 +274,12 @@ async def process_dislocation_file(filepath: str):
 # =========================================================================
 
 # (Этот код взят из вашего repomix-output.xml)
-from services.imap_service import download_latest_attachment
-from services.notification_service import NotificationService
+
+# --- ИСПРАВЛЕНИЕ (относительный импорт, т.к. в той же папке 'services') ---
+from .imap_service import download_latest_attachment
+from .notification_service import NotificationService
+# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+
 from telegram import Bot
 import os
 
