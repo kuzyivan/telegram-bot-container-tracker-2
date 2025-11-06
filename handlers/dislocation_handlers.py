@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 import re
 from typing import Optional, List
 from sqlalchemy import select
+from datetime import datetime # <--- Убедитесь, что datetime импортирован
 
 from logger import get_logger
 from db import SessionLocal
@@ -79,7 +80,6 @@ async def get_train_for_container(container_number: str) -> str | None:
 
 # --- Основной обработчик сообщений ---
 
-# <<< ИЗМЕНЕННАЯ ФУНКЦИЯ handle_message (для фиксации: #wagon_handler_logic) >>>
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обрабатывает текстовые сообщения: ищет контейнеры и/или вагоны, 
@@ -123,7 +123,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Ищем по вагонам (получаем контейнеры, которые в нем едут)
         tracking_results.extend(await get_tracking_data_by_wagons(wagon_numbers))
 
-    # Удаляем дубликаты, если один и тот же контейнер был найден и по номеру контейнера, и по номеру вагона
+    # Удаляем дубликаты
     unique_container_numbers = set()
     final_unique_results: List[Tracking] = []
     for result in tracking_results:
@@ -172,6 +172,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
         railway_abbreviation = get_railway_abbreviation(result.operation_road)
 
+        # <--- НОВОЕ: Форматируем 'Начало рейса' ---
+        start_date_str = "н/д"
+        if result.trip_start_datetime:
+            try:
+                # Дата в БД в UTC, форматируем ее
+                start_date_str = result.trip_start_datetime.strftime('%d.%m.%Y %H:%M (UTC)')
+            except Exception as e:
+                logger.warning(f"Ошибка форматирования trip_start_datetime: {e}")
+        
+        # <--- НОВОЕ: Получаем 'Простой' ---
+        idle_time_str = result.last_op_idle_time_str or "н/д"
+
         # --- Форматирование ответа ---
         response_text = (
             f"📦 **Статус контейнера: {result.container_number}**\n"
@@ -180,13 +192,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{train_display}" 
             f"Отпр: `{result.from_station}`\n"
             f"Назн: `{result.to_station}`\n"
+            f"**Начало рейса:** `{start_date_str}`\n" # <--- НОВОЕ
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
             f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
             f"**Операция:** `{result.operation}`\n"
-            f"**Дата/Время:** `{result.operation_date}`\n"
+            f"**Дата/Время:** `{result.operation_date.strftime('%d.%m.%Y %H:%M (UTC)') if result.operation_date else 'н/д'}`\n" # <--- ОБНОВЛЕНО (добавлено UTC)
             f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n"
             f"**Накладная:** `{result.waybill}`\n"
+            f"**Простой (сут:ч:м):** `{idle_time_str}`\n" # <--- НОВОЕ
             f"═════════════════════\n"
             f"🛣️ *Прогноз:*\n"
             f"**{distance_label}** **{km_left_display or 'н/д'} км**\n"
@@ -201,13 +215,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- Логика: МНОГО КОНТЕЙНЕРОВ/ВАГОНОВ (Ответ Excel) ---
     else:
         final_report_data = []
+        
+        # <--- НОВОЕ: Обновлены заголовки Excel ---
         EXCEL_HEADERS = [
-            'Номер контейнера', 'Станция отправления', 'Станция назначения',
-            'Станция операции', 'Операция', 'Дата и время операции',
+            'Номер контейнера', 'Начало рейса', 'Станция отправления', 'Станция назначения',
+            'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
             'Номер накладной', 'Расстояние оставшееся', 'Вагон',
             'Тип вагона', 'Дорога операции'
         ]
         excel_columns = EXCEL_HEADERS
+        
         for db_row in final_unique_results: 
             recalculated_distance = await get_remaining_distance_on_route(
                 start_station=db_row.from_station,
@@ -221,11 +238,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
             railway_display_name = db_row.operation_road
+            
+            # <--- НОВОЕ: Обновлен порядок и добавлены поля ---
             excel_row = [
-                 db_row.container_number, db_row.from_station, db_row.to_station,
-                 db_row.current_station, db_row.operation, db_row.operation_date,
-                 db_row.waybill, km_left,
-                 wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
+                 db_row.container_number,
+                 db_row.trip_start_datetime, # <--- НОВОЕ
+                 db_row.from_station, 
+                 db_row.to_station,
+                 db_row.current_station, 
+                 db_row.operation, 
+                 db_row.operation_date,
+                 db_row.last_op_idle_time_str, # <--- НОВОЕ
+                 db_row.waybill, 
+                 km_left,
+                 wagon_number_cleaned, 
+                 wagon_type_for_excel, 
+                 railway_display_name,
              ]
             final_report_data.append(excel_row)
 
@@ -253,8 +281,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      os.remove(file_path)
                  except OSError as e:
                       logger.error(f"Не удалось удалить временный файл {file_path}: {e}")
-
-# <<< КОНЕЦ ИЗМЕНЕННОЙ ФУНКЦИИ handle_message >>>
 
 
 async def handle_single_container_excel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -287,18 +313,32 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else None
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
     railway_display_name = db_row.operation_road
+    
+    # <--- НОВОЕ: Обновлены заголовки Excel ---
     EXCEL_HEADERS = [
-        'Номер контейнера', 'Станция отправления', 'Станция назначения',
-        'Станция операции', 'Операция', 'Дата и время операции',
+        'Номер контейнера', 'Начало рейса', 'Станция отправления', 'Станция назначения',
+        'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
         'Номер накладной', 'Расстояние оставшееся', 'Вагон',
         'Тип вагона', 'Дорога операции'
     ]
+    
+    # <--- НОВОЕ: Обновлен порядок и добавлены поля ---
     final_report_data = [[
-         db_row.container_number, db_row.from_station, db_row.to_station,
-         db_row.current_station, db_row.operation, db_row.operation_date,
-         db_row.waybill, km_left,
-         wagon_number_cleaned, wagon_type_for_excel, railway_display_name,
+         db_row.container_number,
+         db_row.trip_start_datetime, # <--- НОВОЕ
+         db_row.from_station, 
+         db_row.to_station,
+         db_row.current_station, 
+         db_row.operation, 
+         db_row.operation_date,
+         db_row.last_op_idle_time_str, # <--- НОВОЕ
+         db_row.waybill, 
+         km_left,
+         wagon_number_cleaned, 
+         wagon_type_for_excel, 
+         railway_display_name,
      ]]
+     
     file_path = None
     try:
          file_path = await asyncio.to_thread(
