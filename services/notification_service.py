@@ -28,7 +28,6 @@ class NotificationService:
     async def send_scheduled_notifications(self, target_time: time) -> tuple[int, int]:
         """
         Отправляет уведомления пользователям, чьи подписки соответствуют target_time.
-        (Логика осталась прежней, но добавлена для полноты файла)
         """
         sent_count = 0
         total_active_subscriptions = 0
@@ -94,14 +93,18 @@ class NotificationService:
                 if container_data_list:
                     message_parts = [f"🔔 **Отчет по подписке: {sub.subscription_name}** 🔔"]
                     for info in container_data_list:
-                        date_str = info.operation_date
+                        
+                        # --- ✅ ИСПРАВЛЕНИЕ: info.operation_date - это datetime, а не str ---
+                        date_obj = info.operation_date 
                         formatted_date = "н/д"
-                        if date_str:
+                        if date_obj: # Проверяем, что это не None
                             try:
-                                op_dt = datetime.strptime(date_str, '%d.%m.%Y %H:%M')
-                                formatted_date = op_dt.strftime('%d.%m %H:%M')
-                            except ValueError:
-                                logger.warning(f"[Notification] Не удалось распарсить дату '{date_str}' для контейнера {info.container_number}")
+                                # Просто форматируем datetime объект
+                                # Добавляем (UTC), т.к. мы теперь храним в UTC
+                                formatted_date = date_obj.strftime('%d.%m %H:%M (UTC)')
+                            except Exception as e:
+                                logger.warning(f"[Notification] Не удалось отформатировать дату '{date_obj}' для {info.container_number}: {e}")
+                        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
                         
                         message_parts.append(f"*{info.container_number}*: {info.operation} на {info.current_station} ({formatted_date})")
                     
@@ -136,7 +139,7 @@ class NotificationService:
                                 
                                 logger.info(f"DEBUG [Excel Gen] Начинаю генерацию Excel для подписки {sub.id}.") 
                                 
-                                # Генерация Excel в отдельном потоке (т.к. Pandas/openpyxl синхронны)
+                                # Генерация Excel в отдельном потоке
                                 file_path = await asyncio.to_thread(
                                     create_excel_file,
                                     excel_rows,
@@ -145,7 +148,7 @@ class NotificationService:
                                 
                                 logger.info(f"DEBUG [Email Send] Начинаю отправку Email с вложением: {os.path.basename(file_path)}.") 
                                 
-                                # Отправка Email в отдельном потоке (т.к. send_email синхронна)
+                                # Отправка Email в отдельном потоке
                                 await asyncio.to_thread(
                                     send_email,
                                     to=email_recipients,
@@ -179,7 +182,7 @@ class NotificationService:
         """
         # Импорт необходимых функций и моделей (для уменьшения циклической зависимости)
         from services.train_event_notifier import get_unsent_train_events, mark_event_as_sent
-        from models import TrainEventLog # Импортируем, если нужно
+        from models import TrainEventLog 
 
         # 1. Получаем все незаотправленные события
         events = await get_unsent_train_events()
@@ -242,7 +245,7 @@ class NotificationService:
                 f"Поезд: **{train_number}**\n"
                 f"Событие: **{event_description}**\n"
                 f"Станция: **{station}**\n"
-                f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M')}`\n\n"
+                f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M (UTC)')}`\n\n" # <--- Добавлено (UTC)
                 f"*(Касается {len(containers_in_train)} контейнеров)*"
             )
 
