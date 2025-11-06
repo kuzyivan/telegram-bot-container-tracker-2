@@ -23,7 +23,7 @@ from utils.keyboards import create_single_container_excel_keyboard
 
 logger = get_logger(__name__)
 
-# --- Логика определения типа вагона ---
+# --- Вспомогательные функции ---
 
 def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
     """Определяет примерный тип вагона по первой цифре номера."""
@@ -45,24 +45,18 @@ def normalize_text_input(text: str) -> list[str]:
     Извлекает и нормализует номера контейнеров (11 символов) или вагонов (8 цифр) из текста.
     """
     text = text.upper().strip()
-    # Разделяем по разделителям
     items = re.split(r'[,\s;\n]+', text)
-    # Фильтруем пустые и нормализуем
     normalized_items = list(set(filter(None, items)))
     
     final_items = []
     for item in normalized_items:
-        # Проверяем на контейнер (4 буквы + 7 цифр, например XXXU1234567)
         if re.fullmatch(r'[A-Z]{3}U\d{7}', item):
             final_items.append(item)
-        # Проверяем на вагон (8 цифр)
         elif re.fullmatch(r'\d{8}', item):
             final_items.append(item)
             
-    # Сортируем для единообразия
     return sorted(final_items)
 
-# --- Асинхронная функция для получения поезда ---
 async def get_train_for_container(container_number: str) -> str | None:
     """Получает номер поезда из terminal_containers."""
     async with SessionLocal() as session:
@@ -73,6 +67,20 @@ async def get_train_for_container(container_number: str) -> str | None:
         )
         train = result.scalar_one_or_none()
         return train
+
+# --- ✅ НОВАЯ Вспомогательная функция для форматирования даты в Excel ---
+def _format_dt_for_excel(dt: Optional[datetime]) -> str:
+    """Форматирует datetime в строку 'ДД.ММ.ГГГГ ЧЧ:ММ' для Excel, обрабатывает None."""
+    if dt is None:
+        return "" # Возвращаем пустую строку, а не "н/д"
+    try:
+        # Форматируем как 'ДД.ММ.ГГГГ ЧЧ:ММ'
+        # (Мы не добавляем (UTC), так как Excel может воспринять это как часть даты)
+        return dt.strftime('%d.%m.%Y %H:%M')
+    except Exception:
+        return str(dt) # Запасной вариант
+# --- Конец новой функции ---
+
 
 # --- Основной обработчик сообщений ---
 
@@ -98,28 +106,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text_log = ", ".join(search_terms)
     logger.info(f"[dislocation] пользователь {user.id} ({user.username}) отправил текст для поиска: {query_text_log}")
 
-    # Логируем запрос пользователя
     try:
         await add_user_request(telegram_id=user.id, query_text=query_text_log)
     except Exception as log_err:
         logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
 
-    # 1. Разделяем запросы на контейнеры и вагоны
     container_numbers: List[str] = [term for term in search_terms if len(term) == 11 and term[3] == 'U']
     wagon_numbers: List[str] = [term for term in search_terms if len(term) == 8 and term.isdigit()]
     
-    # 2. Получаем дислокацию
     tracking_results: List[Tracking] = []
     
     if container_numbers:
-        # Ищем по контейнерам
         tracking_results.extend(await get_tracking_data_for_containers(container_numbers))
         
     if wagon_numbers:
-        # Ищем по вагонам (получаем контейнеры, которые в нем едут)
         tracking_results.extend(await get_tracking_data_by_wagons(wagon_numbers))
 
-    # Удаляем дубликаты
     unique_container_numbers = set()
     final_unique_results: List[Tracking] = []
     for result in tracking_results:
@@ -135,11 +137,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(final_unique_results) == 1 and len(search_terms) == 1:
         result = final_unique_results[0]
         
-        # --- Получаем номер поезда ---
         train_number = await get_train_for_container(result.container_number)
         train_display = f"Поезд: `{train_number}`\n" if train_number else ""
 
-        # --- Расчет расстояния ---
         remaining_distance = await get_remaining_distance_on_route(
             start_station=result.from_station,
             end_station=result.to_station,
@@ -168,19 +168,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
         railway_abbreviation = get_railway_abbreviation(result.operation_road)
 
-        # Форматируем 'Дату отправления'
         start_date_str = "н/д"
         if result.trip_start_datetime:
             try:
-                # Дата в БД в UTC, форматируем ее
                 start_date_str = result.trip_start_datetime.strftime('%d.%m.%Y %H:%M (UTC)')
             except Exception as e:
                 logger.warning(f"Ошибка форматирования trip_start_datetime: {e}")
         
-        # Получаем 'Простой'
         idle_time_str = result.last_op_idle_time_str or "н/д"
 
-        # --- Форматирование ответа ---
         response_text = (
             f"📦 **Статус контейнера: {result.container_number}**\n"
             f"═════════════════════\n"
@@ -188,7 +184,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{train_display}" 
             f"Отпр: `{result.from_station}`\n"
             f"Назн: `{result.to_station}`\n"
-            f"**Дата отправления:** `{start_date_str}`\n" # <--- ИЗМЕНЕНО
+            f"**Дата отправления:** `{start_date_str}`\n" 
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
             f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
@@ -212,7 +208,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         final_report_data = []
         
-        # <--- ИЗМЕНЕНО: Обновлены заголовки Excel ---
         EXCEL_HEADERS = [
             'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
             'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
@@ -235,15 +230,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
             railway_display_name = db_row.operation_road
             
-            # Обновлен порядок и добавлены поля
+            # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
             excel_row = [
                  db_row.container_number,
-                 db_row.trip_start_datetime, # <-- (Дата отправления)
+                 _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
                  db_row.from_station, 
                  db_row.to_station,
                  db_row.current_station, 
                  db_row.operation, 
-                 db_row.operation_date,
+                 _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
                  db_row.last_op_idle_time_str,
                  db_row.waybill, 
                  km_left,
@@ -310,7 +305,6 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
     railway_display_name = db_row.operation_road
     
-    # <--- ИЗМЕНЕНО: Обновлены заголовки Excel ---
     EXCEL_HEADERS = [
         'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
         'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
@@ -318,15 +312,15 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
         'Тип вагона', 'Дорога операции'
     ]
     
-    # Обновлен порядок и добавлены поля
+    # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
     final_report_data = [[
          db_row.container_number,
-         db_row.trip_start_datetime, # <-- (Дата отправления)
+         _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
          db_row.from_station, 
          db_row.to_station,
          db_row.current_station, 
          db_row.operation, 
-         db_row.operation_date,
+         _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
          db_row.last_op_idle_time_str,
          db_row.waybill, 
          km_left,
