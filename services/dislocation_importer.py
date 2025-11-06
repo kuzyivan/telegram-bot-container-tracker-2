@@ -273,13 +273,6 @@ async def process_dislocation_file(filepath: str):
 # === 5. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ (из scheduler.py) ===
 # =========================================================================
 
-# (Этот код взят из вашего repomix-output.xml)
-
-# --- ИСПРАВЛЕНИЕ (относительный импорт, т.к. в той же папке 'services') ---
-from .imap_service import download_latest_attachment
-from .notification_service import NotificationService
-# --- КОНЕЦ ИСПРАВЛЕНИЯ ---
-
 from telegram import Bot
 import os
 
@@ -290,6 +283,12 @@ FILENAME_PATTERN_DISLOCATION = r'\.xlsx$'
 
 async def check_and_process_dislocation(bot_instance: Bot):
     """Проверяет почту, обрабатывает файлы и рассылает уведомления."""
+    
+    # --- ИСПРАВЛЕНИЕ ЦИКЛИЧЕСКОГО ИМПОРТА ---
+    # Импортируем сервисы ВНУТРИ функции, а не снаружи
+    from .imap_service import download_latest_attachment
+    from .notification_service import NotificationService
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
     
     logger.info("Scheduler: Запуск проверки дислокации...")
     try:
