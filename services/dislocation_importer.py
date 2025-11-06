@@ -303,8 +303,9 @@ FILENAME_PATTERN_DISLOCATION = r'\.xlsx$'
 async def check_and_process_dislocation(bot_instance: Bot):
     """Проверяет почту, обрабатывает файлы и рассылает уведомления."""
     
-    # --- ИСПРАВЛЕНИЕ ЦИКЛИЧЕСКОГО ИМПОРТА ---
+    # --- ИСПРАВЛЕНИЕ ЦИКЛИЧЕСКОГО ИМПОРТА (ОШИБКА 1 И 3) ---
     # Импортируем сервисы ВНУТРИ функции, а не снаружи
+    # И импортируем МОДУЛИ, а не функции из них
     from services import imap_service
     from services import notification_service
     # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
@@ -313,6 +314,8 @@ async def check_and_process_dislocation(bot_instance: Bot):
     try:
         # --- ИСПРАВЛЕНИЕ ВЫЗОВА:
         # Вызываем функцию/метод НА ИМПОРТИРОВАННОМ МОДУЛЕ
+        # (ПРИМЕЧАНИЕ: Если 'download_latest_attachment' не существует,
+        # вам нужно будет проверить имя функции в 'imap_service.py')
         filepath = await asyncio.to_thread(
             imap_service.download_latest_attachment,
             subject_filter=SUBJECT_FILTER_DISLOCATION,
@@ -344,6 +347,11 @@ async def check_and_process_dislocation(bot_instance: Bot):
         else:
             logger.info("📬 [Dislocation] Новых файлов дислокации не найдено.")
 
+    except AttributeError as e:
+        # --- (НОВЫЙ БЛОК) Ловим ошибку 'download_latest_attachment' ---
+        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА ИМПОРТА: {e}")
+        logger.error("     Возможно, функция 'download_latest_attachment' в 'imap_service.py' называется иначе?")
+        # ---
     except Exception as e:
         logger.error(f"❌ Критическая ошибка в check_and_process_dislocation: {e}", exc_info=True)
         # Не "raise e", чтобы не остановить планировщик
