@@ -6,9 +6,9 @@ import datetime
 from typing import Optional, Union, Iterator
 from contextlib import contextmanager
 
-# ✅ ИСПРАВЛЕНИЕ ИМПОРТОВ: Импортируем из конкретных подмодулей
-from imap_tools.mailbox import MailBox, BaseMailBox # MailBox, BaseMailBox
-from imap_tools.query import A, AND               # A, AND
+# Импорты из imap-tools
+from imap_tools.mailbox import MailBox, BaseMailBox
+from imap_tools.query import A, AND
 
 from logger import get_logger
 
@@ -29,7 +29,6 @@ class ImapService:
 
     @contextmanager
     def _connect(self) -> Iterator[Optional[MailBox]]:
-        # ... (код подключения _connect остается прежним) ...
         if not all([EMAIL, PASSWORD, IMAP_SERVER]):
             logger.error("[ImapService] EMAIL, PASSWORD или IMAP_SERVER не заданы в .env.")
             yield None
@@ -57,7 +56,6 @@ class ImapService:
         finally:
             if is_connected:
                 try:
-                    # ✅ ИСПРАВЛЕНИЕ: Мы знаем, что msg.uid всегда str, если письмо найдено.
                     mailbox.logout()
                     logger.info(f"🟢 [ImapService] Logout выполнен.")
                 except Exception as e:
@@ -101,7 +99,10 @@ class ImapService:
                     
                     # 4. Поиск вложений
                     for att in msg.attachments:
-                        if re.match(filename_pattern, att.filename, re.IGNORECASE):
+                        
+                        # --- ✅ ИСПРАВЛЕНИЕ: re.match -> re.search ---
+                        # re.match ищет только в начале строки, re.search ищет в любом месте.
+                        if re.search(filename_pattern, att.filename, re.IGNORECASE):
                             
                             # 5. Сохранение файла
                             filepath = os.path.join(DOWNLOAD_DIR, att.filename)
@@ -114,8 +115,6 @@ class ImapService:
                             logger.info(f"✅ [ImapService] Вложение '{att.filename}' успешно сохранено.")
 
                             # 6. Пометка письма как прочитанного.
-                            # msg.uid всегда str, если письмо найдено, поэтому Pylance ошибается
-                            # Но для устранения предупреждения, обернем uid в tuple/list
                             mailbox.flag([msg.uid], 'SEEN', value=True) 
                             
                             return filepath
