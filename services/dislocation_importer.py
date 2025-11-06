@@ -10,7 +10,7 @@ from sqlalchemy import update, delete
 from datetime import datetime
 
 # --- Импорты из вашего проекта ---
-from db import async_sessionmaker, SessionLocal # Импортируем SessionLocal
+from db import SessionLocal # <--- ИСПРАВЛЕНИЕ: Импортируем SessionLocal
 from models import Tracking, TrainEventLog
 from logger import get_logger 
 from telegram import Bot
@@ -151,7 +151,7 @@ async def process_dislocation_file(filepath: str):
     events_to_log = [] 
 
     # Используем фабрику сессий из db.py
-    session = SessionLocal() # <--- ИСПРАВЛЕНО (используем SessionLocal)
+    session = SessionLocal() # <--- ИСПРАВЛЕНО
     try:
         
         container_numbers_from_file = [
@@ -165,13 +165,23 @@ async def process_dislocation_file(filepath: str):
             )).scalars().all()
             tracking_map = {t.container_number: t for t in existing_trackings}
 
+            # --- ✅ НОВЫЙ БЛОК: Список полей, которые ДОЛЖНЫ быть СТРОКАМИ ---
+            STRING_COLS_TO_CONVERT = [
+                'sender_tgnl', 'sender_okpo', 'sender_name',
+                'receiver_tgnl', 'receiver_okpo', 'receiver_name',
+                'cargo_gng_code', 'train_number', 'wagon_number', 'waybill',
+                'dispatch_id', 'sender_name_short', 'receiver_name_short',
+                'train_index_full'
+            ]
+            # -----------------------------------------------------------
+
             for row_data in data_rows:
                 
                 container_number = row_data.get('container_number')
                 if not container_number:
                     continue
 
-                # --- Приведение типов ---
+                # --- Приведение типов (Старый блок) ---
                 if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
                     row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
                 
@@ -181,9 +191,7 @@ async def process_dislocation_file(filepath: str):
                             row_data[date_col] = None
                         else:
                             try:
-                                # Преобразуем в python datetime
                                 py_dt = pd.to_datetime(row_data[date_col]).to_pydatetime()
-                                # Убираем tzinfo, если оно есть, т.к. в БД колонка без timezone
                                 if py_dt.tzinfo:
                                     py_dt = py_dt.replace(tzinfo=None)
                                 row_data[date_col] = py_dt
@@ -195,9 +203,15 @@ async def process_dislocation_file(filepath: str):
                         try:
                             row_data[key] = int(row_data[key])
                         except (ValueError, TypeError):
-                            row_data[key] = None 
-                # --- Конец приведения типов ---
-
+                            row_data[key] = None
+                
+                # --- ✅ НОВЫЙ БЛОК: Принудительное приведение к СТРОКЕ ---
+                for col_name in STRING_COLS_TO_CONVERT:
+                    if col_name in row_data and row_data[col_name] is not None:
+                        # Конвертируем в строку и убираем '.0' если pandas прочел как float
+                        row_data[col_name] = str(row_data[col_name]).removesuffix('.0')
+                # -----------------------------------------------------------
+                
                 existing_entry = tracking_map.get(container_number)
                 new_operation_date = row_data.get('operation_date') 
                 
@@ -241,7 +255,7 @@ async def process_dislocation_file(filepath: str):
     except Exception as e:
         await session.rollback()
         logger.error(f"Ошибка при сохранении в БД: {e}", exc_info=True)
-        return 0
+        return 0 # <--- Возвращаем 0, т.к. произошла ошибка
     finally:
         # Убедимся, что сессия закрыта
         await session.close()
@@ -267,7 +281,6 @@ async def check_and_process_dislocation(bot_instance: Bot):
     try:
         # --- ИСПРАВЛЕНИЕ ВЫЗОВА: ---
         # 1. Создаем ЭКЗЕМПЛЯР класса (без аргументов)
-        #    Конструктор ImapService сам читает .env
         imap = ImapService()
         
         # 2. Вызываем МЕТОД на экземпляре
@@ -307,5 +320,4 @@ async def check_and_process_dislocation(bot_instance: Bot):
         logger.error("     Убедитесь, что 'services/imap_service.py' содержит класс 'ImapService'.")
     except Exception as e:
         logger.error(f"❌ Критическая ошибка в check_and_process_dislocation: {e}", exc_info=True)
-        # Не "raise e", чтобы не остановить планировщик тест
-        
+        # Не "raise e", чтобы не остановить планировщик
