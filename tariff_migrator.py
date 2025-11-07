@@ -4,7 +4,7 @@ import os
 import re
 import pandas as pd
 import sys
-import glob # <-- Важный импорт
+import glob
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -37,9 +37,23 @@ class TariffStation(Base):
     '''
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
+    
+    # 'Чемской'
     name: Mapped[str] = mapped_column(String, index=True, unique=True) 
+    
+    # '850308'
     code: Mapped[str] = mapped_column(String(6), index=True) 
+    
+    # 'ЗАПАДНО-СИБИРСКАЯ (83)'
     railway: Mapped[str | None] = mapped_column(String)
+    
+    # --- 🐞 ВОТ ИСПРАВЛЕНИЕ: Добавляем столбец 'operations' 🐞 ---
+    # Здесь хранится 'ТП', 'П', 'Г' и т.д.
+    operations: Mapped[str | None] = mapped_column(String)
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+    
+    # Транзитные пункты (ТП)
+    # Мы будем хранить как строки ["КОД:ИМЯ:ДИСТАНЦИЯ", ...]
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
 
     __table_args__ = (
@@ -96,6 +110,11 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         df['station_name'] = df['station_name'].str.strip()
         df['station_code'] = df['station_code'].str.strip()
         df['railway'] = df['railway'].str.strip()
+        
+        # --- 🐞 ИСПРАВЛЕНИЕ: Также очищаем 'operations' 🐞 ---
+        df['operations'] = df['operations'].str.strip()
+        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
         df.dropna(subset=['station_name', 'station_code'], inplace=True)
         df.drop_duplicates(subset=['station_name'], keep='first', inplace=True)
         
@@ -121,10 +140,7 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
         
         df.columns = df.columns.str.strip()
 
-        # --- 🐞 ИСПРАВЛЕНИЕ (ValueError: dropna must be unspecified) 🐞 ---
-        df_long = df.stack(future_stack=True).reset_index() 
-        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-        
+        df_long = df.stack(future_stack=True).reset_index() # Убран dropna=True
         df_long.columns = ['station_a', 'station_b', 'distance']
         
         df_long = df_long[pd.to_numeric(df_long['distance'], errors='coerce').notna()]
@@ -135,7 +151,7 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
         df_long.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
         
         log.info(f"✅ Матрица {os.path.basename(filepath)} загружена, {len(df_long)} УНИКАЛЬНЫХ маршрутов.")
-        return df_long
+        return df
     except FileNotFoundError:
         log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
         return None
@@ -180,6 +196,9 @@ async def main_migrate():
                             name=row['station_name'],
                             code=row['station_code'],
                             railway=row['railway'],
+                            # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем 'operations' 🐞 ---
+                            operations=row['operations'],
+                            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
                             transit_points=parse_transit_points_for_db(row['transit_points_raw'])
                         )
                     )
@@ -191,8 +210,7 @@ async def main_migrate():
         log.error("❌ Миграция станций провалена, файл не загружен.")
         return
 
-    # --- 🐞 ИЗМЕНЕНИЕ: Загрузка ВСЕХ матриц 🐞 ---
-    
+    # 3. Миграция ВСЕХ Матриц (3-*.csv)
     log.info("--- 2/2: Начинаю миграцию ВСЕХ Матриц (3-*.csv) ---")
     
     # Ищем ВСЕ файлы матриц 3-
@@ -214,7 +232,6 @@ async def main_migrate():
                     log.info(f"Добавляю {len(matrix_df)} маршрутов (с пропуском дубликатов)...")
                     try:
                         # Используем "upsert" (ON CONFLICT DO NOTHING)
-                        # Это медленнее, но гарантирует пропуск дубликатов
                         for record in matrix_df.to_dict(orient='records'):
                             stmt = pg_insert(TariffMatrix).values(**record).on_conflict_do_nothing(
                                 index_elements=['station_a', 'station_b']
@@ -231,7 +248,6 @@ async def main_migrate():
                 log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).")
 
     log.info(f"✅ Миграция ВСЕХ матриц завершена. Попыток добавления: {total_routes_added}")
-    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
 
     log.info("🎉🎉🎉 == МИГРАЦИЯ ТАРИФНОЙ БАЗЫ УСПЕШНО ЗАВЕРШЕНА! ==")
     log.info("Папку zdtarif_bot/data можно удалять.")
