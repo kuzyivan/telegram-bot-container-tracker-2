@@ -104,7 +104,6 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
     ]
     
-    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ (Message not modified) 🐞 ---
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     except BadRequest as e:
@@ -112,7 +111,6 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
             logger.info("Меню подписки не изменилось, пропуск редактирования.")
         else:
             logger.error(f"Ошибка в subscription_menu_callback: {e}", exc_info=True)
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 
 async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -134,6 +132,7 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
 
+# --- 🐞 ИЗМЕНЕНИЕ: Добавлен try...except ---
 async def delete_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data or not query.from_user:
@@ -153,7 +152,14 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
         no_callback_data=f"sub_menu_{sub.id}"
     )
     
-    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    try:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            logger.info("Меню удаления не изменилось, пропуск редактирования.")
+        else:
+            logger.error(f"Ошибка в delete_subscription_callback: {e}", exc_info=True)
+# --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
 
 async def delete_subscription_confirm_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -291,9 +297,11 @@ async def remove_container_do_conversation(update: Update, context: ContextTypes
 
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        except Exception as e:
-            logger.info(f"Ошибка редактирования сообщения (возможно, не изменилось): {e}")
-            pass
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                logger.info("Меню удаления не изменилось, пропуск редактирования.")
+            else:
+                raise # Поднимаем другую ошибку
         
         return AWAIT_REMOVE_INPUT # Остаемся в том же состоянии
             
@@ -387,8 +395,6 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ Ошибка сессии.", show_alert=True)
         return ConversationHandler.END
 
-    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ (AttributeError: 'data' can't be set) 🐞 ---
-    
     # 1. Получаем свежие данные
     sub = await get_subscription_details(subscription_id, query.from_user.id)
     if not sub:
@@ -430,7 +436,6 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
     # 4. Чистим user_data и выходим из диалога
     context.user_data.clear()
     return ConversationHandler.END
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 async def remove_containers_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
