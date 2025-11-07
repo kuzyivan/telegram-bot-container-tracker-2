@@ -41,11 +41,22 @@ async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT
             keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.id})", callback_data=f"sub_menu_{sub.id}")]) 
     keyboard.append([InlineKeyboardButton("➕ Создать новую подписку", callback_data="create_sub_start")])
     
-    if update.message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    elif update.callback_query:
-         if update.effective_chat:
-            await context.bot.send_message(update.effective_chat.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    # --- 🐞 ИЗМЕНЕНИЕ: Упрощаем отправку ---
+    # Мы всегда будем отправлять НОВОЕ сообщение, чтобы избежать конфликтов
+    # ответа на message или callback_query
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    if not chat_id:
+        logger.warning("Не удалось получить chat_id в my_subscriptions_command")
+        return
+
+    await context.bot.send_message(
+        chat_id=chat_id, 
+        text=text, 
+        reply_markup=InlineKeyboardMarkup(keyboard), 
+        parse_mode='Markdown'
+    )
+    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
+
 
 async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -53,20 +64,15 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
         return
     await query.answer()
     
-    # --- 🐞 ИЗМЕНЕНИЕ: Логика для возврата из add_containers_receive ---
-    # Если мы пришли сюда по "искусственному" вызову, update.callback_query.data не будет
-    # начинаться с "sub_menu_", поэтому мы берем ID из context
     subscription_id_str = query.data.split("_")[-1]
     
-    if not subscription_id_str.isdigit() and context.user_data and 'sub_id_to_edit' in context.user_data:
-        subscription_id = context.user_data['sub_id_to_edit']
-    elif subscription_id_str.isdigit():
-        subscription_id = int(subscription_id_str)
-    else:
-        logger.warning("subscription_menu_callback не смог определить ID подписки")
+    if not subscription_id_str.isdigit():
+        logger.warning(f"subscription_menu_callback не смог определить ID подписки из data: {query.data}")
+        await query.edit_message_text("❌ Ошибка: не удалось определить ID подписки.")
         return
-    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
-
+        
+    subscription_id = int(subscription_id_str)
+    
     sub = await get_subscription_details(subscription_id, query.from_user.id)
     if not sub:
         await query.edit_message_text("❌ Ошибка: подписка не найдена или не принадлежит вам.")
@@ -261,10 +267,8 @@ async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYP
     subscription_id = int(query.data.split("_")[-1])
     context.user_data['sub_id_to_edit'] = subscription_id
     
-    # --- 🐞 ИЗМЕНЕНИЕ: Сохраняем ID сообщения с меню ---
     if query.message:
         context.user_data['menu_message_id'] = query.message.message_id
-    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
     
     await query.answer()
     await query.edit_message_text(
@@ -276,7 +280,8 @@ async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def add_containers_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Получает текст с контейнерами, добавляет их в подписку.
+    Получает текст с контейнерами, добавляет их в подписку
+    и ВОЗВРАЩАЕТ пользователя в меню.
     """
     if (
         not update.message or not update.message.text or
@@ -319,52 +324,29 @@ async def add_containers_receive(update: Update, context: ContextTypes.DEFAULT_T
         
     await update.message.reply_text("\n".join(response_lines), parse_mode="Markdown")
 
-    # --- 🐞 ИЗМЕНЕНИЕ: Возвращаемся в меню ---
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ (Возврат в меню) 🐞 ---
     
-    # 4. Восстанавливаем меню подписки
+    # 4. Удаляем сообщение "Отправьте номера..." (которое было меню)
     menu_message_id = context.user_data.get('menu_message_id')
     chat_id = update.effective_chat.id if update.effective_chat else None
-
+    
     if menu_message_id and chat_id and context.bot:
         try:
-            # Создаем "фальшивый" CallbackQuery, чтобы передать его в функцию
-            # Нам нужен только query.data, query.from_user и query.message (для edit)
-            class FakeCallbackQuery:
-                def __init__(self, data, user, message):
-                    self.data = data
-                    self.from_user = user
-                    self.message = message
-                async def answer(self):
-                    pass # Пустая функция
-                async def edit_message_text(self, *args, **kwargs):
-                    await context.bot.edit_message_text(chat_id=chat_id, message_id=menu_message_id, *args, **kwargs)
-
-            # Создаем "фальшивый" Update
-            class FakeUpdate:
-                 def __init__(self, query, user):
-                     self.callback_query = query
-                     self.effective_user = user
-
-            fake_message = await context.bot.send_message(chat_id=chat_id, text="Загрузка...", reply_markup=InlineKeyboardMarkup([]))
-            await fake_message.delete()
-            fake_message.message_id = menu_message_id # Подменяем ID
-            
-            fake_query = FakeCallbackQuery(
-                data=f"sub_menu_{subscription_id}", # Говорим, что мы в меню
-                user=update.effective_user,
-                message=fake_message
-            )
-            fake_update = FakeUpdate(fake_query, update.effective_user)
-            
-            # Вызываем функцию отрисовки меню
-            await subscription_menu_callback(fake_update, context)
-            
+            await context.bot.delete_message(chat_id=chat_id, message_id=menu_message_id)
         except Exception as e:
-            logger.error(f"Не удалось восстановить меню подписки: {e}", exc_info=True)
-            # Если не вышло, просто сообщаем
-            await context.bot.send_message(chat_id, "Воспользуйтесь /my_subscriptions для возврата в меню.")
+            logger.warning(f"Не удалось удалить старое меню: {e}")
 
-    # 5. Чистим и выходим
+    # 5. Вызываем my_subscriptions_command, чтобы показать пользователю
+    #    общий список его подписок.
+    try:
+        # Передаем update (с .message), чтобы функция могла ответить
+        await my_subscriptions_command(update, context) 
+    except Exception as e:
+        logger.error(f"Не удалось вернуть пользователя в /my_subscriptions: {e}", exc_info=True)
+        if chat_id:
+             await context.bot.send_message(chat_id, "Воспользуйтесь /my_subscriptions для возврата в меню.")
+
+    # 6. Чистим и выходим
     context.user_data.clear()
     return ConversationHandler.END
     # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
