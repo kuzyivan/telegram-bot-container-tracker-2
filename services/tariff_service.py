@@ -1,7 +1,7 @@
 # services/tariff_service.py
 import asyncio
 import re
-from sqlalchemy import select, ARRAY
+from sqlalchemy import select, ARRAY, exc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer
@@ -64,65 +64,79 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     """
     Асинхронно ищет станцию в новой базе тарифов.
+    (Точно имитирует логику zdtarif_bot/core/data_parser.py)
     """
     cleaned_name = _normalize_station_name_for_db(station_name)
+    cleaned_lower = cleaned_name.lower()
     
-    # Ищем по точному совпадению
-    stmt = select(TariffStation).where(TariffStation.name == cleaned_name)
-    result = await session.execute(stmt)
-    station = result.scalar_one_or_none()
+    # --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot ---
     
+    # 1. Поиск 1: Точное совпадение по очищенному имени (с учетом регистра)
+    stmt_exact = select(TariffStation).where(TariffStation.name == cleaned_name)
+    result_exact = await session.execute(stmt_exact)
+    station = result_exact.scalar_one_or_none()
+    
+    if not station:
+        # 1. Поиск 2: Точное совпадение (без учета регистра)
+        stmt_ilike_exact = select(TariffStation).where(TariffStation.name.ilike(cleaned_name))
+        result_ilike_exact = await session.execute(stmt_ilike_exact)
+        station = result_ilike_exact.scalar_one_or_none()
+
+    if not station:
+        # 2. Поиск 3: Нестрогий поиск по частичному совпадению (Fallback)
+        search_term = cleaned_lower.split(' ')[0]
+        stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{search_term}%")).limit(1)
+        result_like = await session.execute(stmt_like)
+        station = result_like.scalar_one_or_none()
+        
+        if station:
+             logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station.name} (поиск по '{search_term}')")
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
     if station:
         return {
             'station_name': station.name,
             'station_code': station.code,
             'transit_points': _parse_transit_points_from_db(station.transit_points)
         }
-    
-    # --- 🐞 ИСПРАВЛЕНИЕ: Используем ilike(f"%{cleaned_name}%") ---
-    # Fallback: Если не нашли, ищем по частичному совпадению (как в zdtarif_bot)
-    # Используем ilike для регистронезависимого поиска "содержит"
-    stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%")).limit(1)
-    result_like = await session.execute(stmt_like)
-    station_like = result_like.scalar_one_or_none()
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-
-    if station_like:
-        logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station_like.name} (поиск по '{cleaned_name}')")
-        return {
-            'station_name': station_like.name,
-            'station_code': station_like.code,
-            'transit_points': _parse_transit_points_from_db(station_like.transit_points)
-        }
         
-    return None
+    return None # Если ничего не нашли
 
 async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: AsyncSession) -> int | None:
     """
     Асинхронно ищет расстояние между двумя ТП в матрице.
     """
-    # --- 🐞 ИСПРАВЛЕНИЕ: Используем ilike() для нечеткого поиска ---
+    # --- 🐞 ИСПРАВЛЕНИЕ: Используем ilike() с % в ОБЕИХ сторонах ---
+    # Это имитирует str.contains() из zdtarif_bot
+    # (Ищем ТП 'Угловая' и находим 'Угловая (96 Д-Вост)' в матрице)
+    
     # Ищем A -> B
     stmt_ab = select(TariffMatrix.distance).where(
         TariffMatrix.station_a.ilike(f"%{tp_a_name}%"),
         TariffMatrix.station_b.ilike(f"%{tp_b_name}%")
     ).limit(1)
-    result_ab = await session.execute(stmt_ab)
-    distance = result_ab.scalar_one_or_none()
-    if distance is not None:
-        return distance
-
+    
     # Ищем B -> A
     stmt_ba = select(TariffMatrix.distance).where(
         TariffMatrix.station_a.ilike(f"%{tp_b_name}%"),
         TariffMatrix.station_b.ilike(f"%{tp_a_name}%")
     ).limit(1)
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-    
-    result_ba = await session.execute(stmt_ba)
-    distance_ba = result_ba.scalar_one_or_none()
-    if distance_ba is not None:
-        return distance_ba
+
+    try:
+        result_ab = await session.execute(stmt_ab)
+        distance = result_ab.scalar_one_or_none()
+        if distance is not None:
+            return distance
+
+        result_ba = await session.execute(stmt_ba)
+        distance_ba = result_ba.scalar_one_or_none()
+        if distance_ba is not None:
+            return distance_ba
+            
+    except exc.OperationalError as e:
+        logger.error(f"Ошибка подключения к БД тарифов: {e}")
+        return None
         
     return None
 
@@ -155,7 +169,7 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> i
                 logger.warning(f"[Tariff] Станция '{to_station_name}' не найдена в базе тарифов.")
                 return None
             
-            if info_a['station_name'] == info_b['station_name']:
+            if info_a['station_name'].lower() == info_b['station_name'].lower():
                 return 0
 
             # 2. Логика расчета (такая же, как в zdtarif_bot/core/calculator.py)
