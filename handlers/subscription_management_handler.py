@@ -1,9 +1,7 @@
 # handlers/subscription_management_handler.py
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-# --- 🐞 НОВЫЙ ИМПОРТ 🐞 ---
 from telegram.error import BadRequest
-# --- 🏁 КОНЕЦ ИМПОРТА 🏁 ---
 from telegram.ext import (
     ContextTypes, CallbackQueryHandler, CommandHandler,
     ConversationHandler, MessageHandler, filters 
@@ -132,7 +130,6 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
 
-# --- 🐞 ИЗМЕНЕНИЕ: Добавлен try...except ---
 async def delete_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data or not query.from_user:
@@ -159,7 +156,6 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
             logger.info("Меню удаления не изменилось, пропуск редактирования.")
         else:
             logger.error(f"Ошибка в delete_subscription_callback: {e}", exc_info=True)
-# --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
 
 async def delete_subscription_confirm_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -608,7 +604,10 @@ def get_subscription_management_handlers():
         CallbackQueryHandler(show_containers_callback, pattern="^sub_show_"),
         
         CallbackQueryHandler(delete_subscription_callback, pattern="^sub_delete_"),
-        CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_"),
+        
+        # --- 🐞 ЭТА СТРОКА УДАЛЕНА 🐞 ---
+        # CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_"),
+        # --- 🏁 ------------------- 🏁 ---
         
         CallbackQueryHandler(back_to_subscriptions_list_callback, pattern="^sub_back_to_list$"),
     ]
@@ -660,4 +659,3 @@ def get_remove_containers_conversation_handler() -> ConversationHandler:
         persistent=False,
         name="remove_containers_conversation"
     )
-#rjytw
