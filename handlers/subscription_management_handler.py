@@ -189,11 +189,11 @@ async def remove_containers_start(update: Update, context: ContextTypes.DEFAULT_
         if query: await query.answer()
         return ConversationHandler.END
         
-    # Убедимся, что user_data существует
-    if not context.user_data:
-        context.user_data = {}
-    else:
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ БАГА (от 07.11) 🐞 ---
+    # Нельзя ПЕРЕЗАПИСАТЬ user_data, его можно только ОЧИСТИТЬ.
+    if context.user_data:
         context.user_data.clear()
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ БАГА 🏁 ---
 
     subscription_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
@@ -557,13 +557,11 @@ def get_add_containers_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("cancel", add_containers_cancel)
         ],
-        # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем per_message=False ---
         per_message=False,
         persistent=False,
         name="add_containers_conversation"
     )
 
-# --- 🐞 НОВЫЙ ДИАЛОГ: ConversationHandler для УДАЛЕНИЯ контейнеров ---
 def get_remove_containers_conversation_handler() -> ConversationHandler:
     """
     Возвращает ДИАЛОГ (ConversationHandler) для УДАЛЕНИЯ контейнеров.
@@ -584,7 +582,6 @@ def get_remove_containers_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("cancel", remove_containers_cancel)
         ],
-        # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем per_message=False ---
         per_message=False,
         persistent=False,
         name="remove_containers_conversation"
