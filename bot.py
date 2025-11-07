@@ -24,7 +24,8 @@ from handlers.email_management_handler import get_email_conversation_handler, ge
 from handlers.subscription_management_handler import (
     get_subscription_management_handlers, 
     get_add_containers_conversation_handler, # Для добавления
-    get_remove_containers_conversation_handler # Для удаления
+    get_remove_containers_conversation_handler, # Для удаления
+    delete_subscription_confirm_yes # <-- ДОБАВЛЕН ЭТОТ ИМПОРТ
 )
 # --- 🏁 КОНЕЦ ОБНОВЛЕНИЯ 🏁 ---
 
@@ -94,11 +95,8 @@ def main():
     application.add_handler(get_email_conversation_handler())
     setup_train_handlers(application)
     application.add_handler(distance_conversation_handler())
-    
-    # --- 🐞 НАЧАЛО ОБНОВЛЕНИЯ 🐞 ---
     application.add_handler(get_add_containers_conversation_handler())
     application.add_handler(get_remove_containers_conversation_handler())
-    # --- 🏁 КОНЕЦ ОБНОВЛЕНИЯ 🏁 ---
     
     # 2. Команды админа
     application.add_handler(CommandHandler("admin", admin_panel))
@@ -117,6 +115,13 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(handle_single_container_excel_callback, pattern="^get_excel_single_")) 
     
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ 🐞 ---
+    # ЯВНО РЕГИСТРИРУЕМ ОБРАБОТЧИК "ДА" ДЛЯ УДАЛЕНИЯ
+    application.add_handler(
+        CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_")
+    )
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
     # 5. Обработчики сообщений
     application.add_handler(MessageHandler(
         filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
