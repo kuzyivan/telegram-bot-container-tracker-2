@@ -5,6 +5,7 @@ import os
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+TARIFF_DATABASE_URL = os.getenv("TARIFF_DATABASE_URL")
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID")) # type: ignore
 RENDER_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
