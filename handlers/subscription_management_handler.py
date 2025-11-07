@@ -179,9 +179,7 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not query or not query.data or not query.from_user:
         return
         
-    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ БАГА 🐞 ---
-    
-    # Парсим данные: sub_rem_do_{id}_{container}
+    # --- 🐞 ИСПРАВЛЕНИЕ БАГА (от 07.11) 🐞 ---
     parts = query.data.split("_")
     # Ожидаем ['sub', 'rem', 'do', 'id', 'container']
     if len(parts) < 5: 
@@ -192,10 +190,9 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         # ID - это 4-й элемент (индекс 3)
         subscription_id = int(parts[3])
-        # Номер контейнера - это все, что идет после, на случай, если в нем были '_' (хотя не должны)
+        # Номер контейнера - это все, что идет после
         container_number = "_".join(parts[4:])
         user_id = query.from_user.id
-        
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ БАГА 🏁 ---
             
         # 1. Удаляем контейнер из БД
@@ -226,7 +223,6 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_menu_{sub.id}")])
         
-        # Используем try-except, так как сообщение могло не измениться, если удален последний
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         except Exception as e:
@@ -244,10 +240,18 @@ async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYP
     Начало диалога добавления контейнеров (нажатие на "➕ Добавить контейнеры").
     """
     query = update.callback_query
-    if not query or not query.data or not query.from_user or not context.user_data:
+    
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ БАГА (от 07.11) 🐞 ---
+    # Убираем проверку `not context.user_data`
+    if not query or not query.data or not query.from_user:
         if query:
-            await query.answer()
+            await query.answer("Ошибка: не удалось получить данные. Попробуйте снова.")
         return ConversationHandler.END
+    
+    # Убедимся, что user_data существует
+    if not context.user_data:
+        context.user_data = {}
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ БАГА 🏁 ---
         
     subscription_id = int(query.data.split("_")[-1])
     context.user_data['sub_id_to_edit'] = subscription_id
