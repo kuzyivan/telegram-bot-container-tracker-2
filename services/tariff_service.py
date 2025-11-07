@@ -79,15 +79,16 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
             'transit_points': _parse_transit_points_from_db(station.transit_points)
         }
     
+    # --- 🐞 ИСПРАВЛЕНИЕ: Используем ilike(f"%{cleaned_name}%") ---
     # Fallback: Если не нашли, ищем по частичному совпадению (как в zdtarif_bot)
-    search_term = cleaned_name.split(' ')[0]
-    # Используем ilike для регистронезависимого поиска
-    stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"{search_term}%")).limit(1)
+    # Используем ilike для регистронезависимого поиска "содержит"
+    stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%")).limit(1)
     result_like = await session.execute(stmt_like)
     station_like = result_like.scalar_one_or_none()
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
     if station_like:
-        logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station_like.name} (поиск по '{search_term}')")
+        logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station_like.name} (поиск по '{cleaned_name}')")
         return {
             'station_name': station_like.name,
             'station_code': station_like.code,
@@ -100,10 +101,11 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
     """
     Асинхронно ищет расстояние между двумя ТП в матрице.
     """
+    # --- 🐞 ИСПРАВЛЕНИЕ: Используем ilike() для нечеткого поиска ---
     # Ищем A -> B
     stmt_ab = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a == tp_a_name,
-        TariffMatrix.station_b == tp_b_name
+        TariffMatrix.station_a.ilike(f"%{tp_a_name}%"),
+        TariffMatrix.station_b.ilike(f"%{tp_b_name}%")
     ).limit(1)
     result_ab = await session.execute(stmt_ab)
     distance = result_ab.scalar_one_or_none()
@@ -112,9 +114,11 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
 
     # Ищем B -> A
     stmt_ba = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a == tp_b_name,
-        TariffMatrix.station_b == tp_a_name
+        TariffMatrix.station_a.ilike(f"%{tp_b_name}%"),
+        TariffMatrix.station_b.ilike(f"%{tp_a_name}%")
     ).limit(1)
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+    
     result_ba = await session.execute(stmt_ba)
     distance_ba = result_ba.scalar_one_or_none()
     if distance_ba is not None:
