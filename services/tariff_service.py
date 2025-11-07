@@ -21,6 +21,9 @@ class TariffStation(TariffBase):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, index=True, unique=True)
     code: Mapped[str] = mapped_column(String(6), index=True)
+    # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем 'operations' 🐞 ---
+    operations: Mapped[str | None] = mapped_column(String)
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
     transit_points: Mapped[list[dict] | None] = mapped_column(ARRAY(String))
 
 class TariffMatrix(TariffBase):
@@ -63,7 +66,7 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     """
     Асинхронно ищет станцию в новой базе тарифов.
-    (Точно имитирует логику zdtarif_bot/core/data_parser.py)
+    (Имитирует логику zdtarif_bot/core/data_parser.py)
     """
     cleaned_name = _normalize_station_name_for_db(station_name)
     cleaned_lower = cleaned_name.lower()
@@ -71,6 +74,7 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     # 1. Поиск: Нестрогий поиск по частичному совпадению (case=False)
     # Это имитирует str.contains(station_name, case=False)
     stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%")).limit(1)
+    
     result_like = await session.execute(stmt_like)
     station = result_like.scalar_one_or_none()
 
@@ -81,6 +85,9 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         return {
             'station_name': station.name,
             'station_code': station.code,
+            # --- 🐞 ИСПРАВЛЕНИЕ: Передаем 'operations' 🐞 ---
+            'operations': station.operations,
+            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
             'transit_points': _parse_transit_points_from_db(station.transit_points)
         }
         
@@ -91,12 +98,12 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
     Асинхронно ищет расстояние между двумя ТП в матрице.
     """
     
-    # --- 🐞 ИСПРАВЛЕНИЕ: Имитируем .split(' (')[0] ---
-    # Очищаем имена ТП так же, как это делает zdtarif_bot
+    # --- 🐞 ИСПРАВЛЕНИЕ: Имитируем .split(' (')[0] из zdtarif_bot 🐞 ---
+    # Очищаем имена ТП (например, "Инская (83 З-СИБ)" -> "Инская")
     tp_a_clean = tp_a_name.split(' (')[0]
     tp_b_clean = tp_b_name.split(' (')[0]
     
-    # Ищем, чтобы НАЧИНАЛОСЬ с этого имени
+    # Ищем, чтобы НАЧИНАЛОСЬ с этого имени (имитация str.contains)
     stmt_ab = select(TariffMatrix.distance).where(
         TariffMatrix.station_a.ilike(f"{tp_a_clean}%"),
         TariffMatrix.station_b.ilike(f"{tp_b_clean}%")
@@ -158,14 +165,33 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> i
             if info_a['station_name'].lower() == info_b['station_name'].lower():
                 return 0
 
-            # 2. Логика расчета (такая же, как в zdtarif_bot/core/calculator.py)
-            tps_a = info_a.get('transit_points', [])
-            tps_b = info_b.get('transit_points', [])
+            # --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot/core/calculator.py 🐞 ---
             
-            if not tps_a:
+            # 2. Логика определения ТП для Станции А
+            tps_a = []
+            operations_a = info_a.get('operations') or ""
+            transit_points_a = info_a.get('transit_points', [])
+            
+            if 'ТП' in operations_a:
                 tps_a = [{'name': info_a['station_name'], 'distance': 0}]
-            if not tps_b:
+            elif transit_points_a:
+                tps_a = transit_points_a
+            else:
+                tps_a = [{'name': info_a['station_name'], 'distance': 0}]
+            
+            # 3. Логика определения ТП для Станции Б
+            tps_b = []
+            operations_b = info_b.get('operations') or ""
+            transit_points_b = info_b.get('transit_points', [])
+            
+            if 'ТП' in operations_b:
                 tps_b = [{'name': info_b['station_name'], 'distance': 0}]
+            elif transit_points_b:
+                tps_b = transit_points_b
+            else:
+                tps_b = [{'name': info_b['station_name'], 'distance': 0}]
+            
+            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
             min_total_distance = float('inf')
             route_found = False
@@ -174,7 +200,7 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> i
             for tp_a in tps_a:
                 for tp_b in tps_b:
                     
-                    # 3. Асинхронный запрос к матрице
+                    # 4. Асинхронный запрос к матрице
                     transit_dist = await _get_matrix_distance_from_db(tp_a['name'], tp_b['name'], session)
                     
                     if transit_dist is not None:
