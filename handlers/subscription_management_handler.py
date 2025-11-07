@@ -98,7 +98,9 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
             InlineKeyboardButton("➕ Добавить контейнеры", callback_data=f"sub_add_ctn_{sub.id}"),
             InlineKeyboardButton("➖ Удалить контейнеры", callback_data=f"sub_rem_ctn_{sub.id}")
         ],
-        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_{sub.id}")],
+        # --- 🐞 ИЗМЕНЕНИЕ: Новый callback_data ---
+        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_ask_{sub.id}")],
+        # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
     ]
     
@@ -130,6 +132,7 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
 
+# --- 🐞 ИЗМЕНЕНИЕ: Эта функция теперь ЗАПРАШИВАЕТ подтверждение ---
 async def delete_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data or not query.from_user:
@@ -144,10 +147,12 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
     
     text = f"Вы уверены, что хотите удалить подписку *{sub.subscription_name}*?"
     
+    # --- 🐞 ИЗМЕНЕНИЕ: Новые callback_data ---
     reply_markup = create_yes_no_inline_keyboard(
-        yes_callback_data=f"sub_delete_confirm_yes_{sub.id}",
+        yes_callback_data=f"sub_delete_confirm_{sub.id}",
         no_callback_data=f"sub_menu_{sub.id}"
     )
+    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
     
     try:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -157,12 +162,14 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
         else:
             logger.error(f"Ошибка в delete_subscription_callback: {e}", exc_info=True)
 
+# --- 🐞 НОВАЯ ФУНКЦИЯ: Эта функция ВЫПОЛНЯЕТ удаление ---
 async def delete_subscription_confirm_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data or not query.from_user:
         return
     await query.answer()
     
+    # data="sub_delete_confirm_{sub.id}"
     subscription_id = int(query.data.split("_")[-1])
     
     deleted = await delete_subscription(subscription_id, query.from_user.id)
@@ -171,6 +178,7 @@ async def delete_subscription_confirm_yes(update: Update, context: ContextTypes.
         await query.edit_message_text("✅ Подписка успешно удалена.")
     else:
         await query.edit_message_text("❌ Не удалось удалить подписку.")
+# --- 🏁 КОНЕЦ ИЗМЕНЕНИЙ 🏁 ---
 
 
 async def back_to_subscriptions_list_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -416,7 +424,7 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
             InlineKeyboardButton("➕ Добавить контейнеры", callback_data=f"sub_add_ctn_{sub.id}"),
             InlineKeyboardButton("➖ Удалить контейнеры", callback_data=f"sub_rem_ctn_{sub.id}")
         ],
-        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_{sub.id}")],
+        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_ask_{sub.id}")],
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
     ]
     
@@ -478,7 +486,7 @@ async def remove_containers_cancel(update: Update, context: ContextTypes.DEFAULT
             InlineKeyboardButton("➕ Добавить контейнеры", callback_data=f"sub_add_ctn_{sub.id}"),
             InlineKeyboardButton("➖ Удалить контейнеры", callback_data=f"sub_rem_ctn_{sub.id}")
         ],
-        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_{sub.id}")],
+        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_ask_{sub.id}")],
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
     ]
     
@@ -603,11 +611,11 @@ def get_subscription_management_handlers():
         CallbackQueryHandler(subscription_menu_callback, pattern="^sub_menu_"),
         CallbackQueryHandler(show_containers_callback, pattern="^sub_show_"),
         
-        CallbackQueryHandler(delete_subscription_callback, pattern="^sub_delete_"),
-        
-        # --- 🐞 ЭТА СТРОКА УДАЛЕНА 🐞 ---
-        # CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_"),
-        # --- 🏁 ------------------- 🏁 ---
+        # --- 🐞 ИЗМЕНЕНИЕ: Новый паттерн ---
+        CallbackQueryHandler(delete_subscription_callback, pattern="^sub_delete_ask_"),
+        # --- 🐞 ИЗМЕНЕНИЕ: Этот обработчик ВОЗВРАЩАЕМ сюда ---
+        CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_"),
+        # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
         
         CallbackQueryHandler(back_to_subscriptions_list_callback, pattern="^sub_back_to_list$"),
     ]
