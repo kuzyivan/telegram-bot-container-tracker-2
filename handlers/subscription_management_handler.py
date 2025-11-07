@@ -241,19 +241,19 @@ async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     query = update.callback_query
     
-    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ БАГА (от 07.11) 🐞 ---
-    # Убираем проверку `not context.user_data`
     if not query or not query.data or not query.from_user:
         if query:
             await query.answer("Ошибка: не удалось получить данные. Попробуйте снова.")
         return ConversationHandler.END
     
-    # Убедимся, что user_data существует
-    if not context.user_data:
-        context.user_data = {}
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ БАГА (от 07.11) 🐞 ---
+    # Нельзя ПЕРЕЗАПИСАТЬ user_data, его можно только ОЧИСТИТЬ.
+    if context.user_data:
+        context.user_data.clear()
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ БАГА 🏁 ---
         
     subscription_id = int(query.data.split("_")[-1])
+    # Теперь мы безопасно добавляем ключ в пустой (или существующий) user_data
     context.user_data['sub_id_to_edit'] = subscription_id
     
     await query.answer()
