@@ -118,7 +118,7 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
         text = "В этой подписке нет контейнеров."
     else:
         container_list = "\n".join(f"`{c}`" for c in sub.containers)
-        text = f"Контейнеры в подписке **{sub.subscription_name}*:\n{container_list}"
+        text = f"Контейнеры в подписке *{sub.subscription_name}*:\n{container_list}"
     
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
@@ -185,10 +185,16 @@ async def remove_containers_start(update: Update, context: ContextTypes.DEFAULT_
     Показывает меню для удаления (кнопки + текст) и входит в состояние AWAIT_REMOVE_INPUT.
     """
     query = update.callback_query
-    if not query or not query.data or not query.from_user or not context.user_data:
+    if not query or not query.data or not query.from_user:
         if query: await query.answer()
         return ConversationHandler.END
         
+    # Убедимся, что user_data существует
+    if not context.user_data:
+        context.user_data = {}
+    else:
+        context.user_data.clear()
+
     subscription_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
     
@@ -217,7 +223,6 @@ async def remove_containers_start(update: Update, context: ContextTypes.DEFAULT_
     else:
         text = "В этой подписке уже нет контейнеров.\n\nДля отмены введите /cancel."
         
-    # Кнопка "Назад" здесь не нужна, т.к. есть /cancel
     
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return AWAIT_REMOVE_INPUT
@@ -534,10 +539,6 @@ def get_subscription_management_handlers():
         CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_"),
         
         CallbackQueryHandler(back_to_subscriptions_list_callback, pattern="^sub_back_to_list$"),
-        
-        # --- 🐞 ИЗМЕНЕНИЕ: Эти хендлеры УДАЛЕНЫ отсюда, т.к. они переехали в ConversationHandler ---
-        # CallbackQueryHandler(remove_containers_menu, pattern="^sub_rem_ctn_"),
-        # CallbackQueryHandler(remove_container_do, pattern="^sub_rem_do_"),
     ]
 
 def get_add_containers_conversation_handler() -> ConversationHandler:
@@ -556,6 +557,8 @@ def get_add_containers_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("cancel", add_containers_cancel)
         ],
+        # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем per_message=False ---
+        per_message=False,
         persistent=False,
         name="add_containers_conversation"
     )
@@ -581,7 +584,8 @@ def get_remove_containers_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("cancel", remove_containers_cancel)
         ],
+        # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем per_message=False ---
+        per_message=False,
         persistent=False,
         name="remove_containers_conversation"
     )
-# --- 🏁 КОНЕЦ НОВОГО ДИАЛОГА 🏁 ---
