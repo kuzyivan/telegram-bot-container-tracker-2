@@ -1,4 +1,3 @@
-#tariff_migrator.py
 # tariff_migrator.py
 import asyncio
 import os
@@ -102,7 +101,9 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
     try:
         df = pd.read_csv(
             filepath,
-            skiprows=5,
+            # --- 🐞 ВОТ ИСПРАВЛЕНИЕ 🐞 ---
+            skiprows=6, # Было 5, меняем на 6, чтобы пропустить строку заголовка
+            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
             names=[
                 'num', 'station_name', 'operations', 'railway', 
                 'transit_points_raw', 'station_code'
@@ -131,7 +132,9 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     Загружает матрицу (3-1 или 3-2) и преобразует ее в "длинный" формат.
     '''
     try:
-        df = pd.read_csv(filepath, skiprows=5, encoding='cp1251')
+        # --- 🐞 ВОТ ИСПРАВЛЕНИЕ 🐞 ---
+        df = pd.read_csv(filepath, skiprows=6, encoding='cp1251') # Было 5, меняем на 6
+        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
         
         # Первая колонка (индекс) - это station_a
         df.iloc[:, 1] = df.iloc[:, 1].astype(str).str.strip()
