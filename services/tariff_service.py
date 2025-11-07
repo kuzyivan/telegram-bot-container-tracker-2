@@ -13,7 +13,6 @@ from db import TariffSessionLocal
 logger = get_logger(__name__) 
 
 # --- 2. Определяем модели (копия из мигратора) ---
-# Нам нужно определить модели здесь, чтобы SQLAlchemy знала, с чем работать.
 class TariffBase(DeclarativeBase):
     pass
 
@@ -69,31 +68,16 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     cleaned_name = _normalize_station_name_for_db(station_name)
     cleaned_lower = cleaned_name.lower()
     
-    # --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot ---
-    
-    # 1. Поиск 1: Точное совпадение по очищенному имени (с учетом регистра)
-    stmt_exact = select(TariffStation).where(TariffStation.name == cleaned_name)
-    result_exact = await session.execute(stmt_exact)
-    station = result_exact.scalar_one_or_none()
-    
-    if not station:
-        # 1. Поиск 2: Точное совпадение (без учета регистра)
-        stmt_ilike_exact = select(TariffStation).where(TariffStation.name.ilike(cleaned_name))
-        result_ilike_exact = await session.execute(stmt_ilike_exact)
-        station = result_ilike_exact.scalar_one_or_none()
-
-    if not station:
-        # 2. Поиск 3: Нестрогий поиск по частичному совпадению (Fallback)
-        search_term = cleaned_lower.split(' ')[0]
-        stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{search_term}%")).limit(1)
-        result_like = await session.execute(stmt_like)
-        station = result_like.scalar_one_or_none()
-        
-        if station:
-             logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station.name} (поиск по '{search_term}')")
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+    # 1. Поиск: Нестрогий поиск по частичному совпадению (case=False)
+    # Это имитирует str.contains(station_name, case=False)
+    stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%")).limit(1)
+    result_like = await session.execute(stmt_like)
+    station = result_like.scalar_one_or_none()
 
     if station:
+        if station.name.lower() != cleaned_name.lower():
+             logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station.name} (поиск по '{cleaned_name}')")
+        
         return {
             'station_name': station.name,
             'station_code': station.code,
@@ -106,20 +90,22 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
     """
     Асинхронно ищет расстояние между двумя ТП в матрице.
     """
-    # --- 🐞 ИСПРАВЛЕНИЕ: Используем ilike() с % в ОБЕИХ сторонах ---
-    # Это имитирует str.contains() из zdtarif_bot
-    # (Ищем ТП 'Угловая' и находим 'Угловая (96 Д-Вост)' в матрице)
     
-    # Ищем A -> B
+    # --- 🐞 ИСПРАВЛЕНИЕ: Имитируем .split(' (')[0] ---
+    # Очищаем имена ТП так же, как это делает zdtarif_bot
+    tp_a_clean = tp_a_name.split(' (')[0]
+    tp_b_clean = tp_b_name.split(' (')[0]
+    
+    # Ищем, чтобы НАЧИНАЛОСЬ с этого имени
     stmt_ab = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a.ilike(f"%{tp_a_name}%"),
-        TariffMatrix.station_b.ilike(f"%{tp_b_name}%")
+        TariffMatrix.station_a.ilike(f"{tp_a_clean}%"),
+        TariffMatrix.station_b.ilike(f"{tp_b_clean}%")
     ).limit(1)
     
     # Ищем B -> A
     stmt_ba = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a.ilike(f"%{tp_b_name}%"),
-        TariffMatrix.station_b.ilike(f"%{tp_a_name}%")
+        TariffMatrix.station_a.ilike(f"{tp_b_clean}%"),
+        TariffMatrix.station_b.ilike(f"{tp_a_clean}%")
     ).limit(1)
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
