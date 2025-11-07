@@ -220,9 +220,7 @@ async def remove_containers_start(update: Update, context: ContextTypes.DEFAULT_
     else:
         text = "В этой подписке уже нет контейнеров.\n\nДля отмены введите /cancel."
         
-    # --- 🐞 ИЗМЕНЕНИЕ: Добавляем кнопку "Назад" ---
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_rem_back_{sub.id}")])
-    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
     
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return AWAIT_REMOVE_INPUT
@@ -278,9 +276,7 @@ async def remove_container_do_conversation(update: Update, context: ContextTypes
         else:
             text = "Все контейнеры удалены.\n\nДля отмены введите /cancel."
         
-        # --- 🐞 ИЗМЕНЕНИЕ: Добавляем кнопку "Назад" ---
         keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_rem_back_{sub.id}")])
-        # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
 
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -357,15 +353,13 @@ async def remove_containers_by_list(update: Update, context: ContextTypes.DEFAUL
     else:
         text = "Все контейнеры удалены.\n\nДля отмены введите /cancel."
     
-    # --- 🐞 ИЗМЕНЕНИЕ: Добавляем кнопку "Назад" ---
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_rem_back_{sub.id}")])
-    # --- 🏁 КОНЕЦ ИЗМЕНЕНИЯ 🏁 ---
 
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
     return AWAIT_REMOVE_INPUT
 
-# --- 🐞 НОВАЯ ФУНКЦИЯ: Обработка кнопки "Назад" ---
+# --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ: Функция для кнопки "Назад" 🐞 ---
 async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обрабатывает нажатие "Назад" в диалоге удаления.
@@ -373,6 +367,7 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
     """
     query = update.callback_query
     if not query or not query.data or not query.from_user or not context.user_data:
+        if query: await query.answer()
         return ConversationHandler.END
 
     subscription_id = int(query.data.split("_")[-1])
@@ -382,15 +377,42 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ Ошибка сессии.", show_alert=True)
         return ConversationHandler.END
 
-    # Подменяем данные, чтобы subscription_menu_callback правильно отработал
-    query.data = f"sub_menu_{subscription_id}"
+    # 1. Получаем свежие данные
+    sub = await get_subscription_details(subscription_id, query.from_user.id)
+    if not sub:
+        await query.edit_message_text("❌ Ошибка: подписка не найдена.")
+        return ConversationHandler.END
+        
+    # 2. Копируем логику отрисовки из subscription_menu_callback
+    email_list = [sub_email.email.email for sub_email in sub.target_emails]
+    emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
+    status_text = 'Активна ✅' if sub.is_active is True else 'Неактивна ⏸️'
+    containers_count = len(sub.containers) if sub.containers is not None else 0
+    text = (
+        f"⚙️ *Управление подпиской:*\n"
+        f"*{sub.subscription_name}* `({sub.id})`\n\n"
+        f"Статус: {status_text}\n"
+        f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
+        f"Контейнеров: {containers_count} шт.\n"
+        f"Email для отчетов: {emails_text}"
+    )
+    keyboard = [
+        [InlineKeyboardButton("📋 Показать контейнеры", callback_data=f"sub_show_{sub.id}")],
+        [
+            InlineKeyboardButton("➕ Добавить контейнеры", callback_data=f"sub_add_ctn_{sub.id}"),
+            InlineKeyboardButton("➖ Удалить контейнеры", callback_data=f"sub_rem_ctn_{sub.id}")
+        ],
+        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_{sub.id}")],
+        [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
+    ]
     
-    # "Перерисовываем" меню
-    await subscription_menu_callback(update, context)
+    # 3. Редактируем сообщение, возвращая его в меню
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     
+    # 4. Чистим user_data и выходим из диалога
     context.user_data.clear()
     return ConversationHandler.END
-# --- 🏁 КОНЕЦ НОВОЙ ФУНКЦИИ 🏁 ---
+# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 async def remove_containers_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
