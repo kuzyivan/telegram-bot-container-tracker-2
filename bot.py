@@ -19,12 +19,15 @@ from scheduler import start_scheduler
 # --- Пользовательские обработчики ---
 from handlers.menu_handlers import start, reply_keyboard_handler, handle_sticker 
 from handlers.email_management_handler import get_email_conversation_handler, get_email_command_handlers
-# --- ОБНОВЛЕННЫЙ ИМПОРТ ---
+
+# --- 🐞 НАЧАЛО ОБНОВЛЕНИЯ 🐞 ---
 from handlers.subscription_management_handler import (
     get_subscription_management_handlers, 
-    get_add_containers_conversation_handler # <-- ДОБАВЛЕНО
+    get_add_containers_conversation_handler, # Для добавления
+    get_remove_containers_conversation_handler # Для удаления
 )
-# ---
+# --- 🏁 КОНЕЦ ОБНОВЛЕНИЯ 🏁 ---
+
 from handlers.tracking_handlers import tracking_conversation_handler
 from handlers.dislocation_handlers import handle_message, handle_single_container_excel_callback 
 from handlers.broadcast import broadcast_conversation_handler
@@ -91,9 +94,11 @@ def main():
     application.add_handler(get_email_conversation_handler())
     setup_train_handlers(application)
     application.add_handler(distance_conversation_handler())
-    # --- НОВЫЙ ХЕНДЛЕР ДОБАВЛЕН ЗДЕСЬ ---
+    
+    # --- 🐞 НАЧАЛО ОБНОВЛЕНИЯ 🐞 ---
     application.add_handler(get_add_containers_conversation_handler())
-    # ------------------------------------
+    application.add_handler(get_remove_containers_conversation_handler())
+    # --- 🏁 КОНЕЦ ОБНОВЛЕНИЯ 🏁 ---
     
     # 2. Команды админа
     application.add_handler(CommandHandler("admin", admin_panel))

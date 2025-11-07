@@ -19,14 +19,13 @@ except ImportError:
     # Запасной вариант, если структура другая
     from handlers.tracking_handlers import normalize_containers
 
-# --- 🐞 НОВЫЙ ИМПОРТ 🐞 ---
 from utils.keyboards import create_yes_no_inline_keyboard
-# --- 🏁 КОНЕЦ ИМПОРТА 🏁 ---
 
 logger = get_logger(__name__)
 
-# --- НОВЫЕ СОСТОЯНИЯ ДЛЯ ДИАЛОГА ДОБАВЛЕНИЯ ---
-(ASK_ADD_CONTAINERS,) = range(10, 11) # Используем диапазон, чтобы не пересекаться с другими
+# --- ОБНОВЛЕННЫЕ СОСТОЯНИЯ ---
+(ASK_ADD_CONTAINERS, AWAIT_REMOVE_INPUT) = range(10, 12) # Добавлено состояние для удаления
+# ---
 
 async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message and not update.callback_query or not update.effective_user: # Учитываем CallbackQuery
@@ -119,12 +118,11 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
         text = "В этой подписке нет контейнеров."
     else:
         container_list = "\n".join(f"`{c}`" for c in sub.containers)
-        text = f"Контейнеры в подписке *{sub.subscription_name}*:\n{container_list}"
+        text = f"Контейнеры в подписке **{sub.subscription_name}*:\n{container_list}"
     
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
 
-# --- 🐞 ИЗМЕНЕНИЕ: Эта функция теперь ЗАПРАШИВАЕТ подтверждение ---
 async def delete_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data or not query.from_user:
@@ -132,7 +130,6 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
     await query.answer()
     subscription_id = int(query.data.split("_")[-1])
     
-    # Получаем детали, чтобы показать имя
     sub = await get_subscription_details(subscription_id, query.from_user.id)
     if not sub:
         await query.edit_message_text("❌ Ошибка: подписка не найдена.")
@@ -140,7 +137,6 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
     
     text = f"Вы уверены, что хотите удалить подписку *{sub.subscription_name}*?"
     
-    # Кнопка "Нет" возвращает нас в меню этой подписки
     reply_markup = create_yes_no_inline_keyboard(
         yes_callback_data=f"sub_delete_confirm_yes_{sub.id}",
         no_callback_data=f"sub_menu_{sub.id}"
@@ -148,14 +144,12 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
     
     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
 
-# --- 🐞 НОВАЯ ФУНКЦИЯ: Эта функция ВЫПОЛНЯЕТ удаление ---
 async def delete_subscription_confirm_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query or not query.data or not query.from_user:
         return
     await query.answer()
     
-    # data="sub_delete_confirm_yes_{sub.id}"
     subscription_id = int(query.data.split("_")[-1])
     
     deleted = await delete_subscription(subscription_id, query.from_user.id)
@@ -164,7 +158,6 @@ async def delete_subscription_confirm_yes(update: Update, context: ContextTypes.
         await query.edit_message_text("✅ Подписка успешно удалена.")
     else:
         await query.edit_message_text("❌ Не удалось удалить подписку.")
-# --- 🏁 КОНЕЦ ИЗМЕНЕНИЙ 🏁 ---
 
 
 async def back_to_subscriptions_list_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -185,25 +178,35 @@ async def back_to_subscriptions_list_callback(update: Update, context: ContextTy
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
-# --- НОВЫЕ ФУНКЦИИ ДЛЯ УДАЛЕНИЯ КОНТЕЙНЕРОВ (ИНТЕРАКТИВНОЕ МЕНЮ) ---
+# --- CONVERSATION HANDLER ДЛЯ УДАЛЕНИЯ КОНТЕЙНЕРОВ ---
 
-async def remove_containers_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def remove_containers_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Показывает меню для удаления (кнопки + текст) и входит в состояние AWAIT_REMOVE_INPUT.
+    """
     query = update.callback_query
-    if not query or not query.data or not query.from_user:
-        return
+    if not query or not query.data or not query.from_user or not context.user_data:
+        if query: await query.answer()
+        return ConversationHandler.END
         
     subscription_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
+    
+    context.user_data['sub_id_to_edit'] = subscription_id
     
     sub = await get_subscription_details(subscription_id, user_id)
     
     if not sub:
         await query.answer("❌ Ошибка: подписка не найдена.", show_alert=True)
-        return
+        return ConversationHandler.END
         
     await query.answer()
     keyboard = []
-    text = f"Выберите контейнеры для удаления из подписки *{sub.subscription_name}*:\n"
+    text = (
+        f"Выберите контейнеры для **поштучного** удаления из подписки *{sub.subscription_name}*:\n\n"
+        "Или отправьте **список** контейнеров (через пробел/запятую) для удаления.\n\n"
+        "Для отмены введите /cancel."
+    )
     
     if sub.containers:
         for container in sub.containers:
@@ -212,35 +215,43 @@ async def remove_containers_menu(update: Update, context: ContextTypes.DEFAULT_T
                 InlineKeyboardButton(f"🗑️ {container}", callback_data=f"sub_rem_do_{sub.id}_{container}")
             ])
     else:
-        text += "\nВ этой подписке уже нет контейнеров."
+        text = "В этой подписке уже нет контейнеров.\n\nДля отмены введите /cancel."
         
-    # Кнопка "Назад" в главное меню подписки
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_menu_{sub.id}")])
+    # Кнопка "Назад" здесь не нужна, т.к. есть /cancel
     
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    return AWAIT_REMOVE_INPUT
 
-async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def remove_container_do_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    (ВНУТРИ ДИАЛОГА) Обрабатывает нажатие на кнопку с контейнером для удаления.
+    """
     query = update.callback_query
-    if not query or not query.data or not query.from_user:
-        return
+    if not query or not query.data or not query.from_user or not context.user_data:
+        return ConversationHandler.END
         
     parts = query.data.split("_")
     if len(parts) < 5: 
-        logger.warning(f"Ошибка парсинга callback_data в remove_container_do: {query.data}")
+        logger.warning(f"Ошибка парсинга callback_data в remove_container_do_conversation: {query.data}")
         await query.answer("❌ Ошибка данных.", show_alert=True)
-        return
+        return AWAIT_REMOVE_INPUT # Остаемся в том же состоянии
         
     try:
         subscription_id = int(parts[3])
         container_number = "_".join(parts[4:])
         user_id = query.from_user.id
+        
+        # Проверяем, что ID подписки совпадает с тем, что в user_data
+        if subscription_id != context.user_data.get('sub_id_to_edit'):
+             await query.answer("❌ Ошибка сессии.", show_alert=True)
+             return ConversationHandler.END
             
         # 1. Удаляем контейнер из БД
         success = await remove_container_from_subscription(subscription_id, container_number, user_id)
         
         if not success:
             await query.answer(f"❌ Не удалось удалить {container_number}.", show_alert=True)
-            return
+            return AWAIT_REMOVE_INPUT
             
         await query.answer(f"✅ {container_number} удален.")
         
@@ -248,10 +259,14 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
         sub = await get_subscription_details(subscription_id, user_id)
         if not sub:
             await query.edit_message_text("❌ Ошибка: подписка не найдена.")
-            return
+            return ConversationHandler.END # Выходим из диалога, т.к. что-то пошло не так
 
         keyboard = []
-        text = f"Выберите контейнеры для удаления из подписки *{sub.subscription_name}*:\n"
+        text = (
+            f"Выберите контейнеры для **поштучного** удаления из подписки *{sub.subscription_name}*:\n\n"
+            "Или отправьте **список** контейнеров (через пробел/запятую) для удаления.\n\n"
+            "Для отмены введите /cancel."
+        )
         
         if sub.containers:
             for container in sub.containers:
@@ -259,21 +274,148 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
                     InlineKeyboardButton(f"🗑️ {container}", callback_data=f"sub_rem_do_{sub.id}_{container}")
                 ])
         else:
-            text += "\nВсе контейнеры удалены."
-            
-        keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_menu_{sub.id}")])
+            text = "Все контейнеры удалены.\n\nДля отмены введите /cancel."
         
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         except Exception as e:
             logger.info(f"Ошибка редактирования сообщения (возможно, не изменилось): {e}")
             pass
+        
+        return AWAIT_REMOVE_INPUT # Остаемся в том же состоянии
             
     except Exception as e:
-        logger.error(f"Ошибка в remove_container_do: {e}", exc_info=True)
+        logger.error(f"Ошибка в remove_container_do_conversation: {e}", exc_info=True)
         await query.answer("❌ Произошла внутренняя ошибка.", show_alert=True)
+        return AWAIT_REMOVE_INPUT
 
-# --- НОВЫЙ CONVERSATION HANDLER ДЛЯ ДОБАВЛЕНИЯ КОНТЕЙНЕРОВ ---
+async def remove_containers_by_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    (ВНУТРИ ДИАЛОГА) Обрабатывает текстовое сообщение со списком контейнеров на удаление.
+    """
+    if (
+        not update.message or not update.message.text or
+        not context.user_data or not update.effective_user
+    ):
+        return ConversationHandler.END
+        
+    subscription_id = context.user_data.get('sub_id_to_edit')
+    user_id = update.effective_user.id
+    
+    if not subscription_id:
+        await update.message.reply_text("❌ Ошибка: Потерян ID подписки. Начните заново.")
+        return ConversationHandler.END
+    
+    # 1. Парсим контейнеры
+    containers_to_remove = normalize_containers(update.message.text)
+    if not containers_to_remove:
+        await update.message.reply_text(
+            "Не найдено корректных номеров контейнеров (формат XXXU1234567). "
+            "Попробуйте снова или введите /cancel."
+        )
+        return AWAIT_REMOVE_INPUT # Остаемся в том же состоянии
+
+    # 2. Удаляем из БД
+    removed_count = 0
+    skipped_count = 0
+    for container in containers_to_remove:
+        success = await remove_container_from_subscription(subscription_id, container, user_id)
+        if success:
+            removed_count += 1
+        else:
+            skipped_count += 1 # (Вероятно, не найден)
+
+    # 3. Отправляем отчет
+    response_lines = [f"✅ **Операция завершена!**"]
+    if removed_count > 0:
+        response_lines.append(f"Удалено контейнеров: {removed_count}")
+    if skipped_count > 0:
+        response_lines.append(f"Не найдены в подписке (пропущено): {skipped_count}")
+        
+    await update.message.reply_text("\n".join(response_lines), parse_mode="Markdown")
+
+    # 4. Обновляем (перерисовываем) меню
+    sub = await get_subscription_details(subscription_id, user_id)
+    if not sub:
+        await update.message.reply_text("❌ Ошибка: подписка не найдена.")
+        return ConversationHandler.END
+
+    keyboard = []
+    text = (
+        f"Выберите контейнеры для **поштучного** удаления из подписки *{sub.subscription_name}*:\n\n"
+        "Или отправьте **список** контейнеров (через пробел/запятую) для удаления.\n\n"
+        "Для отмены введите /cancel."
+    )
+    
+    if sub.containers:
+        for container in sub.containers:
+            keyboard.append([
+                InlineKeyboardButton(f"🗑️ {container}", callback_data=f"sub_rem_do_{sub.id}_{container}")
+            ])
+    else:
+        text = "Все контейнеры удалены.\n\nДля отмены введите /cancel."
+    
+    # Отправляем обновленное меню НОВЫМ СООБЩЕНИЕМ
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    
+    return AWAIT_REMOVE_INPUT # Остаемся в том же состоянии
+
+async def remove_containers_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Отмена диалога удаления. Возвращает пользователя в главное меню подписки.
+    """
+    if not context.user_data or not update.effective_user:
+         if update.message:
+             await update.message.reply_text("Отмена.")
+         return ConversationHandler.END
+         
+    subscription_id = context.user_data.get('sub_id_to_edit')
+    user_id = update.effective_user.id
+    
+    if update.message:
+        await update.message.reply_text("Отмена. Возвращаю в меню подписки...")
+
+    context.user_data.clear()
+    
+    if not subscription_id:
+        return ConversationHandler.END
+
+    # "Перерисовываем" главное меню подписки
+    sub = await get_subscription_details(subscription_id, user_id)
+    if not sub:
+        if update.message:
+            await update.message.reply_text("❌ Ошибка: подписка не найдена.")
+        return ConversationHandler.END
+        
+    email_list = [sub_email.email.email for sub_email in sub.target_emails]
+    emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
+    status_text = 'Активна ✅' if sub.is_active is True else 'Неактивна ⏸️'
+    containers_count = len(sub.containers) if sub.containers is not None else 0
+    text = (
+        f"⚙️ *Управление подпиской:*\n"
+        f"*{sub.subscription_name}* `({sub.id})`\n\n"
+        f"Статус: {status_text}\n"
+        f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
+        f"Контейнеров: {containers_count} шт.\n"
+        f"Email для отчетов: {emails_text}"
+    )
+    keyboard = [
+        [InlineKeyboardButton("📋 Показать контейнеры", callback_data=f"sub_show_{sub.id}")],
+        [
+            InlineKeyboardButton("➕ Добавить контейнеры", callback_data=f"sub_add_ctn_{sub.id}"),
+            InlineKeyboardButton("➖ Удалить контейнеры", callback_data=f"sub_rem_ctn_{sub.id}")
+        ],
+        [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_{sub.id}")],
+        [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
+    ]
+    
+    if update.message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    
+    return ConversationHandler.END
+
+
+# --- CONVERSATION HANDLER ДЛЯ ДОБАВЛЕНИЯ КОНТЕЙНЕРОВ ---
 
 async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -388,21 +530,19 @@ def get_subscription_management_handlers():
         CallbackQueryHandler(subscription_menu_callback, pattern="^sub_menu_"),
         CallbackQueryHandler(show_containers_callback, pattern="^sub_show_"),
         
-        # --- 🐞 ИЗМЕНЕНИЕ: Этот хендлер теперь ЗАПРАШИВАЕТ подтверждение ---
         CallbackQueryHandler(delete_subscription_callback, pattern="^sub_delete_"),
-        # --- 🐞 НОВЫЙ ХЕНДЛЕР: Этот хендлер ВЫПОЛНЯЕТ удаление ---
         CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_"),
         
         CallbackQueryHandler(back_to_subscriptions_list_callback, pattern="^sub_back_to_list$"),
         
-        # Хендлеры для удаления контейнеров
-        CallbackQueryHandler(remove_containers_menu, pattern="^sub_rem_ctn_"),
-        CallbackQueryHandler(remove_container_do, pattern="^sub_rem_do_"),
+        # --- 🐞 ИЗМЕНЕНИЕ: Эти хендлеры УДАЛЕНЫ отсюда, т.к. они переехали в ConversationHandler ---
+        # CallbackQueryHandler(remove_containers_menu, pattern="^sub_rem_ctn_"),
+        # CallbackQueryHandler(remove_container_do, pattern="^sub_rem_do_"),
     ]
 
 def get_add_containers_conversation_handler() -> ConversationHandler:
     """
-    Возвращает ДИАЛОГ (ConversationHandler) для добавления контейнеров.
+    Возвращает ДИАЛОГ (ConversationHandler) для ДОБАВЛЕНИЯ контейнеров.
     """
     return ConversationHandler(
         entry_points=[
@@ -416,7 +556,32 @@ def get_add_containers_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("cancel", add_containers_cancel)
         ],
-        # Не сохраняем состояние при перезапуске
         persistent=False,
         name="add_containers_conversation"
     )
+
+# --- 🐞 НОВЫЙ ДИАЛОГ: ConversationHandler для УДАЛЕНИЯ контейнеров ---
+def get_remove_containers_conversation_handler() -> ConversationHandler:
+    """
+    Возвращает ДИАЛОГ (ConversationHandler) для УДАЛЕНИЯ контейнеров.
+    Принимает либо нажатие кнопки (поштучно), либо список (текстом).
+    """
+    return ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(remove_containers_start, pattern="^sub_rem_ctn_")
+        ],
+        states={
+            AWAIT_REMOVE_INPUT: [
+                # Обработчик для поштучного удаления
+                CallbackQueryHandler(remove_container_do_conversation, pattern="^sub_rem_do_"),
+                # Обработчик для удаления списком
+                MessageHandler(filters.TEXT & ~filters.COMMAND, remove_containers_by_list)
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", remove_containers_cancel)
+        ],
+        persistent=False,
+        name="remove_containers_conversation"
+    )
+# --- 🏁 КОНЕЦ НОВОГО ДИАЛОГА 🏁 ---
