@@ -1,6 +1,9 @@
 # handlers/subscription_management_handler.py
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+# --- 🐞 НОВЫЙ ИМПОРТ 🐞 ---
+from telegram.error import BadRequest
+# --- 🏁 КОНЕЦ ИМПОРТА 🏁 ---
 from telegram.ext import (
     ContextTypes, CallbackQueryHandler, CommandHandler,
     ConversationHandler, MessageHandler, filters 
@@ -101,7 +104,15 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
     ]
     
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ (Message not modified) 🐞 ---
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            logger.info("Меню подписки не изменилось, пропуск редактирования.")
+        else:
+            logger.error(f"Ошибка в subscription_menu_callback: {e}", exc_info=True)
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 
 async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -359,7 +370,6 @@ async def remove_containers_by_list(update: Update, context: ContextTypes.DEFAUL
     
     return AWAIT_REMOVE_INPUT
 
-# --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ: Функция для кнопки "Назад" 🐞 ---
 async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Обрабатывает нажатие "Назад" в диалоге удаления.
@@ -377,6 +387,8 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ Ошибка сессии.", show_alert=True)
         return ConversationHandler.END
 
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ (AttributeError: 'data' can't be set) 🐞 ---
+    
     # 1. Получаем свежие данные
     sub = await get_subscription_details(subscription_id, query.from_user.id)
     if not sub:
@@ -407,12 +419,18 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
     ]
     
     # 3. Редактируем сообщение, возвращая его в меню
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            logger.info("Меню подписки не изменилось, пропуск редактирования.")
+        else:
+            logger.error(f"Ошибка в remove_containers_back: {e}", exc_info=True)
+
     # 4. Чистим user_data и выходим из диалога
     context.user_data.clear()
     return ConversationHandler.END
-# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 async def remove_containers_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
@@ -626,7 +644,7 @@ def get_remove_containers_conversation_handler() -> ConversationHandler:
                 CallbackQueryHandler(remove_container_do_conversation, pattern="^sub_rem_do_"),
                 # Обработчик для удаления списком
                 MessageHandler(filters.TEXT & ~filters.COMMAND, remove_containers_by_list),
-                # --- 🐞 ИЗМЕНЕНИЕ: Добавляем обработчик кнопки "Назад" ---
+                # Обработчик кнопки "Назад"
                 CallbackQueryHandler(remove_containers_back, pattern="^sub_rem_back_")
             ],
         },
