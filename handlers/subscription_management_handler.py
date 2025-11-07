@@ -3,11 +3,11 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, CallbackQueryHandler, CommandHandler,
-    ConversationHandler, MessageHandler, filters # <-- Добавлено
+    ConversationHandler, MessageHandler, filters 
 )
-from queries.subscription_queries import ( # <-- Обновлено
+from queries.subscription_queries import ( 
     get_user_subscriptions, delete_subscription, get_subscription_details,
-    add_container_to_subscription, remove_container_from_subscription # <-- Добавлено
+    add_container_to_subscription, remove_container_from_subscription 
 )
 from queries.user_queries import register_user_if_not_exists 
 from logger import get_logger
@@ -28,9 +28,7 @@ async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT
     if not update.message and not update.callback_query or not update.effective_user: # Учитываем CallbackQuery
         return
     
-    # --- ИСПРАВЛЕНИЕ: Регистрируем пользователя перед запросом его подписок ---
     await register_user_if_not_exists(update.effective_user) 
-    # --------------------------------------------------------------------------
     
     subs = await get_user_subscriptions(update.effective_user.id)
     keyboard = []
@@ -40,15 +38,12 @@ async def my_subscriptions_command(update: Update, context: ContextTypes.DEFAULT
     else:
         text += "Выберите подписку для управления:"
         for sub in subs:
-            # ИСПРАВЛЕНО: Используем sub.id вместо sub.display_id
             keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.id})", callback_data=f"sub_menu_{sub.id}")]) 
     keyboard.append([InlineKeyboardButton("➕ Создать новую подписку", callback_data="create_sub_start")])
     
-    # Отправляем сообщение в зависимости от того, откуда пришел вызов (сообщение или колбэк)
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     elif update.callback_query:
-         # Если вызвано из колбэка, отправляем новое сообщение
          if update.effective_chat:
             await context.bot.send_message(update.effective_chat.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -63,8 +58,6 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text("❌ Ошибка: подписка не найдена или не принадлежит вам.")
         return
         
-    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Извлекаем строку email из объекта UserEmail
-    # sub.target_emails содержит объекты SubscriptionEmail, которые содержат .email (объект UserEmail)
     email_list = [sub_email.email.email for sub_email in sub.target_emails]
     
     emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
@@ -72,26 +65,22 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
     containers_count = len(sub.containers) if sub.containers is not None else 0
     text = (
         f"⚙️ *Управление подпиской:*\n"
-        f"*{sub.subscription_name}* `({sub.id})`\n\n" # ИСПРАВЛЕНО: Используем sub.id
+        f"*{sub.subscription_name}* `({sub.id})`\n\n"
         f"Статус: {status_text}\n"
         f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
         f"Контейнеров: {containers_count} шт.\n"
         f"Email для отчетов: {emails_text}"
     )
     
-    # --- ОБНОВЛЕННАЯ КЛАВИАТУРА ---
     keyboard = [
         [InlineKeyboardButton("📋 Показать контейнеры", callback_data=f"sub_show_{sub.id}")],
-        # --- НОВЫЕ КНОПКИ ---
         [
             InlineKeyboardButton("➕ Добавить контейнеры", callback_data=f"sub_add_ctn_{sub.id}"),
             InlineKeyboardButton("➖ Удалить контейнеры", callback_data=f"sub_rem_ctn_{sub.id}")
         ],
-        # ---
         [InlineKeyboardButton("🗑️ Удалить подписку", callback_data=f"sub_delete_{sub.id}")],
         [InlineKeyboardButton("⬅️ Назад к списку", callback_data="sub_back_to_list")]
     ]
-    # --- КОНЕЦ ОБНОВЛЕНИЯ ---
     
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
@@ -140,7 +129,6 @@ async def back_to_subscriptions_list_callback(update: Update, context: ContextTy
     else:
         text += "Выберите подписку для управления:"
         for sub in subs:
-            # ИСПРАВЛЕНО: Используем sub.id
             keyboard.append([InlineKeyboardButton(f"{sub.subscription_name} ({sub.id})", callback_data=f"sub_menu_{sub.id}")])
     keyboard.append([InlineKeyboardButton("➕ Создать новую подписку", callback_data="create_sub_start")])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
@@ -191,17 +179,25 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not query or not query.data or not query.from_user:
         return
         
+    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ БАГА 🐞 ---
+    
     # Парсим данные: sub_rem_do_{id}_{container}
     parts = query.data.split("_")
-    if len(parts) < 4:
+    # Ожидаем ['sub', 'rem', 'do', 'id', 'container']
+    if len(parts) < 5: 
+        logger.warning(f"Ошибка парсинга callback_data в remove_container_do: {query.data}")
         await query.answer("❌ Ошибка данных.", show_alert=True)
         return
         
     try:
-        subscription_id = int(parts[2])
-        container_number = parts[3]
+        # ID - это 4-й элемент (индекс 3)
+        subscription_id = int(parts[3])
+        # Номер контейнера - это все, что идет после, на случай, если в нем были '_' (хотя не должны)
+        container_number = "_".join(parts[4:])
         user_id = query.from_user.id
         
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ БАГА 🏁 ---
+            
         # 1. Удаляем контейнер из БД
         success = await remove_container_from_subscription(subscription_id, container_number, user_id)
         
@@ -230,8 +226,13 @@ async def remove_container_do(update: Update, context: ContextTypes.DEFAULT_TYPE
             
         keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data=f"sub_menu_{sub.id}")])
         
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        
+        # Используем try-except, так как сообщение могло не измениться, если удален последний
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        except Exception as e:
+            logger.info(f"Ошибка редактирования сообщения (возможно, не изменилось): {e}")
+            pass
+            
     except Exception as e:
         logger.error(f"Ошибка в remove_container_do: {e}", exc_info=True)
         await query.answer("❌ Произошла внутренняя ошибка.", show_alert=True)
@@ -244,6 +245,8 @@ async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     query = update.callback_query
     if not query or not query.data or not query.from_user or not context.user_data:
+        if query:
+            await query.answer()
         return ConversationHandler.END
         
     subscription_id = int(query.data.split("_")[-1])
@@ -305,9 +308,6 @@ async def add_containers_receive(update: Update, context: ContextTypes.DEFAULT_T
     # 4. Чистим и выходим
     context.user_data.clear()
     
-    # 5. (Опционально) Сразу показываем обновленное меню
-    # Мы не можем использовать edit_message_text, так как отвечаем на новое сообщение.
-    # Поэтому просто завершаем диалог. Пользователь может вернуться в меню через /my_subscriptions
     return ConversationHandler.END
 
 async def add_containers_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -355,8 +355,7 @@ def get_add_containers_conversation_handler() -> ConversationHandler:
         fallbacks=[
             CommandHandler("cancel", add_containers_cancel)
         ],
-        # Позволяет диалогу работать, даже если бот перезапустился
+        # Не сохраняем состояние при перезапуске
         persistent=False,
-        # Название для хранения (не обязательно, но полезно)
         name="add_containers_conversation"
     )
