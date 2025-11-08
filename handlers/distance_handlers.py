@@ -68,55 +68,61 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await update.message.reply_text("⏳ Выполняю расчет тарифного расстояния...")
 
+    # --- ⬇️ НАЧАЛО БЛОКА ИЗМЕНЕНИЙ (ВАРИАНТ 1: HTML) ⬇️ ---
     try:
-        # --- ⬇️ ИЗМЕНЕНИЕ: Ожидаем словарь (result) вместо int (distance) ---
-        
         # 1. Используем get_tariff_distance, который теперь возвращает dict
         result = await get_tariff_distance(
-            from_station_name=from_station_raw, 
+            from_station_name=from_station_raw,
             to_station_name=to_station_raw
         )
 
         if result:
-            # 2. Извлекаем данные из словаря
+            # 2. Извлекаем данные
             distance = result['distance']
             info_a = result['info_a']
             info_b = result['info_b']
 
-            # 3. Формируем новый ответ с указанием дороги
-            # Используем .get('railway', 'Н/Д') на случай, если поле пустое
+            # 3. ФОРМИРУЕМ НОВЫЙ HTML-ОТВЕТ
             response = (
-                f"✅ **Расчет успешно выполнен!**\n\n"
-                f"**Отправление:**\n"
-                f"`{info_a['station_name']} ({info_a.get('railway', 'Н/Д')})`\n\n"
-                f"**Назначение:**\n"
-                f"`{info_b['station_name']} ({info_b.get('railway', 'Н/Д')})`\n\n"
-                f"---"
-                f"**Тарифное расстояние (Прейскурант 10-01): {distance} км**"
+                f"✅ <b>Расчет успешно выполнен!</b>\n\n"
+                f"🚉 <b>Отправление:</b>\n"
+                # Используем html.escape для безопасности, если имена содержат < или >
+                # Но для названий станций это обычно не нужно, оставляем для чистоты
+                f"<b>{info_a['station_name']}</b> <i>({info_a.get('railway', 'Н/Д')})</i>\n\n"
+                f"🏁 <b>Назначение:</b>\n"
+                f"<b>{info_b['station_name']}</b> <i>({info_b.get('railway', 'Н/Д')})</i>\n\n"
+                f"————————————————\n"
+                f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
             )
-            # Логгируем фактические найденные имена
+            
             logger.info(f"[/distance] Успешный расчет: {info_a['station_name']} -> {info_b['station_name']} = {distance} км.")
             
-        # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ ---
+            # 4. ❗️ Отправляем с parse_mode='HTML'
+            await update.message.reply_text(response, parse_mode='HTML')
+
         else:
-            # Расчет вернул None (вероятно, станции не найдены в 2-РП.csv)
+            # Блок 'else' (ошибка)
             from_cleaned = _clean_station_name_for_input(from_station_raw)
             to_cleaned = _clean_station_name_for_input(to_station_raw)
             
             response = (
-                f"❌ **Не удалось найти маршрут.**\n\n"
+                f"❌ <b>Не удалось найти маршрут.</b>\n\n"
                 f"Проверьте названия станций в справочнике 2-РП.csv.\n"
                 f"Поиск велся по очищенным именам:\n"
-                f"Отпр: `{from_cleaned}`\n"
-                f"Назн: `{to_cleaned}`"
+                f"Отпр: <code>{from_cleaned}</code>\n"
+                f"Назн: <code>{to_cleaned}</code>"
             )
             logger.warning(f"[/distance] Расчет не удался для {from_station_raw} -> {to_station_raw}.")
+            # ❗️ Отправляем с parse_mode='HTML'
+            await update.message.reply_text(response, parse_mode='HTML')
 
     except Exception as e:
         logger.exception(f"Критическая ошибка в /distance: {e}")
         response = f"❌ Произошла внутренняя ошибка при расчете. Попробуйте позже."
+        # ❗️ Отправляем с parse_mode='HTML'
+        await update.message.reply_text(response, parse_mode='HTML')
+    # --- ⬆️ КОНЕЦ БЛОКА ИЗМЕНЕНИЙ ⬆️ ---
 
-    await update.message.reply_text(response, parse_mode='Markdown')
     context.user_data.clear()
     return ConversationHandler.END
 
