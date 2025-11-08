@@ -38,22 +38,16 @@ class TariffStation(Base):
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
     
-    # 'Чемской'
-    name: Mapped[str] = mapped_column(String, index=True, unique=True) 
-    
-    # '850308'
-    code: Mapped[str] = mapped_column(String(6), index=True) 
-    
-    # 'ЗАПАДНО-СИБИРСКАЯ (83)'
-    railway: Mapped[str | None] = mapped_column(String)
-    
-    # --- 🐞 ВОТ ИСПРАВЛЕНИЕ: Добавляем столбец 'operations' 🐞 ---
-    # Здесь хранится 'ТП', 'П', 'Г' и т.д.
-    operations: Mapped[str | None] = mapped_column(String)
+    # --- 🐞 ИСПРАВЛЕНИЕ: name НЕ уникально ---
+    name: Mapped[str] = mapped_column(String, index=True) 
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
     
-    # Транзитные пункты (ТП)
-    # Мы будем хранить как строки ["КОД:ИМЯ:ДИСТАНЦИЯ", ...]
+    # --- 🐞 ИСПРАВЛЕНИЕ: code УНИКАЛЕН ---
+    code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
+    railway: Mapped[str | None] = mapped_column(String)
+    operations: Mapped[str | None] = mapped_column(String)
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
 
     __table_args__ = (
@@ -66,6 +60,7 @@ class TariffMatrix(Base):
     '''
     __tablename__ = 'tariff_matrix'
     id: Mapped[int] = mapped_column(primary_key=True)
+    
     station_a: Mapped[str] = mapped_column(String, index=True)
     station_b: Mapped[str] = mapped_column(String, index=True)
     distance: Mapped[int] = mapped_column(Integer)
@@ -110,15 +105,15 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         df['station_name'] = df['station_name'].str.strip()
         df['station_code'] = df['station_code'].str.strip()
         df['railway'] = df['railway'].str.strip()
-        
-        # --- 🐞 ИСПРАВЛЕНИЕ: Также очищаем 'operations' 🐞 ---
         df['operations'] = df['operations'].str.strip()
-        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
         df.dropna(subset=['station_name', 'station_code'], inplace=True)
-        df.drop_duplicates(subset=['station_name'], keep='first', inplace=True)
         
-        log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций.")
+        # --- 🐞 ИСПРАВЛЕНИЕ: Удаляем дубликаты по КОДУ, а не по ИМЕНИ 🐞 ---
+        df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
+        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+        
+        log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций (по коду).")
         return df
     except FileNotFoundError:
         log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
@@ -187,6 +182,9 @@ async def main_migrate():
     stations_df = load_kniga_2_rp(os.path.join(data_dir_path, '2-РП.csv'))
     
     if stations_df is not None:
+        
+        stations_df = stations_df.where(pd.notnull(stations_df), None)
+
         async with Session() as session:
             async with session.begin():
                 stations_to_add = []
@@ -196,9 +194,7 @@ async def main_migrate():
                             name=row['station_name'],
                             code=row['station_code'],
                             railway=row['railway'],
-                            # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем 'operations' 🐞 ---
                             operations=row['operations'],
-                            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
                             transit_points=parse_transit_points_for_db(row['transit_points_raw'])
                         )
                     )

@@ -19,9 +19,10 @@ class TariffBase(DeclarativeBase):
 class TariffStation(TariffBase):
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String, index=True, unique=True)
-    code: Mapped[str] = mapped_column(String(6), index=True)
-    # --- 🐞 ИСПРАВЛЕНИЕ: Добавляем 'operations' 🐞 ---
+    # --- 🐞 ИСПРАВЛЕНИЕ: name НЕ уникально ---
+    name: Mapped[str] = mapped_column(String, index=True)
+    # --- 🐞 ИСПРАВЛЕНИЕ: code УНИКАЛЕН ---
+    code: Mapped[str] = mapped_column(String(6), index=True, unique=True)
     operations: Mapped[str | None] = mapped_column(String)
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
     transit_points: Mapped[list[dict] | None] = mapped_column(ARRAY(String))
@@ -63,35 +64,45 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
             continue # Игнорируем некорректную строку
     return transit_points
 
+# --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot/core/data_parser.py 🐞 ---
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     """
     Асинхронно ищет станцию в новой базе тарифов.
-    (Имитирует логику zdtarif_bot/core/data_parser.py)
+    Сначала ищет станцию с пометкой 'ТП', если не находит - берет первую.
     """
     cleaned_name = _normalize_station_name_for_db(station_name)
-    cleaned_lower = cleaned_name.lower()
     
-    # 1. Поиск: Нестрогий поиск по частичному совпадению (case=False)
-    # Это имитирует str.contains(station_name, case=False)
-    stmt_like = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%")).limit(1)
+    # 1. Ищем ВСЕ станции, содержащие имя (как str.contains)
+    stmt = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%"))
     
-    result_like = await session.execute(stmt_like)
-    station = result_like.scalar_one_or_none()
+    result = await session.execute(stmt)
+    all_stations = result.scalars().all()
 
-    if station:
-        if station.name.lower() != cleaned_name.lower():
-             logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {station.name} (поиск по '{cleaned_name}')")
+    if not all_stations:
+        return None # Совсем ничего не нашли
+
+    # 2. Ищем "идеальное" совпадение - станцию с пометкой 'ТП'
+    tp_station = None
+    for station in all_stations:
+        if station.operations and 'ТП' in station.operations:
+            tp_station = station
+            break # Нашли!
+    
+    # 3. Если не нашли ТП, берем первую попавшуюся (как делал iloc[0])
+    if not tp_station:
+        tp_station = all_stations[0]
         
-        return {
-            'station_name': station.name,
-            'station_code': station.code,
-            # --- 🐞 ИСПРАВЛЕНИЕ: Передаем 'operations' 🐞 ---
-            'operations': station.operations,
-            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-            'transit_points': _parse_transit_points_from_db(station.transit_points)
-        }
-        
-    return None # Если ничего не нашли
+    # 4. Логгируем, если использовали неточный поиск
+    if tp_station.name.lower() != cleaned_name.lower():
+        logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {tp_station.name}")
+
+    return {
+        'station_name': tp_station.name,
+        'station_code': tp_station.code,
+        'operations': tp_station.operations,
+        'transit_points': _parse_transit_points_from_db(tp_station.transit_points)
+    }
+# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: AsyncSession) -> int | None:
     """
