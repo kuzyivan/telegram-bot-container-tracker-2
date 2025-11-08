@@ -38,14 +38,8 @@ class TariffStation(Base):
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
     
-    # --- 🐞 ИСПРАВЛЕНИЕ: name НЕ уникально ---
     name: Mapped[str] = mapped_column(String, index=True) 
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-    
-    # --- 🐞 ИСПРАВЛЕНИЕ: code УНИКАЛЕН ---
     code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-
     railway: Mapped[str | None] = mapped_column(String)
     operations: Mapped[str | None] = mapped_column(String)
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
@@ -108,10 +102,7 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         df['operations'] = df['operations'].str.strip()
 
         df.dropna(subset=['station_name', 'station_code'], inplace=True)
-        
-        # --- 🐞 ИСПРАВЛЕНИЕ: Удаляем дубликаты по КОДУ, а не по ИМЕНИ 🐞 ---
         df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
-        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
         
         log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций (по коду).")
         return df
@@ -122,37 +113,68 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         log.error(f"❌ Ошибка при загрузке {filepath}: {e}", exc_info=True)
         return None
 
+# --- 🐞 ИСПРАВЛЕНИЕ: Полностью переписанная функция 🐞 ---
 def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     '''
     Загружает матрицу (3-*.csv) и преобразует ее в "длинный" формат.
     '''
     try:
-        df = pd.read_csv(filepath, skiprows=6, encoding='cp1251') # Пропускаем заголовки
+        # 1. Загружаем CSV, используя строку 5 (индекс 4) как HEADER
+        #    и пропуская строки 0-4 (заголовки) и 6 (цифры)
+        df = pd.read_csv(
+            filepath, 
+            header=5, # <-- Строка 5 (индекс 4) - это наши заголовки
+            skiprows=[0, 1, 2, 3, 4, 6], # <-- Пропускаем мусор И цифровую строку
+            encoding='cp1251'
+        )
         
-        df.iloc[:, 1] = df.iloc[:, 1].astype(str).str.strip()
-        df = df.set_index(df.columns[1])
-        df = df.drop(columns=[df.columns[0]]) # Удаляем '№ п/п'
-        
-        df.columns = df.columns.str.strip()
+        if df.shape[1] < 2:
+            log.warning(f"Файл {os.path.basename(filepath)} слишком мал (меньше 2 колонок), пропуск.")
+            return None
 
-        df_long = df.stack(future_stack=True).reset_index() # Убран dropna=True
-        df_long.columns = ['station_a', 'station_b', 'distance']
+        # 2. Находим имена колонок (они уже правильные из header=5)
+        col_station_a = df.columns[1] # 'Наименование'
+        col_station_b_all = df.columns[2:] # Все остальные - это station_b
         
+        # 3. "Плавим" (melt) DataFrame
+        df_long = df.melt(
+            id_vars=[col_station_a], 
+            value_vars=col_station_b_all, 
+            var_name='station_b', 
+            value_name='distance'
+        )
+        
+        # 4. Переименовываем колонку 'Наименование' -> 'station_a'
+        df_long.rename(columns={col_station_a: 'station_a'}, inplace=True)
+        
+        # 5. Очистка
+        df_long['station_a'] = df_long['station_a'].astype(str).str.strip()
+        df_long['station_b'] = df_long['station_b'].astype(str).str.strip()
+        
+        # 6. Очищаем от нечисловых значений и преобразуем в int
         df_long = df_long[pd.to_numeric(df_long['distance'], errors='coerce').notna()]
         df_long['distance'] = df_long['distance'].astype(int)
         
+        # 7. Удаляем маршруты с 0 км
         df_long = df_long[df_long['distance'] > 0]
         
+        # 8. Удаляем дубликаты
         df_long.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
         
         log.info(f"✅ Матрица {os.path.basename(filepath)} загружена, {len(df_long)} УНИКАЛЬНЫХ маршрутов.")
-        return df
+        return df_long
+        
     except FileNotFoundError:
         log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
+        return None
+    except IndexError:
+        log.warning(f"Файл {os.path.basename(filepath)} имеет неверную структуру (меньше 2 колонок), пропуск.")
         return None
     except Exception as e:
         log.error(f"❌ Ошибка при обработке матрицы {filepath}: {e}", exc_info=True)
         return None
+# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
 
 # --- 4. Основная функция миграции ---
 
