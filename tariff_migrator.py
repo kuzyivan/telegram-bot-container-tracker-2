@@ -38,8 +38,11 @@ class TariffStation(Base):
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
     
+    # Имя (не уникальное)
     name: Mapped[str] = mapped_column(String, index=True) 
+    # Код (уникальный)
     code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
+    
     railway: Mapped[str | None] = mapped_column(String)
     operations: Mapped[str | None] = mapped_column(String)
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
@@ -102,6 +105,7 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         df['operations'] = df['operations'].str.strip()
 
         df.dropna(subset=['station_name', 'station_code'], inplace=True)
+        # Удаляем дубликаты по КОДУ
         df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
         
         log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций (по коду).")
@@ -113,7 +117,6 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         log.error(f"❌ Ошибка при загрузке {filepath}: {e}", exc_info=True)
         return None
 
-# --- 🐞 ИСПРАВЛЕНИЕ: Полностью переписанная функция 🐞 ---
 def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     '''
     Загружает матрицу (3-*.csv) и преобразует ее в "длинный" формат.
@@ -123,7 +126,7 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
         #    и пропуская строки 0-4 (заголовки) и 6 (цифры)
         df = pd.read_csv(
             filepath, 
-            header=5, # <-- Строка 5 (индекс 4) - это наши заголовки
+            header=5, # <-- Строка 6 (индекс 5) - это наши заголовки
             skiprows=[0, 1, 2, 3, 4, 6], # <-- Пропускаем мусор И цифровую строку
             encoding='cp1251'
         )
@@ -173,8 +176,6 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     except Exception as e:
         log.error(f"❌ Ошибка при обработке матрицы {filepath}: {e}", exc_info=True)
         return None
-# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-
 
 # --- 4. Основная функция миграции ---
 
@@ -228,15 +229,13 @@ async def main_migrate():
         log.error("❌ Миграция станций провалена, файл не загружен.")
         return
 
-    # 3. Миграция ВСЕХ Матриц (3-*.csv)
-    log.info("--- 2/2: Начинаю миграцию ВСЕХ Матриц (3-*.csv) ---")
+    # --- 🐞 ИСПРАВЛЕНИЕ: Загружаем ТОЛЬКО '3-1 Рос.csv' и '3-2 Рос.csv' 🐞 ---
+    log.info("--- 2/2: Начинаю миграцию Матриц (3-1 Рос, 3-2 Рос) ---")
     
-    # Ищем ВСЕ файлы матриц 3-
-    matrix_files = glob.glob(os.path.join(data_dir_path, '3-*.csv'))
-    
-    if not matrix_files:
-        log.error("❌ Не найдено ни одного файла матриц (3-*.csv) в zdtarif_bot/data/")
-        return
+    matrix_files = [
+        os.path.join(data_dir_path, '3-1 Рос.csv'),
+        os.path.join(data_dir_path, '3-2 Рос.csv')
+    ]
 
     total_routes_added = 0
     
@@ -265,10 +264,12 @@ async def main_migrate():
             else:
                 log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).")
 
-    log.info(f"✅ Миграция ВСЕХ матриц завершена. Попыток добавления: {total_routes_added}")
+    log.info(f"✅ Миграция матриц завершена. Попыток добавления: {total_routes_added}")
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
     log.info("🎉🎉🎉 == МИГРАЦИЯ ТАРИФНОЙ БАЗЫ УСПЕШНО ЗАВЕРШЕНА! ==")
-    log.info("Папку zdtarif_bot/data можно удалять.")
+    
+    # Не говорим удалять папку, так как другие CSV (3-Бел и т.д.) не были загружены
     
     await engine.dispose()
 
