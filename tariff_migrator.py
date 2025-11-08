@@ -12,6 +12,7 @@ from sqlalchemy import String, Integer, ARRAY, Index, UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import logging
+from io import StringIO # 🐞 Добавлено для чтения строк как файла
 
 # --- 1. Настройка логгирования и .env ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -122,56 +123,138 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         log.error(f"❌ Ошибка при загрузке {filepath}: {e}", exc_info=True)
         return None
 
+# --- 🐞 НАЧАЛО ИСПРАВЛЕННОЙ ФУНКЦИИ 🐞 ---
 def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     '''
-    Загружает матрицу (3-*.csv) и преобразует ее в "длинный" формат.
+    Загружает матрицу (3-*.csv) и преобразует ее в "длинный" формат,
+    корректно считывая многострочные заголовки.
     '''
     try:
-        # 1. Загружаем CSV, используя строку 5 (индекс 4) как HEADER
-        #    и пропуская строки 0-4 (заголовки) и 6 (цифры)
-        df = pd.read_csv(
-            filepath, 
-            header=5, # <-- Строка 6 (индекс 5) - это наши заголовки
-            skiprows=[0, 1, 2, 3, 4, 6], # <-- Пропускаем мусор И цифровую строку
-            encoding='cp1251'
-        )
+        # 1. Читаем весь файл в строки
+        with open(filepath, 'r', encoding='cp1251') as f:
+            lines = f.readlines()
+
+        # 2. Находим, где начинаются заголовки (station_b) и где основная таблица
+        header_start_line = -1
+        data_start_line = -1
         
-        if df.shape[1] < 2:
-            log.warning(f"Файл {os.path.basename(filepath)} слишком мал (меньше 2 колонок), пропуск.")
+        for i, line in enumerate(lines):
+            # "Конечный пункт маршрута" (Source 13)
+            if "Конечный пункт маршрута" in line and header_start_line == -1:
+                header_start_line = i + 1 # Начинаем со следующей строки (Source 15)
+            
+            # "№ п/п" (Source 642)
+            if "№ п/п" in line and "Начальный пункт маршрута" in line:
+                data_start_line = i
+                break
+        
+        if header_start_line == -1 or data_start_line == -1:
+            log.error(f"❌ Не удалось найти 'Конечный пункт' или '№ п/п' в {filepath}.")
             return None
 
-        # 2. Принудительно переименовываем первые две колонки
-        original_col_num = df.columns[0]
-        original_col_station_a = df.columns[1]
+        # 3. Собираем карту заголовков (station_b)
+        # Они в строках с header_start_line по data_start_line - 1
+        # Формат: ,,ИМЯ 1 (код), ИМЯ 2 (код), ...
+        #         ,,(код), (код), ...
+        #         ,,до),,), ...
+        # Эти строки нужно "склеить" по столбцам.
         
+        header_lines = lines[header_start_line:data_start_line]
+        
+        # header_cols[2] = ["Авдеевка (89", "89-я", "до)"]
+        # header_cols[3] = ["Агрыз (24", "Горьк)"]
+        header_cols = {}
+        
+        for line in header_lines:
+            # Убираем лишние запятые в конце, если есть
+            cleaned_line = line.rstrip(',\n')
+            cols = cleaned_line.split(',')
+            
+            # Итерируемся по индексам столбцов, начиная с 3-го (индекс 2)
+            for col_idx in range(2, len(cols)): 
+                if col_idx not in header_cols:
+                    header_cols[col_idx] = []
+                
+                cell_value = cols[col_idx].strip()
+                if cell_value:
+                    header_cols[col_idx].append(cell_value)
+        
+        # Теперь объединяем ячейки в полные имена и нумеруем их
+        # header_map = {'1': 'Имя 1', '2': 'Имя 2', ...}
+        header_map = {}
+        col_count = 1
+        # Сортируем по индексу столбца (col_idx), чтобы сохранить порядок
+        for col_idx in sorted(header_cols.keys()):
+            full_name = " ".join(header_cols[col_idx])
+            # Очищаем от лишних пробелов
+            full_name = re.sub(r'\s+', ' ', full_name).strip()
+            if full_name:
+                # Ключ - это *номер столбца*, как в строке [Source 642]
+                header_map[str(col_count)] = full_name
+                col_count += 1
+                
+        if not header_map:
+             log.error(f"❌ Не удалось собрать карту заголовков (station_b) из {filepath}.")
+             return None
+        
+        log.info(f"Собрана карта из {len(header_map)} заголовков (station_b).")
+
+        # 4. Читаем основную таблицу (начиная с "№ п/п")
+        # Мы используем StringIO, чтобы передать pandas только нужные строки
+        data_csv_lines = lines[data_start_line:]
+        
+        # В файлах 3-1/3-2.csv строки 643 и 644 (индексы 1 и 2 в data_csv_lines) 
+        # являются мусорными продолжениями заголовка. Удаляем их.
+        if len(data_csv_lines) > 3:
+             del data_csv_lines[1:3] 
+        
+        data_io = StringIO("".join(data_csv_lines))
+
+        df = pd.read_csv(
+            data_io, 
+            header=0, # <-- "№ п/п"
+            encoding='cp1251'
+        )
+
+        # 5. Переименовываем первые две колонки
         df.rename(columns={
-            original_col_num: 'num_pp',
-            original_col_station_a: 'station_a'
+            df.columns[0]: 'num_pp',
+            df.columns[1]: 'station_a'
         }, inplace=True)
+
+        # 6. "Плавим" (melt) DataFrame
+        # Колонки station_b - это все, КРОМЕ 'num_pp' и 'station_a'
+        col_station_b_numeric = [col for col in df.columns if col not in ['num_pp', 'station_a']]
         
-        # 3. Находим 'station_a' и все остальные колонки
-        col_station_b_all = [col for col in df.columns if col not in ['num_pp', 'station_a']]
-        
-        # 4. "Плавим" (melt) DataFrame
         df_long = df.melt(
             id_vars=['station_a'], 
-            value_vars=col_station_b_all, 
-            var_name='station_b', 
+            value_vars=col_station_b_numeric, 
+            var_name='station_b_num', 
             value_name='distance'
         )
         
-        # 5. Очистка
+        # 7. Очистка
         df_long['station_a'] = df_long['station_a'].astype(str).str.strip()
-        df_long['station_b'] = df_long['station_b'].astype(str).str.strip()
+        df_long['station_b_num'] = df_long['station_b_num'].astype(str).str.strip()
         
-        # 6. Очищаем от нечисловых значений и преобразуем в int
+        # 8. Очищаем от нечисловых значений и преобразуем в int
         df_long = df_long[pd.to_numeric(df_long['distance'], errors='coerce').notna()]
         df_long['distance'] = df_long['distance'].astype(int)
         
-        # 7. Удаляем маршруты с 0 км
+        # 9. Удаляем маршруты с 0 км
         df_long = df_long[df_long['distance'] > 0]
         
-        # 8. Удаляем дубликаты
+        # 10. *** ГЛАВНЫЙ ФИКС: Заменяем '1', '2' на имена ***
+        df_long['station_b'] = df_long['station_b_num'].map(header_map)
+        
+        # 11. Проверяем, что все заменилось
+        if df_long['station_b'].isnull().any():
+            missing_keys = df_long[df_long['station_b'].isnull()]['station_b_num'].unique()
+            log.warning(f"⚠️ В {filepath} не найдены имена для station_b ключей: {missing_keys[:10]}...")
+            df_long.dropna(subset=['station_b'], inplace=True)
+
+        # 12. Удаляем дубликаты и ненужный столбец
+        df_long = df_long[['station_a', 'station_b', 'distance']]
         df_long.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
         
         log.info(f"✅ Матрица {os.path.basename(filepath)} загружена, {len(df_long)} УНИКАЛЬНЫХ маршрутов.")
@@ -180,13 +263,10 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     except FileNotFoundError:
         log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
         return None
-    except IndexError:
-        log.warning(f"Файл {os.path.basename(filepath)} имеет неверную структуру (меньше 2 колонок), пропуск.")
-        return None
     except Exception as e:
         log.error(f"❌ Ошибка при обработке матрицы {filepath}: {e}", exc_info=True)
         return None
-# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+# --- 🐞 КОНЕЦ ИСПРАВЛЕННОЙ ФУНКЦИИ 🐞 ---
 
 
 # --- 4. Основная функция миграции ---
@@ -213,7 +293,20 @@ async def main_migrate():
     
     # 2. Миграция станций (2-РП.csv)
     log.info("--- 1/2: Начинаю миграцию Станций (2-РП.csv) ---")
+    
+    # 🐞 ПРЕДПОЛОЖЕНИЕ: Файлы лежат в 'zdtarif_bot/data'
+    # Если скрипт лежит в другом месте, измените этот путь
     data_dir_path = os.path.join(project_root_dir, 'zdtarif_bot', 'data')
+    
+    # Если папки 'zdtarif_bot/data' нет, ищем 'data'
+    if not os.path.exists(data_dir_path):
+        data_dir_path = os.path.join(project_root_dir, 'data')
+        if not os.path.exists(data_dir_path):
+             log.error(f"❌ Не могу найти папку 'data' или 'zdtarif_bot/data' в {project_root_dir}")
+             return
+    
+    log.info(f"Использую папку с данными: {data_dir_path}")
+    
     stations_df = load_kniga_2_rp(os.path.join(data_dir_path, '2-РП.csv'))
     
     if stations_df is not None:
@@ -238,7 +331,7 @@ async def main_migrate():
             await session.commit()
         log.info("✅ Миграция станций завершена.")
     else:
-        log.error("❌ Миграция станций провалена, файл не загружен.")
+        log.error("❌ Миграция станций провалена, файл 2-РП.csv не загружен.")
         return
 
     # 3. Миграция (ТОЛЬКО 3-1 и 3-2 Рос)
@@ -253,6 +346,10 @@ async def main_migrate():
     
     async with Session() as session:
         for filepath in matrix_files:
+            if not os.path.exists(filepath):
+                log.error(f"❌ Файл матрицы {filepath} не найден. Пропуск.")
+                continue
+                
             log.info(f"--- Обработка файла: {os.path.basename(filepath)} ---")
             matrix_df = load_kniga_3_matrix(filepath)
             
@@ -284,4 +381,14 @@ async def main_migrate():
 
 
 if __name__ == "__main__":
+    # 🐞 Добавляем проверку пути к .env
+    env_path = os.path.join(project_root_dir, '.env')
+    if os.path.exists(env_path):
+        log.info(f"Загружаю .env из {env_path}")
+        load_dotenv(dotenv_path=env_path)
+    else:
+        log.warning(f"Файл .env не найден в {project_root_dir}, использую переменные окружения системы.")
+        
+    TARIFF_DB_URL = os.getenv("TARIFF_DATABASE_URL")
+    
     asyncio.run(main_migrate())
