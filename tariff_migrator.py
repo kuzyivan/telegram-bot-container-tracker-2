@@ -38,11 +38,14 @@ class TariffStation(Base):
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
     
-    # Имя (не уникальное)
+    # --- 🐞 ИСПРАВЛЕНИЕ: name НЕ уникально ---
     name: Mapped[str] = mapped_column(String, index=True) 
-    # Код (уникальный)
-    code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
     
+    # --- 🐞 ИСПРАВЛЕНИЕ: code УНИКАЛЕН ---
+    code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
     railway: Mapped[str | None] = mapped_column(String)
     operations: Mapped[str | None] = mapped_column(String)
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
@@ -105,8 +108,10 @@ def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
         df['operations'] = df['operations'].str.strip()
 
         df.dropna(subset=['station_name', 'station_code'], inplace=True)
-        # Удаляем дубликаты по КОДУ
+        
+        # --- 🐞 ИСПРАВЛЕНИЕ: Удаляем дубликаты по КОДУ, а не по ИМЕНИ 🐞 ---
         df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
+        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
         
         log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций (по коду).")
         return df
@@ -229,7 +234,7 @@ async def main_migrate():
         log.error("❌ Миграция станций провалена, файл не загружен.")
         return
 
-    # --- 🐞 ИСПРАВЛЕНИЕ: Загружаем ТОЛЬКО '3-1 Рос.csv' и '3-2 Рос.csv' 🐞 ---
+    # 3. Миграция (ТОЛЬКО 3-1 и 3-2 Рос)
     log.info("--- 2/2: Начинаю миграцию Матриц (3-1 Рос, 3-2 Рос) ---")
     
     matrix_files = [
@@ -265,11 +270,8 @@ async def main_migrate():
                 log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).")
 
     log.info(f"✅ Миграция матриц завершена. Попыток добавления: {total_routes_added}")
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
     log.info("🎉🎉🎉 == МИГРАЦИЯ ТАРИФНОЙ БАЗЫ УСПЕШНО ЗАВЕРШЕНА! ==")
-    
-    # Не говорим удалять папку, так как другие CSV (3-Бел и т.д.) не были загружены
     
     await engine.dispose()
 
