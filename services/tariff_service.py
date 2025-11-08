@@ -24,6 +24,11 @@ class TariffStation(TariffBase):
     # --- 🐞 ИСПРАВЛЕНИЕ: code УНИКАЛЕН ---
     code: Mapped[str] = mapped_column(String(6), index=True, unique=True)
     operations: Mapped[str | None] = mapped_column(String)
+    
+    # --- ⬇️ ИЗМЕНЕНИЕ 1: Добавлено поле railway ---
+    railway: Mapped[str | None] = mapped_column(String)
+    # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ 1 ---
+    
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
     transit_points: Mapped[list[dict] | None] = mapped_column(ARRAY(String))
 
@@ -96,12 +101,15 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     if tp_station.name.lower() != cleaned_name.lower():
         logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {tp_station.name}")
 
+    # --- ⬇️ ИЗМЕНЕНИЕ 2: Добавляем 'railway' в возвращаемый словарь ---
     return {
         'station_name': tp_station.name,
         'station_code': tp_station.code,
         'operations': tp_station.operations,
+        'railway': tp_station.railway, 
         'transit_points': _parse_transit_points_from_db(tp_station.transit_points)
     }
+    # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ 2 ---
 # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: AsyncSession) -> int | None:
@@ -146,10 +154,12 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
 
 # --- 4. Основная функция (полностью асинхронная) ---
 
-async def get_tariff_distance(from_station_name: str, to_station_name: str) -> int | None:
+# --- ⬇️ ИЗМЕНЕНИЕ 3: Функция теперь возвращает dict | None ---
+async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
     """
     Рассчитывает тарифное расстояние, используя АСИНХРОННЫЕ запросы
     к специальной базе данных тарифов.
+    Возвращает словарь {'distance': int, 'info_a': dict, 'info_b': dict} или None.
     """
     if not TariffSessionLocal:
         logger.error("[Tariff] TARIFF_DATABASE_URL не настроен. Расчет невозможен.")
@@ -174,7 +184,7 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> i
                 return None
             
             if info_a['station_name'].lower() == info_b['station_name'].lower():
-                return 0
+                return {'distance': 0, 'info_a': info_a, 'info_b': info_b}
 
             # --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot/core/calculator.py 🐞 ---
             
@@ -223,7 +233,13 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> i
             if route_found:
                 distance_int = int(min_total_distance)
                 logger.info(f"✅ [Tariff] Расстояние получено (SQL): {from_station_name} -> {to_station_name} = {distance_int} км.")
-                return distance_int
+                # --- ⬇️ ИЗМЕНЕНИЕ 3 (продолжение): Возвращаем словарь ---
+                return {
+                    'distance': distance_int,
+                    'info_a': info_a,
+                    'info_b': info_b
+                }
+                # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ 3 ---
             else:
                 logger.info(f"[Tariff] Маршрут (ТП) не найден в матрице для {from_station_name} -> {to_station_name}.")
                 return None
