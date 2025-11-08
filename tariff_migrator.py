@@ -140,20 +140,25 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
             log.warning(f"Файл {os.path.basename(filepath)} слишком мал (меньше 2 колонок), пропуск.")
             return None
 
-        # 2. Находим имена колонок (они уже правильные из header=5)
-        col_station_a = df.columns[1] # 'Наименование'
-        col_station_b_all = df.columns[2:] # Все остальные - это station_b
+        # 2. Принудительно переименовываем первые две колонки
+        original_col_num = df.columns[0]
+        original_col_station_a = df.columns[1]
         
-        # 3. "Плавим" (melt) DataFrame
+        df.rename(columns={
+            original_col_num: 'num_pp',
+            original_col_station_a: 'station_a'
+        }, inplace=True)
+        
+        # 3. Находим 'station_a' и все остальные колонки
+        col_station_b_all = [col for col in df.columns if col not in ['num_pp', 'station_a']]
+        
+        # 4. "Плавим" (melt) DataFrame
         df_long = df.melt(
-            id_vars=[col_station_a], 
+            id_vars=['station_a'], 
             value_vars=col_station_b_all, 
             var_name='station_b', 
             value_name='distance'
         )
-        
-        # 4. Переименовываем колонку 'Наименование' -> 'station_a'
-        df_long.rename(columns={col_station_a: 'station_a'}, inplace=True)
         
         # 5. Очистка
         df_long['station_a'] = df_long['station_a'].astype(str).str.strip()
@@ -181,6 +186,8 @@ def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     except Exception as e:
         log.error(f"❌ Ошибка при обработке матрицы {filepath}: {e}", exc_info=True)
         return None
+# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
 
 # --- 4. Основная функция миграции ---
 
