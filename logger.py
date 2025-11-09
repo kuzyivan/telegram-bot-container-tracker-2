@@ -1,31 +1,39 @@
-# logger.py
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+from python_json_logger import jsonlogger # <-- Импортируем jsonlogger
+from typing import Optional
 
 LOG_DIR = "logs"
 LOG_FILE = "bot.log"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-from typing import Optional
-
 def get_logger(name: Optional[str] = None):
     logger = logging.getLogger(name)
     if not logger.hasHandlers():
-        formatter = logging.Formatter(
-            '%(asctime)s %(levelname)s [%(module)s:%(lineno)d] %(message)s'
+
+        # --- 1. Настраиваем JSON-форматтер ---
+        formatter = jsonlogger.JsonFormatter(
+            '%(asctime)s %(levelname)s %(module)s %(lineno)d %(message)s',
+            rename_fields={"levelname": "level", "asctime": "timestamp"}
         )
+        # -----------------------------------
+
+        # --- 2. Оставляем ваш RotatingFileHandler ---
         handler = RotatingFileHandler(
             os.path.join(LOG_DIR, LOG_FILE),
-            maxBytes=5*1024*1024,  # 5 МБ на файл, потом лог будет ротироваться
-            backupCount=5,         # хранить 5 старых файлов логов
+            maxBytes=5*1024*1024,  # 5 МБ
+            backupCount=5,
             encoding="utf-8"
         )
-        handler.setFormatter(formatter)
+
+        handler.setFormatter(formatter) # <-- Применяем JSON-форматтер
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
-        # Дополнительно, чтобы видеть логи в консоли при отладке:
+
+        # --- 3. (Опционально) Оставляем вывод в консоль для отладки ---
         stream = logging.StreamHandler()
-        stream.setFormatter(formatter)
+        stream.setFormatter(formatter) # <-- Тоже в JSON
         logger.addHandler(stream)
+
     return logger
