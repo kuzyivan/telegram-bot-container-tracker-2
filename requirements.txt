@@ -36,4 +36,4 @@ geopy
 httpx
 
 # Логирование
-python-json-logger # <-- ДОБАВЛЕНО (Для Grafana/Loki)
+pythonjsonlogger # <-- ДОБАВЛЕНО (Для Grafana/Loki)
