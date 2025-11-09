@@ -1,7 +1,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 import os
-from python_json_logger import jsonlogger # <-- Импортируем jsonlogger
+from pythonjsonlogger import jsonlogger # <-- Импортируем jsonlogger
 from typing import Optional
 
 LOG_DIR = "logs"
