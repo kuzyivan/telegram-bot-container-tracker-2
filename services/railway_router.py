@@ -21,8 +21,6 @@ async def get_remaining_distance_on_route(start_station: str, end_station: str, 
         return None
     
     # Нормализуем названия станций на всякий случай (убираем лишние пробелы)
-    # ПРИМЕЧАНИЕ: Очистка кода в скобках (940608) происходит в ядре zdtarif_bot.
-    # Мы передаем полные имена.
     start_station = start_station.strip()
     end_station = end_station.strip()
     current_station = current_station.strip()
@@ -35,15 +33,34 @@ async def get_remaining_distance_on_route(start_station: str, end_station: str, 
     
     # --- Попытка расчета по тарифному справочнику (Аналог логики /distance) ---
     try:
-        # ✅ ПЕРЕДАЕМ CURRENT_STATION и END_STATION (полностью, как они есть)
-        tariff_distance = await get_tariff_distance(current_station, end_station)
+        # 1. tariff_data будет СЛОВАРЕМ (dict) или None
+        tariff_data = await get_tariff_distance(current_station, end_station)
         
-        if tariff_distance is not None:
-            logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {tariff_distance} км.")
-            return tariff_distance
-        else:
+        # --- ⭐️ НАЧАЛО ИСПРАВЛЕНИЯ ⭐️ ---
+        # 2. Проверяем, что вернулся СЛОВАРЬ
+        if tariff_data is not None and isinstance(tariff_data, dict):
+            
+            # 3. Извлекаем числовое значение 'distance'
+            distance_value = tariff_data.get('distance')
+            
+            # 4. Логгируем только число
+            logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {distance_value} км.")
+            
+            # 5. Возвращаем только число (int | None)
+            return distance_value
+        
+        elif tariff_data is None:
+             # get_tariff_distance вернул None (маршрут не найден)
+             logger.info(f"Тарифный сервис не нашел маршрут для {current_station} -> {end_station}.")
              pass
+        else:
+             # На всякий случай, если вернулось что-то странное
+             logger.error(f"Тарифный сервис вернул неожиданный тип данных: {type(tariff_data)}")
+             pass
+        # --- ⭐️ КОНЕЦ ИСПРАВЛЕНИЯ ⭐️ ---
+            
     except Exception as e:
+        # Этот блок 'except' теперь корректно привязан к 'try'
         logger.error(f"⚠️ Ошибка при вызове тарифного сервиса: {e}", exc_info=True)
 
     # --- Запасной вариант: Отключен после внедрения тарифа ---
