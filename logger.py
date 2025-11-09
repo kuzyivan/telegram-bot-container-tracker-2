@@ -16,6 +16,7 @@ def get_logger(name: Optional[str] = None):
         formatter = jsonlogger.JsonFormatter(
             '%(asctime)s %(levelname)s %(module)s %(lineno)d %(message)s',
             rename_fields={"levelname": "level", "asctime": "timestamp"}
+            json_ensure_ascii=False  # <-- ДОБАВЬТЕ ЭТУ СТРОКУ
         )
         # -----------------------------------
 
