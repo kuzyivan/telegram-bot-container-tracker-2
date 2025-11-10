@@ -9,11 +9,13 @@ from telegram.error import RetryAfter
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 )
-from telegram.request import HTTPXRequest
+# 1. 🐞 ИМПОРТИРУЕМ HTTPXRequest
+from telegram.request import HTTPXRequest 
 from dotenv import load_dotenv
 load_dotenv()
 
-from config import TOKEN, ADMIN_CHAT_ID
+# 2. 🐞 ИМПОРТИРУЕМ НАСТРОЙКУ ТАЙМАУТА
+from config import TOKEN, ADMIN_CHAT_ID, TELEGRAM_SEND_TIMEOUT
 from scheduler import start_scheduler
 
 # --- Пользовательские обработчики ---
@@ -87,18 +89,26 @@ def main():
 
     logging.getLogger("httpx").setLevel(logging.WARNING) 
     
-    application = Application.builder().token(TOKEN).build()
+    # 3. 🐞 СОЗДАЕМ REQUEST С УВЕЛИЧЕННЫМ ТАЙМАУТОМ
+    request = HTTPXRequest(
+        connect_timeout=20.0,
+        read_timeout=TELEGRAM_SEND_TIMEOUT, # 90.0 из config.py
+        write_timeout=TELEGRAM_SEND_TIMEOUT, # 90.0 из config.py
+    )
     
-    # 1. Диалоги
+    # 4. 🐞 ПРИМЕНЯЕМ REQUEST К APPLICATION
+    application = Application.builder().token(TOKEN).request(request).build()
+    
+    # 1. Диалоги (Группа 0 - высший приоритет)
     application.add_handler(broadcast_conversation_handler)
     application.add_handler(tracking_conversation_handler())
     application.add_handler(get_email_conversation_handler())
     setup_train_handlers(application)
-    application.add_handler(distance_conversation_handler())
+    application.add_handler(distance_conversation_handler()) # <-- Вызов () здесь уже был правильным
     application.add_handler(get_add_containers_conversation_handler())
     application.add_handler(get_remove_containers_conversation_handler())
     
-    # 2. Команды админа
+    # 2. Команды админа (Группа 0)
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
@@ -106,23 +116,16 @@ def main():
     application.add_handler(CommandHandler("upload_file", upload_file_command))
     application.add_handler(CommandHandler("force_notify", force_notify_handler))
     
-    # 3. Команды пользователя
+    # 3. Команды пользователя (Группа 0)
     application.add_handler(CommandHandler("start", start))
     application.add_handlers(get_email_command_handlers())
-    application.add_handlers(get_subscription_management_handlers()) # <-- Теперь он регистрируется здесь
+    application.add_handlers(get_subscription_management_handlers())
     
-    # 4. Колбэки
+    # 4. Колбэки (Группа 0)
     application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(handle_single_container_excel_callback, pattern="^get_excel_single_")) 
     
-    # --- 🐞 НАЧАЛО ИСПРАВЛЕНИЯ 🐞 ---
-    # УДАЛЯЕМ ЭТОТ ОБРАБОТЧИК, ТАК КАК ОН ТЕПЕРЬ ВНУТРИ get_subscription_management_handlers
-    # application.add_handler(
-    #     CallbackQueryHandler(delete_subscription_confirm_yes, pattern="^sub_delete_confirm_yes_")
-    # )
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-
-    # 5. Обработчики сообщений
+    # 5. Обработчики сообщений (Группа 0 и 1)
     application.add_handler(MessageHandler(
         filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
         reply_keyboard_handler
@@ -133,8 +136,16 @@ def main():
         filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
         handle_admin_document
     ))
-    # Общий обработчик текста идет последним
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # 5. 🐞 ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА
+    # Мы ставим этот "общий" обработчик в группу 1 (низший приоритет),
+    # чтобы он не мешал ConversationHandler'ам (которые в группе 0)
+    # принимать текст в своих состояниях.
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND, 
+        handle_message), 
+        group=1 
+    )
     
     application.add_error_handler(error_handler)
 
