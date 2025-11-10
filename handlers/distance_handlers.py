@@ -33,7 +33,9 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if not update.message:
         return ConversationHandler.END
 
-    # Очищаем user_data (этот код из прошлого шага)
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Используем .clear() - это ЕДИНСТВЕННЫЙ правильный способ
+    # очистить данные в начале диалога.
     if context.user_data: 
         context.user_data.clear() 
 
@@ -48,12 +50,12 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 # --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
 async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
-    # Исправленная проверка (из прошлого шага)
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Убираем все проверки 'if not context.user_data:' и 'context.user_data = {}'
     if not update.message or not update.message.text:
         return ConversationHandler.END
         
-    if not context.user_data:
-        context.user_data = {} # Инициализируем, если вдруг не был
+    # context.user_data гарантированно существует.
 
     from_station_raw = update.message.text.strip()
     matches = await find_stations_by_name(from_station_raw) 
@@ -64,7 +66,9 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if len(matches) == 1:
         station = matches[0]
-        context.user_data['from_station_name'] = station['name'] 
+        # Pylance может ругаться, но context.user_data не будет None
+        if context.user_data:
+            context.user_data['from_station_name'] = station['name'] 
         await update.message.reply_text(
             f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
             f"Теперь введите <b>станцию назначения</b>.",
@@ -73,7 +77,8 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
         return ASK_TO_STATION
 
     if len(matches) > 1:
-        context.user_data['ambiguous_stations'] = matches
+        if context.user_data:
+            context.user_data['ambiguous_stations'] = matches
         keyboard = build_station_keyboard(matches, "dist_from")
         await update.message.reply_text(
             f"⚠️ Найдено несколько станций по запросу '{from_station_raw}'.\n"
@@ -88,12 +93,11 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Убираем все проверки 'if not context.user_data:' и 'context.user_data = {}'
     if not query or not query.data or not query.message: 
         if query: await query.answer() 
         return ConversationHandler.END
-        
-    if not context.user_data:
-        context.user_data = {}
         
     await query.answer() 
 
@@ -101,8 +105,6 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     if context.user_data:
         context.user_data['from_station_name'] = chosen_name
 
-    # 🐞 *** ВОТ ИСПРАВЛЕНИЕ ***
-    # Вызываем .edit_message_text() у самого 'query'
     await query.edit_message_text( 
         f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b>\n"
         f"Теперь введите <b>станцию назначения</b>.",
@@ -145,21 +147,18 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Убираем все проверки 'if not context.user_data:' и 'context.user_data = {}'
     if not query or not query.data: 
         if query: await query.answer()
         return ConversationHandler.END
         
-    if not context.user_data:
-        context.user_data = {}
-
     await query.answer() 
 
     chosen_name = query.data.replace("dist_to_", "") 
     if context.user_data: 
         context.user_data['to_station_name'] = chosen_name
 
-    # Эта функция НЕ редактирует сообщение, а сразу вызывает расчет,
-    # который отправит НОВЫЙ ответ. Это нормально.
     return await run_distance_calculation(update, context)
 
 # --- Шаг 5: Выполняем расчет ---
@@ -187,9 +186,6 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.") 
         return ConversationHandler.END
 
-    # 🐞 *** ИСПРАВЛЕНИЕ (UI) ***
-    # Если мы пришли из resolve_to_station (нажатие кнопки), 
-    # то сначала отредактируем сообщение, убрав кнопки.
     if query:
         await query.edit_message_text(
             f"✅ Станция отправления: <b>{html.escape(from_station_name)}</b>\n"
@@ -198,8 +194,6 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             parse_mode='HTML'
         )
     else:
-        # Если мы пришли из process_to_station (ввод текста),
-        # то просто отвечаем.
         await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...") 
 
     try:
@@ -223,12 +217,11 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
                 f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
             )
             
-            # Отправляем итоговый ответ как НОВОЕ сообщение
-            await message_to_reply.reply_text(response, parse_mode='HTML') 
-            
             # Если мы редактировали сообщение (из query), то удалим "⏳ Выполняю расчет..."
             if query:
                 await query.delete_message()
+            
+            await message_to_reply.reply_text(response, parse_mode='HTML') 
 
         else:
             response = (
