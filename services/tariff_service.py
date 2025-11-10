@@ -19,18 +19,15 @@ class TariffBase(DeclarativeBase):
 class TariffStation(TariffBase):
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
-    # --- 🐞 ИСПРАВЛЕНИЕ: name НЕ уникально ---
     name: Mapped[str] = mapped_column(String, index=True)
-    # --- 🐞 ИСПРАВЛЕНИЕ: code УНИКАЛЕН ---
     code: Mapped[str] = mapped_column(String(6), index=True, unique=True)
     operations: Mapped[str | None] = mapped_column(String)
-    
-    # --- ⬇️ ИЗМЕНЕНИЕ 1: Добавлено поле railway ---
     railway: Mapped[str | None] = mapped_column(String)
-    # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ 1 ---
     
+    # --- 🐞 ИСПРАВЛЕНИЕ ОШИБКИ (L130) 🐞 ---
+    # Тип в БД - ARRAY(String), поэтому тип Python должен быть list[str]
+    transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
-    transit_points: Mapped[list[dict] | None] = mapped_column(ARRAY(String))
 
 class TariffMatrix(TariffBase):
     __tablename__ = 'tariff_matrix'
@@ -69,14 +66,10 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
             continue # Игнорируем некорректную строку
     return transit_points
 
-# --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot/core/data_parser.py 🐞 ---
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     """
     Асинхронно ищет станцию в новой базе тарифов.
-    Сначала ищет станцию с пометкой 'ТП', если не находит - берет первую.
     """
-    # --- ⬇️ НАЧАЛО ИЗМЕНЕНИЙ (Исправление поиска "ХАБАРОВСК 2") ⬇️ ---
-    
     cleaned_name = _normalize_station_name_for_db(station_name) # Получаем 'ХАБАРОВСК 2'
     
     # 1. Создаем варианты поиска
@@ -89,9 +82,7 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         search_variants.add(cleaned_name.replace(" 1", " I"))
     
     # 3. Ищем по ЛЮБОМУ из вариантов
-    # (Мы ищем точное совпадение имени, а не ILIKE, так надежнее)
     stmt = select(TariffStation).where(TariffStation.name.in_(list(search_variants)))
-    
     result = await session.execute(stmt)
     all_stations = result.scalars().all()
 
@@ -100,60 +91,49 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         stmt_fallback = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%"))
         result_fallback = await session.execute(stmt_fallback)
         all_stations = result_fallback.scalars().all()
-    
-    # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЙ ⬆️ ---
 
     if not all_stations:
-        return None # Совсем ничего не нашли
+        return None 
 
-    # 2. Ищем "идеальное" совпадение - станцию с пометкой 'ТП'
+    # 5. Ищем "идеальное" совпадение - станцию с пометкой 'ТП'
     tp_station = None
     for station in all_stations:
         if station.operations and 'ТП' in station.operations:
             tp_station = station
-            break # Нашли!
+            break 
     
-    # 3. Если не нашли ТП, берем первую попавшуюся (как делал iloc[0])
+    # 6. Если не нашли ТП, берем первую попавшуюся
     if not tp_station:
         tp_station = all_stations[0]
         
-    # 4. Логгируем, если использовали неточный поиск
     if tp_station.name.lower() != cleaned_name.lower():
         logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {tp_station.name}")
 
-    # --- ⬇️ ИЗМЕНЕНИЕ 2: Добавляем 'railway' в возвращаемый словарь ---
     return {
         'station_name': tp_station.name,
         'station_code': tp_station.code,
         'operations': tp_station.operations,
         'railway': tp_station.railway, 
+        # Здесь Pylance больше не будет ругаться
         'transit_points': _parse_transit_points_from_db(tp_station.transit_points)
     }
-    # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ 2 ---
-# --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: AsyncSession) -> int | None:
     """
     Асинхронно ищет расстояние между двумя ТП в матрице.
     """
-    
-    # --- 🐞 ИСПРАВЛЕНИЕ: Имитируем .split(' (')[0] из zdtarif_bot 🐞 ---
-    # Очищаем имена ТП (например, "Инская (83 З-СИБ)" -> "Инская")
     tp_a_clean = tp_a_name.split(' (')[0]
     tp_b_clean = tp_b_name.split(' (')[0]
     
-    # Ищем, чтобы НАЧИНАЛОСЬ с этого имени (имитация str.contains)
     stmt_ab = select(TariffMatrix.distance).where(
         TariffMatrix.station_a.ilike(f"{tp_a_clean}%"),
         TariffMatrix.station_b.ilike(f"{tp_b_clean}%")
     ).limit(1)
     
-    # Ищем B -> A
     stmt_ba = select(TariffMatrix.distance).where(
         TariffMatrix.station_a.ilike(f"{tp_b_clean}%"),
         TariffMatrix.station_b.ilike(f"{tp_a_clean}%")
     ).limit(1)
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
     try:
         result_ab = await session.execute(stmt_ab)
@@ -174,7 +154,6 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
 
 # --- 4. Основная функция (полностью асинхронная) ---
 
-# --- ⬇️ ИЗМЕНЕНИЕ 3: Функция теперь возвращает dict | None ---
 async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
     """
     Рассчитывает тарифное расстояние, используя АСИНХРОННЫЕ запросы
@@ -192,7 +171,6 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
     try:
         async with TariffSessionLocal() as session:
             
-            # 1. Получаем инфо о станциях
             info_a = await _get_station_info_from_db(from_station_name, session)
             info_b = await _get_station_info_from_db(to_station_name, session)
 
@@ -205,10 +183,7 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             
             if info_a['station_name'].lower() == info_b['station_name'].lower():
                 return {'distance': 0, 'info_a': info_a, 'info_b': info_b}
-
-            # --- 🐞 ИСПРАВЛЕНИЕ: Логика 1-в-1 как в zdtarif_bot/core/calculator.py 🐞 ---
             
-            # 2. Логика определения ТП для Станции А
             tps_a = []
             operations_a = info_a.get('operations') or ""
             transit_points_a = info_a.get('transit_points', [])
@@ -220,7 +195,6 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             else:
                 tps_a = [{'name': info_a['station_name'], 'distance': 0}]
             
-            # 3. Логика определения ТП для Станции Б
             tps_b = []
             operations_b = info_b.get('operations') or ""
             transit_points_b = info_b.get('transit_points', [])
@@ -231,17 +205,13 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                 tps_b = transit_points_b
             else:
                 tps_b = [{'name': info_b['station_name'], 'distance': 0}]
-            
-            # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
             min_total_distance = float('inf')
             route_found = False
 
-            # Перебираем все комбинации ТП
             for tp_a in tps_a:
                 for tp_b in tps_b:
                     
-                    # 4. Асинхронный запрос к матрице
                     transit_dist = await _get_matrix_distance_from_db(tp_a['name'], tp_b['name'], session)
                     
                     if transit_dist is not None:
@@ -253,17 +223,13 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             if route_found:
                 distance_int = int(min_total_distance)
                 logger.info(f"✅ [Tariff] Расстояние получено (SQL): {from_station_name} -> {to_station_name} = {distance_int} км.")
-                # --- ⬇️ ИЗМЕНЕНИЕ 3 (продолжение): Возвращаем словарь ---
                 return {
                     'distance': distance_int,
                     'info_a': info_a,
                     'info_b': info_b
                 }
-                # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЯ 3 ---
             else:
                 logger.info(f"[Tariff] Маршрут (ТП) не найден в матрице для {from_station_name} -> {to_station_name}.")
                 return None
 
-    except Exception as e:
-        logger.error(f"❌ [Tariff] Ошибка при SQL-расчете расстояния: {e}", exc_info=True)
-        return None
+    except Exception

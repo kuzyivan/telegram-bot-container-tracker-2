@@ -1,361 +1,221 @@
-# handlers/dislocation_handlers.py
-import asyncio
-import os
-from telegram import Update
-from telegram.ext import ContextTypes
-import re
-from typing import Optional, List
-from sqlalchemy import select
-from datetime import datetime 
-
+# handlers/distance_handlers.py
+from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ContextTypes,
+    CommandHandler,
+    ConversationHandler,
+    MessageHandler,
+    filters,
+    CallbackQueryHandler,
+)
+# ИСПРАВЛЕНИЕ: Импортируем обе функции
+from services.tariff_service import get_tariff_distance, find_stations_by_name
 from logger import get_logger
-from db import SessionLocal
-from models import UserRequest, Tracking
-from model.terminal_container import TerminalContainer 
-from queries.user_queries import add_user_request, register_user_if_not_exists
-from queries.notification_queries import get_tracking_data_for_containers
-from queries.containers import get_tracking_data_by_wagons 
-from services.railway_router import get_remaining_distance_on_route
-# ✅ ИЗМЕНЕНИЕ: Импортируем НОВУЮ функцию create_excel_file_from_strings
-from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
-from utils.railway_utils import get_railway_abbreviation
-import config
-from utils.keyboards import create_single_container_excel_keyboard
+import html
 
 logger = get_logger(__name__)
 
-# --- Вспомогательные функции ---
+# --- НОВЫЕ Состояния диалога ---
+ASK_FROM_STATION, RESOLVE_FROM_STATION, ASK_TO_STATION, RESOLVE_TO_STATION = range(4)
 
-def get_wagon_type_by_number(wagon_number: Optional[str | int]) -> str:
-    """Определяет примерный тип вагона по первой цифре номера."""
-    if wagon_number is None:
-        return 'н/д'
-    wagon_str = str(wagon_number).removesuffix('.0').strip()
-    if not wagon_str or not wagon_str[0].isdigit():
-        return 'Прочий'
-    first_digit = wagon_str[0]
-    if first_digit == '6':
-        return 'Полувагон'
-    elif first_digit == '9' or first_digit == '5':
-        return 'Платформа'
-    else:
-        return 'Прочий'
+# --- Вспомогательная функция для создания кнопок ---
+def build_station_keyboard(stations: list[dict], callback_prefix: str) -> InlineKeyboardMarkup:
+    keyboard = []
+    for station in stations[:10]: # Ограничиваем 10 вариантами
+        # Сохраняем ТОЛЬКО имя в callback_data, чтобы избежать проблем с длиной
+        callback_data = f"{callback_prefix}_{station['name']}"
+        display_text = f"{station['name']} ({station.get('railway', 'Н/Д')})"
+        keyboard.append([InlineKeyboardButton(display_text, callback_data=callback_data)])
+    keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="distance_cancel")])
+    return InlineKeyboardMarkup(keyboard)
 
-def normalize_text_input(text: str) -> list[str]:
-    """
-    Извлекает и нормализует номера контейнеров (11 символов) или вагонов (8 цифр) из текста.
-    """
-    text = text.upper().strip()
-    items = re.split(r'[,\s;\n]+', text)
-    normalized_items = list(set(filter(None, items)))
-    
-    final_items = []
-    for item in normalized_items:
-        if re.fullmatch(r'[A-Z]{3}U\d{7}', item):
-            final_items.append(item)
-        elif re.fullmatch(r'\d{8}', item):
-            final_items.append(item)
-            
-    return sorted(final_items)
+# --- Точка входа /distance ---
+async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not update.message:
+        return ConversationHandler.END
 
-async def get_train_for_container(container_number: str) -> str | None:
-    """Получает номер поезда из terminal_containers."""
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(TerminalContainer.train)
-            .where(TerminalContainer.container_number == container_number)
-            .limit(1)
-        )
-        train = result.scalar_one_or_none()
-        return train
-
-# --- ✅ НОВАЯ Вспомогательная функция для форматирования даты в Excel ---
-def _format_dt_for_excel(dt: Optional[datetime]) -> str:
-    """Форматирует datetime в строку 'ДД-ММ-ГГГГ ЧЧ:ММ' для Excel, обрабатывает None."""
-    if dt is None:
-        return "" # Возвращаем пустую строку
-    try:
-        # ✅ ИЗМЕНЕНО: Используем дефис '-'
-        return dt.strftime('%d-%m-%Y %H:%M')
-    except Exception:
-        return str(dt) # Запасной вариант
-# --- Конец новой функции ---
-
-
-# --- Основной обработчик сообщений ---
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обрабатывает текстовые сообщения: ищет контейнеры и/или вагоны, 
-    логирует запрос, отправляет результат.
-    """
-    message = update.message
-    user = update.effective_user
-
-    if not message or not message.text or not user:
-        logger.warning("Получено сообщение без текста или пользователя.")
-        return
-
-    await register_user_if_not_exists(user)
-
-    search_terms = normalize_text_input(message.text)
-    if not search_terms:
-        await message.reply_text("Пожалуйста, введите корректный номер контейнера (XXXU1234567) или вагона (8 цифр) для поиска.")
-        return
-
-    query_text_log = ", ".join(search_terms)
-    logger.info(f"[dislocation] пользователь {user.id} ({user.username}) отправил текст для поиска: {query_text_log}")
-
-    try:
-        await add_user_request(telegram_id=user.id, query_text=query_text_log)
-    except Exception as log_err:
-        logger.error(f"Не удалось залогировать запрос пользователя {user.id}: {log_err}", exc_info=True)
-
-    container_numbers: List[str] = [term for term in search_terms if len(term) == 11 and term[3] == 'U']
-    wagon_numbers: List[str] = [term for term in search_terms if len(term) == 8 and term.isdigit()]
-    
-    tracking_results: List[Tracking] = []
-    
-    if container_numbers:
-        tracking_results.extend(await get_tracking_data_for_containers(container_numbers))
-        
-    if wagon_numbers:
-        tracking_results.extend(await get_tracking_data_by_wagons(wagon_numbers))
-
-    unique_container_numbers = set()
-    final_unique_results: List[Tracking] = []
-    for result in tracking_results:
-        if result.container_number not in unique_container_numbers:
-            unique_container_numbers.add(result.container_number)
-            final_unique_results.append(result)
-
-    if not final_unique_results:
-        await message.reply_text(f"Актуальная дислокация не найдена по номерам: {query_text_log}")
-        return
-
-    # --- Логика: ОДИН КОНТЕЙНЕР (для подробного отчета) ---
-    if len(final_unique_results) == 1 and len(search_terms) == 1:
-        result = final_unique_results[0]
-        
-        train_number = await get_train_for_container(result.container_number)
-        train_display = f"Поезд: `{train_number}`\n" if train_number else ""
-
-        remaining_distance = await get_remaining_distance_on_route(
-            start_station=result.from_station,
-            end_station=result.to_station,
-            current_station=result.current_station
-        )
-        km_left_display = None
-        forecast_days_display = 0.0
-        source_log_tag = "Н/Д"
-        distance_label = "Осталось км (БД):"
-
-        if remaining_distance is not None:
-            source_log_tag = "РАСЧЕТ"
-            km_left_display = remaining_distance
-            forecast_days_display = round(remaining_distance / 600 + 1, 1) if remaining_distance > 0 else 0.0
-            distance_label = "Тарифное расстояние:"
-        else:
-            source_log_tag = "БД (Fallback)"
-            km_left_display = result.km_left
-            forecast_days_display = result.forecast_days or 0.0
-            distance_label = "Осталось км (БД):"
-
-        logger.info(f"[dislocation] Контейнер {result.container_number}: Расстояние ({km_left_display} км) взято из источника: {source_log_tag}")
-
-        wagon_number_raw = result.wagon_number
-        wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else 'н/д'
-        wagon_type_display = get_wagon_type_by_number(wagon_number_raw)
-        railway_abbreviation = get_railway_abbreviation(result.operation_road)
-
-        start_date_str = "н/д"
-        if result.trip_start_datetime:
-            try:
-                start_date_str = result.trip_start_datetime.strftime('%d.%m.%Y %H:%M (UTC)')
-            except Exception as e:
-                logger.warning(f"Ошибка форматирования trip_start_datetime: {e}")
-        
-        idle_time_str = result.last_op_idle_time_str or "н/д"
-
-        response_text = (
-            f"📦 **Статус контейнера: {result.container_number}**\n"
-            f"═════════════════════\n"
-            f"📍 *Маршрут:*\n"
-            f"{train_display}" 
-            f"Отпр: `{result.from_station}`\n"
-            f"Назн: `{result.to_station}`\n"
-            f"**Дата отправления:** `{start_date_str}`\n" 
-            f"═════════════════════\n"
-            f"🚂 *Текущая дислокация:*\n"
-            f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
-            f"**Операция:** `{result.operation}`\n"
-            f"**Дата/Время:** `{result.operation_date.strftime('%d.%m.%Y %H:%M (UTC)') if result.operation_date else 'н/д'}`\n"
-            f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n"
-            f"**Накладная:** `{result.waybill}`\n"
-            f"**Простой (сут:ч:м):** `{idle_time_str}`\n"
-            f"═════════════════════\n"
-            f"🛣️ *Прогноз:*\n"
-            f"**{distance_label}** **{km_left_display or 'н/д'} км**\n"
-            f"**Прогноз (дни):** `{forecast_days_display:.1f} дн.`"
-        )
-
-        await message.reply_markdown(
-            response_text,
-            reply_markup=create_single_container_excel_keyboard(result.container_number)
-        )
-
-    # --- Логика: МНОГО КОНТЕЙНЕРОВ/ВАГОНОВ (Ответ Excel) ---
-    else:
-        final_report_data = []
-        
-        EXCEL_HEADERS = [
-            'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
-            'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
-            'Номер накладной', 'Расстояние оставшееся', 'Вагон',
-            'Тип вагона', 'Дорога операции'
-        ]
-        excel_columns = EXCEL_HEADERS
-        
-        for db_row in final_unique_results: 
-            recalculated_distance = await get_remaining_distance_on_route(
-                start_station=db_row.from_station,
-                end_station=db_row.to_station,
-                current_station=db_row.current_station
-            )
-            km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
-            source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
-            logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
-            wagon_number_raw = db_row.wagon_number
-            wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" # Используем "" для Excel
-            wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
-            railway_display_name = db_row.operation_road or ""
-            
-            # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
-            excel_row = [
-                 db_row.container_number,
-                 _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
-                 db_row.from_station or "", 
-                 db_row.to_station or "",
-                 db_row.current_station or "", 
-                 db_row.operation or "", 
-                 _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
-                 db_row.last_op_idle_time_str or "",
-                 db_row.waybill or "", 
-                 km_left,
-                 wagon_number_cleaned, 
-                 wagon_type_for_excel, 
-                 railway_display_name,
-             ]
-            final_report_data.append(excel_row)
-
-        file_path = None
-        try:
-             # ✅ ИЗМЕНЕНИЕ: Вызываем НОВУЮ функцию
-             file_path = await asyncio.to_thread(
-                 create_excel_file_from_strings, # <--- ИЗМЕНЕНО
-                 final_report_data,
-                 excel_columns
-             )
-             filename = get_vladivostok_filename(prefix="Дислокация")
-             with open(file_path, "rb") as f:
-                 await message.reply_document(
-                     document=f,
-                     filename=filename,
-                     caption=f"Найдена дислокация по {len(final_unique_results)} контейнерам/вагонам."
-                 )
-             logger.info(f"Отправлен Excel отчет по запросу пользователя {user.id}")
-        except Exception as send_err:
-             logger.error(f"Ошибка отправки Excel отчета пользователю {user.id}: {send_err}", exc_info=True)
-             await message.reply_text("Не удалось отправить Excel файл.")
-        finally:
-             if file_path and os.path.exists(file_path):
-                 try:
-                     os.remove(file_path)
-                 except OSError as e:
-                      logger.error(f"Не удалось удалить временный файл {file_path}: {e}")
-
-
-async def handle_single_container_excel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Обрабатывает колбэк для скачивания Excel-отчета по одному контейнеру.
-    """
-    query = update.callback_query
-    if not query or not query.data or not query.data.startswith("get_excel_single_") or not update.effective_user:
-        return
-    await query.answer("⏳ Готовлю Excel-отчет...")
-    container_number = query.data.split("_")[-1]
-    user = update.effective_user
-    logger.info(f"[dislocation] Пользователь {user.id} запросил Excel для {container_number} через кнопку.")
-    tracking_results = await get_tracking_data_for_containers([container_number])
-    if not tracking_results:
-        if query.message and query.message.text:
-            await query.edit_message_text("❌ Ошибка: Не удалось найти актуальные данные для Excel.")
-        elif query.message:
-             await context.bot.send_message(user.id, "❌ Ошибка: Не удалось найти актуальные данные для Excel.")
-        return
-
-    db_row = tracking_results[0]
-    recalculated_distance = await get_remaining_distance_on_route(
-        start_station=db_row.from_station,
-        end_station=db_row.to_station,
-        current_station=db_row.current_station
+    await update.message.reply_text(
+        "Пожалуйста, введите **станцию отправления** (например, 'Хабаровск')."
+        "\nИли введите /cancel для отмены.",
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode='Markdown'
     )
-    km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
-    wagon_number_raw = db_row.wagon_number
-    wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" # Используем "" для Excel
-    wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
-    railway_display_name = db_row.operation_road or ""
-    
-    EXCEL_HEADERS = [
-        'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
-        'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
-        'Номер накладной', 'Расстояние оставшееся', 'Вагон',
-        'Тип вагона', 'Дорога операции'
-    ]
-    
-    # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
-    final_report_data = [[
-         db_row.container_number,
-         _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
-         db_row.from_station or "", 
-         db_row.to_station or "",
-         db_row.current_station or "", 
-         db_row.operation or "", 
-         _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
-         db_row.last_op_idle_time_str or "",
-         db_row.waybill or "", 
-         km_left,
-         wagon_number_cleaned, 
-         wagon_type_for_excel, 
-         railway_display_name,
-     ]]
-     
-    file_path = None
-    try:
-         # ✅ ИЗМЕНЕНИЕ: Вызываем НОВУЮ функцию
-         file_path = await asyncio.to_thread(
-             create_excel_file_from_strings, # <--- ИЗМЕНЕНО
-             final_report_data,
-             EXCEL_HEADERS
-         )
-         filename = get_vladivostok_filename(prefix=container_number)
-         with open(file_path, "rb") as f:
-              await context.bot.send_document(
-                 chat_id=user.id,
-                 document=f,
-                 filename=filename,
-                 caption=f"✅ Отчет по контейнеру {container_number}."
-             )
-         logger.info(f"Отправлен Excel отчет для {container_number} пользователю {user.id}")
-         if query.message and query.message.text:
-             await query.edit_message_reply_markup(reply_markup=None)
+    context.user_data.clear()
+    return ASK_FROM_STATION
 
-    except Exception as send_err:
-         logger.error(f"Ошибка отправки Excel отчета пользователю {user.id}: {send_err}", exc_info=True)
-         await context.bot.send_message(user.id, "❌ Не удалось отправить Excel файл.")
-    finally:
-         if file_path and os.path.exists(file_path):
-             try:
-                 os.remove(file_path)
-             except OSError as e:
-                  logger.error(f"Не удалось удалить временный файл {file_path}: {e}")
+# --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
+async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not update.message or not update.message.text or not context.user_data:
+        return ConversationHandler.END
+
+    from_station_raw = update.message.text.strip()
+
+    matches = await find_stations_by_name(from_station_raw)
+
+    if not matches:
+        await update.message.reply_text(f"❌ Станция '{from_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
+        return ASK_FROM_STATION
+
+    if len(matches) == 1:
+        station = matches[0]
+        context.user_data['from_station_name'] = station['name'] # Сохраняем точное имя
+        await update.message.reply_text(
+            f"✅ Станция отправления: <b>{station['name']}</b>\n"
+            f"Теперь введите <b>станцию назначения</b>.",
+            parse_mode='HTML'
+        )
+        return ASK_TO_STATION
+
+    if len(matches) > 1:
+        context.user_data['ambiguous_stations'] = matches
+        keyboard = build_station_keyboard(matches, "dist_from")
+        await update.message.reply_text(
+            f"⚠️ Найдено несколько станций по запросу '{from_station_raw}'.\n"
+            "Пожалуйста, уточните станцию **отправления**:",
+            reply_markup=keyboard
+        )
+        return RESOLVE_FROM_STATION
+
+    return ASK_FROM_STATION
+
+# --- Шаг 2: Уточняем станцию ОТПРАВЛЕНИЯ (если нужно) ---
+async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data or not context.user_data:
+         return ConversationHandler.END
+
+    chosen_name = query.data.replace("dist_from_", "")
+
+    context.user_data['from_station_name'] = chosen_name
+
+    await query.edit_message_text(
+        f"✅ Станция отправления: <b>{chosen_name}</b>\n"
+        f"Теперь введите <b>станцию назначения</b>.",
+        parse_mode='HTML'
+    )
+    return ASK_TO_STATION
+
+# --- Шаг 3: Получаем станцию НАЗНАЧЕНИЯ ---
+async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if (not update.message or not update.message.text or 
+        not context.user_data or 'from_station_name' not in context.user_data):
+        return ConversationHandler.END
+
+    to_station_raw = update.message.text.strip()
+    matches = await find_stations_by_name(to_station_raw)
+
+    if not matches:
+        await update.message.reply_text(f"❌ Станция '{to_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
+        return ASK_TO_STATION
+
+    if len(matches) == 1:
+        station = matches[0]
+        context.user_data['to_station_name'] = station['name']
+        # Обе станции известны, запускаем расчет
+        return await run_distance_calculation(update, context)
+
+    if len(matches) > 1:
+        context.user_data['ambiguous_stations'] = matches
+        keyboard = build_station_keyboard(matches, "dist_to")
+        await update.message.reply_text(
+            f"⚠️ Найдено несколько станций по запросу '{to_station_raw}'.\n"
+            "Пожалуйста, уточните станцию **назначения**:",
+            reply_markup=keyboard
+        )
+        return RESOLVE_TO_STATION
+
+    return ASK_TO_STATION
+
+# --- Шаг 4: Уточняем станцию НАЗНАЧЕНИЯ (если нужно) ---
+async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+
+    if not query.data or not context.user_data:
+         return ConversationHandler.END
+
+    chosen_name = query.data.replace("dist_to_", "")
+    context.user_data['to_station_name'] = chosen_name
+
+    # Обе станции известны, запускаем расчет
+    return await run_distance_calculation(update, context)
+
+# --- Шаг 5: Выполняем расчет ---
+async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    message_to_reply = update.message or update.callback_query.message
+
+    from_station_name = context.user_data.get('from_station_name')
+    to_station_name = context.user_data.get('to_station_name')
+
+    if not from_station_name or not to_station_name:
+        await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.")
+        return ConversationHandler.END
+
+    await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...")
+
+    try:
+        result = await get_tariff_distance(
+            from_station_name=from_station_name,
+            to_station_name=to_station_name
+        )
+
+        if result:
+            distance = result['distance']
+            info_a = result['info_a']
+            info_b = result['info_b']
+
+            response = (
+                f"✅ <b>Расчет успешно выполнен!</b>\n\n"
+                f"🚉 <b>Отправление:</b>\n"
+                f"<b>{html.escape(info_a['station_name'])}</b> <i>({html.escape(info_a.get('railway', 'Н/Д'))})</i>\n\n"
+                f"🏁 <b>Назначение:</b>\n"
+                f"<b>{html.escape(info_b['station_name'])}</b> <i>({html.escape(info_b.get('railway', 'Н/Д'))})</i>\n\n"
+                f"————————————————\n"
+                f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
+            )
+
+            await message_to_reply.reply_text(response, parse_mode='HTML')
+        else:
+            response = (
+                f"❌ <b>Не удалось найти маршрут.</b>\n"
+                f"Не найден путь в матрицах между:\n"
+                f"<code>{html.escape(from_station_name)}</code> ➡️ <code>{html.escape(to_station_name)}</code>"
+            )
+            await message_to_reply.reply_text(response, parse_mode='HTML')
+
+    except Exception as e:
+        logger.exception(f"Критическая ошибка в /distance (run_distance_calculation): {e}")
+        await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML')
+
+    context.user_data.clear()
+    return ConversationHandler.END
+
+# --- Обработка отмены ---
+async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    message_to_reply = update.message or update.callback_query.message
+    if update.callback_query:
+        await update.callback_query.answer()
+
+    await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
+    if context.user_data:
+        context.user_data.clear()
+    return ConversationHandler.END
+
+# --- Регистрация хендлеров ---
+def distance_conversation_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("distance", distance_cmd)],
+        states={
+            ASK_FROM_STATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_from_station)],
+            RESOLVE_FROM_STATION: [CallbackQueryHandler(resolve_from_station, pattern="^dist_from_")],
+            ASK_TO_STATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_to_station)],
+            RESOLVE_TO_STATION: [CallbackQueryHandler(resolve_to_station, pattern="^dist_to_")],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_distance),
+            CallbackQueryHandler(cancel_distance, pattern="^distance_cancel$")
+        ],
+        allow_reentry=True,
+    )
