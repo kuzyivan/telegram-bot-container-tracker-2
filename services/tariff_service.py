@@ -1,18 +1,19 @@
 # services/tariff_service.py
 import asyncio
 import re
-from sqlalchemy import select, ARRAY, exc
+# 1. ИМПОРТИРУЕМ func
+from sqlalchemy import select, ARRAY, exc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer
 from logger import get_logger
 
-# --- 1. Импортируем новую сессию для тарифов ---
+# --- Импортируем новую сессию для тарифов ---
 from db import TariffSessionLocal 
 
 logger = get_logger(__name__) 
 
-# --- 2. Определяем модели (копия из мигратора) ---
+# --- Определяем модели (копия из мигратора) ---
 class TariffBase(DeclarativeBase):
     pass
 
@@ -24,10 +25,7 @@ class TariffStation(TariffBase):
     operations: Mapped[str | None] = mapped_column(String)
     railway: Mapped[str | None] = mapped_column(String)
     
-    # --- 🐞 ИСПРАВЛЕНИЕ ОШИБКИ (L130) 🐞 ---
-    # Тип в БД - ARRAY(String), поэтому тип Python должен быть list[str]
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String))
-    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
 class TariffMatrix(TariffBase):
     __tablename__ = 'tariff_matrix'
@@ -36,7 +34,7 @@ class TariffMatrix(TariffBase):
     station_b: Mapped[str] = mapped_column(String, index=True)
     distance: Mapped[int] = mapped_column(Integer)
 
-# --- 3. Вспомогательные функции (асинхронные) ---
+# --- Вспомогательные функции (асинхронные) ---
 
 def _normalize_station_name_for_db(name: str) -> str:
     """
@@ -82,13 +80,20 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         search_variants.add(cleaned_name.replace(" 1", " I"))
     
     # 3. Ищем по ЛЮБОМУ из вариантов
-    stmt = select(TariffStation).where(TariffStation.name.in_(list(search_variants)))
+    
+    # --- ✅ НАЧАЛО ИСПРАВЛЕНИЯ (Регистр + Цифры) ---
+    # Преобразуем варианты в нижний регистр
+    search_variants_lower = [v.lower() for v in search_variants]
+    
+    # Ищем, используя func.lower() для нечувствительности к регистру
+    stmt = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
+    # --- ⛔️ КОНЕЦ ИСПРАВЛЕНИЯ ---
+
     result = await session.execute(stmt)
     all_stations = result.scalars().all()
 
     # 4. Если точное совпадение не найдено, возвращаемся к ILIKE как запасной вариант
     if not all_stations:
-        # --- 🎯 ИСПРАВЛЕНИЕ ЗДЕСЬ (УБРАН ПЕРВЫЙ '%') ---
         # Ищем "хабаровск%" (начинается с), а не "%хабаровск%" (содержит)
         stmt_fallback = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
         result_fallback = await session.execute(stmt_fallback)
@@ -153,7 +158,7 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
         
     return None
 
-# --- 4. Основная функция (полностью асинхронная) ---
+# --- Основная функция (полностью асинхронная) ---
 
 async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
     """
@@ -258,13 +263,20 @@ async def find_stations_by_name(station_name: str) -> list[dict]:
 
     async with TariffSessionLocal() as session:
         # 2. Сначала ищем точные совпадения
-        stmt_exact = select(TariffStation).where(TariffStation.name.in_(list(search_variants)))
+        
+        # --- ✅ НАЧАЛО ИСПРАВЛЕНИЯ (Регистр + Цифры) ---
+        # Преобразуем варианты в нижний регистр
+        search_variants_lower = [v.lower() for v in search_variants]
+        
+        # Ищем, используя func.lower() для нечувствительности к регистру
+        stmt_exact = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
+        # --- ⛔️ КОНЕЦ ИСПРАВЛЕНИЯ ---
+        
         result_exact = await session.execute(stmt_exact)
         all_stations = result_exact.scalars().all()
         
         # 3. Если точных нет, ищем по "начинается с" (Хабаровск -> Хабаровск 1, Хабаровск 2)
         if not all_stations:
-            # --- 🎯 ИСПРАВЛЕНИЕ ЗДЕСЬ (УБРАН ПЕРВЫЙ '%') ---
             # ILIKE 'хабаровск%' (не '%хабаровск%')
             stmt_startswith = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
             result_startswith = await session.execute(stmt_startswith)
