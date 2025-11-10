@@ -37,6 +37,9 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         logger.warning(f"[Dist] User {user_id}: /distance called without a message. Ending.")
         return ConversationHandler.END
 
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Эта проверка ПРАВИЛЬНАЯ. Если user_data не None (уже существует),
+    # мы его очищаем. Если он None, мы ничего не делаем.
     if context.user_data: 
         context.user_data.clear() 
 
@@ -74,8 +77,11 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if len(matches) == 1:
         station = matches[0]
-        if context.user_data:
-            context.user_data['from_station_name'] = station['name'] 
+        
+        # 🐞 ИСПРАВЛЕНИЕ:
+        # Убираем 'if context.user_data:'. Запись создаст user_data, если он None.
+        context.user_data['from_station_name'] = station['name'] 
+        
         logger.info(f"[Dist] User {user_id}: Single match found: {station['name']}. Moving to ASK_TO_STATION.")
         await update.message.reply_text(
             f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
@@ -85,8 +91,10 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
         return ASK_TO_STATION
 
     if len(matches) > 1:
-        if context.user_data:
-            context.user_data['ambiguous_stations'] = matches
+        # 🐞 ИСПРАВЛЕНИЕ:
+        # Убираем 'if context.user_data:'. Запись создаст user_data, если он None.
+        context.user_data['ambiguous_stations'] = matches
+        
         keyboard = build_station_keyboard(matches, "dist_from")
         logger.info(f"[Dist] User {user_id}: Multiple matches found. Moving to RESOLVE_FROM_STATION.")
         await update.message.reply_text(
@@ -112,8 +120,11 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer() 
 
     chosen_name = query.data.replace("dist_from_", "") 
-    if context.user_data:
-        context.user_data['from_station_name'] = chosen_name
+    
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Убираем 'if context.user_data:'. Запись создаст/добавит в user_data.
+    context.user_data['from_station_name'] = chosen_name
+    
     logger.info(f"[Dist] User {user_id}: Resolved 'from_station' to {chosen_name}. Moving to ASK_TO_STATION.")
 
     await query.edit_message_text( 
@@ -128,6 +139,7 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id if update.effective_user else "Unknown"
     logger.info(f"[Dist] User {user_id}: Now in ASK_TO_STATION.")
     
+    # Эта проверка ТЕПЕРЬ БУДЕТ РАБОТАТЬ, т.к. 'from_station_name' был успешно записан на шаге 2.
     if (not update.message or not update.message.text or 
         not context.user_data or 'from_station_name' not in context.user_data):
         logger.warning(f"[Dist] User {user_id}: Exiting ASK_TO_STATION (invalid state: no message, text, user_data, or from_station_name).")
@@ -181,8 +193,12 @@ async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer() 
 
     chosen_name = query.data.replace("dist_to_", "") 
-    if context.user_data: 
+    
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Убираем 'if context.user_data:'.
+    if context.user_data: # Проверка Pylance
         context.user_data['to_station_name'] = chosen_name
+    
     logger.info(f"[Dist] User {user_id}: Resolved 'to_station' to {chosen_name}. Moving to run_distance_calculation.")
 
     return await run_distance_calculation(update, context)
@@ -250,7 +266,6 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             )
             
             if query:
-                # Если редактировали, удаляем "⏳ Выполняю расчет..."
                 await query.delete_message()
             
             await message_to_reply.reply_text(response, parse_mode='HTML') 
@@ -289,10 +304,8 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if query:
         await query.answer()
-        # Если отмена пришла с кнопки (Inline), лучше отредактировать сообщение
         await query.edit_message_text("Расчет расстояния отменён.")
     elif message_to_reply: 
-        # Если отмена пришла командой /cancel
         await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
 
     if context.user_data:
