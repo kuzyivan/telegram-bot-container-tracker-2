@@ -124,7 +124,7 @@ async def verify_code_and_activate_email(telegram_id: int, code: str) -> Optiona
             # Мы ищем неподтвержденную запись и обновляем ее
             update_stmt = update(UserEmail).where(
                 UserEmail.user_telegram_id == telegram_id,
-                UserEmail.email == verified_email,
+                UserEmail.email == verified_email.strip().lower(), # <-- ИСПРАВЛЕНИЕ
                 UserEmail.is_verified == False
             ).values(is_verified=True)
             
