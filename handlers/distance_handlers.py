@@ -1,5 +1,5 @@
 # handlers/distance_handlers.py
-from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import (
     ContextTypes,
     CommandHandler,
@@ -8,21 +8,20 @@ from telegram.ext import (
     filters,
     CallbackQueryHandler,
 )
-# Импортируем обе функции
+from typing import Optional
 from services.tariff_service import get_tariff_distance, find_stations_by_name
 from logger import get_logger
 import html
 
 logger = get_logger(__name__)
 
-# --- НОВЫЕ Состояния диалога ---
+# --- Состояния диалога ---
 ASK_FROM_STATION, RESOLVE_FROM_STATION, ASK_TO_STATION, RESOLVE_TO_STATION = range(4)
 
 # --- Вспомогательная функция для создания кнопок ---
 def build_station_keyboard(stations: list[dict], callback_prefix: str) -> InlineKeyboardMarkup:
     keyboard = []
     for station in stations[:10]: # Ограничиваем 10 вариантами
-        # Сохраняем ТОЛЬКО имя в callback_data, чтобы избежать проблем с длиной
         callback_data = f"{callback_prefix}_{station['name']}"
         display_text = f"{station['name']} ({station.get('railway', 'Н/Д')})"
         keyboard.append([InlineKeyboardButton(display_text, callback_data=callback_data)])
@@ -34,15 +33,10 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if not update.message:
         return ConversationHandler.END
 
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Мы должны принудительно инициализировать user_data.
-    # Если он был None, 'if context.user_data:' не срабатывал,
-    # и user_data оставался None, что приводило к сбою
-    # на следующем шаге (в 'process_from_station').
+    # 🐞 1. ИСПРАВЛЕНИЕ (Возвращаем к правильному методу)
+    # Мы не присваиваем, а очищаем существующий словарь.
     if context.user_data: 
         context.user_data.clear() 
-    else:
-        context.user_data = {} # <-- ЭТА СТРОКА РЕШАЕТ ПРОБЛЕМУ
 
     await update.message.reply_text(
         "Пожалуйста, введите **станцию отправления** (например, 'Хабаровск')."
@@ -54,12 +48,18 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 # --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
 async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if not update.message or not update.message.text or not context.user_data:
+    
+    # 🐞 2. ИСПРАВЛЕНИЕ (Основная ошибка)
+    # Убираем 'not context.user_data', так как пустой словарь {} == True
+    if not update.message or not update.message.text:
         return ConversationHandler.END
+        
+    # Проверяем, что user_data существует (на всякий случай, хотя он должен)
+    if not context.user_data:
+        context.user_data = {}
 
     from_station_raw = update.message.text.strip()
-
-    matches = await find_stations_by_name(from_station_raw) #
+    matches = await find_stations_by_name(from_station_raw) 
 
     if not matches:
         await update.message.reply_text(f"❌ Станция '{from_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
@@ -67,7 +67,7 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if len(matches) == 1:
         station = matches[0]
-        context.user_data['from_station_name'] = station['name'] # Сохраняем точное имя
+        context.user_data['from_station_name'] = station['name'] 
         await update.message.reply_text(
             f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
             f"Теперь введите <b>станцию назначения</b>.",
@@ -90,16 +90,22 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Шаг 2: Уточняем станцию ОТПРАВЛЕНИЯ (если нужно) ---
 async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    if not query or not query.data or not context.user_data or not query.message: #
+    
+    # 🐞 3. ИСПРАВЛЕНИЕ (Та же ошибка, что и в шаге 1)
+    # Убираем 'not context.user_data'
+    if not query or not query.data or not query.message: 
         if query: await query.answer() 
         return ConversationHandler.END
-    await query.answer() #
+        
+    if not context.user_data:
+        context.user_data = {}
+        
+    await query.answer() 
 
-    chosen_name = query.data.replace("dist_from_", "") #
-
+    chosen_name = query.data.replace("dist_from_", "") 
     context.user_data['from_station_name'] = chosen_name
 
-    await query.message.edit_message_text( #
+    await query.message.edit_message_text( 
         f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b>\n"
         f"Теперь введите <b>станцию назначения</b>.",
         parse_mode='HTML'
@@ -108,12 +114,15 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # --- Шаг 3: Получаем станцию НАЗНАЧЕНИЯ ---
 async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    
+    # Эта проверка УЖЕ БЫЛА ПРАВИЛЬНОЙ, так как 'from_station_name' not in context.user_data
+    # корректно работает с пустым словарем.
     if (not update.message or not update.message.text or 
         not context.user_data or 'from_station_name' not in context.user_data):
         return ConversationHandler.END
 
     to_station_raw = update.message.text.strip()
-    matches = await find_stations_by_name(to_station_raw) #
+    matches = await find_stations_by_name(to_station_raw) 
 
     if not matches:
         await update.message.reply_text(f"❌ Станция '{to_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
@@ -122,7 +131,6 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if len(matches) == 1:
         station = matches[0]
         context.user_data['to_station_name'] = station['name']
-        # Обе станции известны, запускаем расчет
         return await run_distance_calculation(update, context)
 
     if len(matches) > 1:
@@ -140,15 +148,21 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --- Шаг 4: Уточняем станцию НАЗНАЧЕНИЯ (если нужно) ---
 async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    if not query or not query.data or not context.user_data: #
+    
+    # 🐞 4. ИСПРАВЛЕНИЕ (Та же ошибка, что и в шаге 1)
+    # Убираем 'not context.user_data'
+    if not query or not query.data: 
         if query: await query.answer()
         return ConversationHandler.END
-    await query.answer() #
+        
+    if not context.user_data:
+        context.user_data = {}
 
-    chosen_name = query.data.replace("dist_to_", "") #
+    await query.answer() 
+
+    chosen_name = query.data.replace("dist_to_", "") 
     context.user_data['to_station_name'] = chosen_name
 
-    # Обе станции известны, запускаем расчет
     return await run_distance_calculation(update, context)
 
 # --- Шаг 5: Выполняем расчет ---
@@ -157,24 +171,26 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     message = update.message
 
-    message_to_reply = None
+    message_to_reply: Optional[Message] = None
     if message:
         message_to_reply = message
     elif query and query.message:
         message_to_reply = query.message
 
-    if not message_to_reply: #
+    if not message_to_reply: 
         logger.error("Could not find message to reply to in run_distance_calculation")
         return ConversationHandler.END
 
-    from_station_name = context.user_data.get('from_station_name') if context.user_data else None #
-    to_station_name = context.user_data.get('to_station_name') if context.user_data else None #
+    assert message_to_reply is not None
+
+    from_station_name = context.user_data.get('from_station_name') if context.user_data else None 
+    to_station_name = context.user_data.get('to_station_name') if context.user_data else None 
 
     if not from_station_name or not to_station_name:
-        await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.") #
+        await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.") 
         return ConversationHandler.END
 
-    await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...") #
+    await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...") 
 
     try:
         result = await get_tariff_distance(
@@ -197,20 +213,20 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
                 f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
             )
 
-            await message_to_reply.reply_text(response, parse_mode='HTML') #
+            await message_to_reply.reply_text(response, parse_mode='HTML') 
         else:
             response = (
                 f"❌ <b>Не удалось найти маршрут.</b>\n"
                 f"Не найден путь в матрицах между:\n"
                 f"<code>{html.escape(from_station_name)}</code> ➡️ <code>{html.escape(to_station_name)}</code>"
             )
-            await message_to_reply.reply_text(response, parse_mode='HTML') #
+            await message_to_reply.reply_text(response, parse_mode='HTML') 
 
     except Exception as e:
         logger.exception(f"Критическая ошибка в /distance (run_distance_calculation): {e}")
-        await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') #
+        await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
-    if context.user_data: #
+    if context.user_data: 
         context.user_data.clear()
     return ConversationHandler.END
 
@@ -219,16 +235,18 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     query = update.callback_query
     message = update.message
-    message_to_reply = None
+    
+    message_to_reply: Optional[Message] = None
     if message:
         message_to_reply = message
     elif query and query.message:
-        message_to_reply = query.message #
+        message_to_reply = query.message 
 
     if query:
         await query.answer()
 
-    if message_to_reply: #
+    if message_to_reply: 
+        assert message_to_reply is not None
         await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
 
     if context.user_data:
