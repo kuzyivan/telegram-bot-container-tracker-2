@@ -15,21 +15,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 2. 🐞 ИМПОРТИРУЕМ НАСТРОЙКУ ТАЙМАУТА
-from config import TOKEN, ADMIN_CHAT_ID, TELEGRAM_SEND_TIMEOUT
+from config import TOKEN, ADMIN_CHAT_ID, TELEGRAM_SEND_TIMEOUT 
 from scheduler import start_scheduler
 
 # --- Пользовательские обработчики ---
 from handlers.menu_handlers import start, reply_keyboard_handler, handle_sticker 
 from handlers.email_management_handler import get_email_conversation_handler, get_email_command_handlers
 
-# --- 🐞 НАЧАЛО ОБНОВЛЕНИЯ 🐞 ---
 from handlers.subscription_management_handler import (
     get_subscription_management_handlers, 
     get_add_containers_conversation_handler, # Для добавления
     get_remove_containers_conversation_handler # Для удаления
-    # delete_subscription_confirm_yes <-- УДАЛЯЕМ ЭТОТ ИМПОРТ
 )
-# --- 🏁 КОНЕЦ ОБНОВЛЕНИЯ 🏁 ---
 
 from handlers.tracking_handlers import tracking_conversation_handler
 from handlers.dislocation_handlers import handle_message, handle_single_container_excel_callback 
@@ -89,7 +86,7 @@ def main():
 
     logging.getLogger("httpx").setLevel(logging.WARNING) 
     
-    # 3. 🐞 СОЗДАЕМ REQUEST С УВЕЛИЧЕННЫМ ТАЙМАУТОМ
+    # 3. 🐞 СОЗДАЕМ REQUEST С УВЕЛИЧЕННЫМ ТАЙМАУТОМ (Исправление TimedOut)
     request = HTTPXRequest(
         connect_timeout=20.0,
         read_timeout=TELEGRAM_SEND_TIMEOUT, # 90.0 из config.py
@@ -104,7 +101,7 @@ def main():
     application.add_handler(tracking_conversation_handler())
     application.add_handler(get_email_conversation_handler())
     setup_train_handlers(application)
-    application.add_handler(distance_conversation_handler()) # <-- Вызов () здесь уже был правильным
+    application.add_handler(distance_conversation_handler()) # <-- Вызываем функцию ()
     application.add_handler(get_add_containers_conversation_handler())
     application.add_handler(get_remove_containers_conversation_handler())
     
@@ -137,10 +134,9 @@ def main():
         handle_admin_document
     ))
     
-    # 5. 🐞 ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА
+    # 5. 🐞 ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА (Исправление перехвата)
     # Мы ставим этот "общий" обработчик в группу 1 (низший приоритет),
     # чтобы он не мешал ConversationHandler'ам (которые в группе 0)
-    # принимать текст в своих состояниях.
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND, 
         handle_message), 
