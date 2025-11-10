@@ -75,13 +75,33 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     Асинхронно ищет станцию в новой базе тарифов.
     Сначала ищет станцию с пометкой 'ТП', если не находит - берет первую.
     """
-    cleaned_name = _normalize_station_name_for_db(station_name)
+    # --- ⬇️ НАЧАЛО ИЗМЕНЕНИЙ (Исправление поиска "ХАБАРОВСК 2") ⬇️ ---
     
-    # 1. Ищем ВСЕ станции, содержащие имя (как str.contains)
-    stmt = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%"))
+    cleaned_name = _normalize_station_name_for_db(station_name) # Получаем 'ХАБАРОВСК 2'
+    
+    # 1. Создаем варианты поиска
+    search_variants = {cleaned_name}
+    
+    # 2. Добавляем вариант с римскими цифрами
+    if " 2" in cleaned_name:
+        search_variants.add(cleaned_name.replace(" 2", " II"))
+    if " 1" in cleaned_name:
+        search_variants.add(cleaned_name.replace(" 1", " I"))
+    
+    # 3. Ищем по ЛЮБОМУ из вариантов
+    # (Мы ищем точное совпадение имени, а не ILIKE, так надежнее)
+    stmt = select(TariffStation).where(TariffStation.name.in_(list(search_variants)))
     
     result = await session.execute(stmt)
     all_stations = result.scalars().all()
+
+    # 4. Если точное совпадение не найдено, возвращаемся к ILIKE как запасной вариант
+    if not all_stations:
+        stmt_fallback = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%"))
+        result_fallback = await session.execute(stmt_fallback)
+        all_stations = result_fallback.scalars().all()
+    
+    # --- ⬆️ КОНЕЦ ИЗМЕНЕНИЙ ⬆️ ---
 
     if not all_stations:
         return None # Совсем ничего не нашли
