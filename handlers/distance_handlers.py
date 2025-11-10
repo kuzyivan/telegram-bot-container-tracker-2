@@ -33,8 +33,7 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if not update.message:
         return ConversationHandler.END
 
-    # 🐞 ИСПРАВЛЕНИЕ: Используем .clear() - это правильный способ
-    # очистить данные в начале диалога.
+    # Очищаем user_data (этот код из прошлого шага)
     if context.user_data: 
         context.user_data.clear() 
 
@@ -49,13 +48,12 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 # --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
 async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
-    # 🐞 ИСПРАВЛЕНИЕ: Убираем проверку 'if not context.user_data:'
-    # Эта проверка была неверной (not {} == True) и приводила к молчанию.
+    # Исправленная проверка (из прошлого шага)
     if not update.message or not update.message.text:
         return ConversationHandler.END
         
-    # user_data гарантированно существует, даже если пуст.
-    # Строка 'context.user_data = {}' удалена, так как она вызывала ошибку.
+    if not context.user_data:
+        context.user_data = {} # Инициализируем, если вдруг не был
 
     from_station_raw = update.message.text.strip()
     matches = await find_stations_by_name(from_station_raw) 
@@ -66,7 +64,6 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if len(matches) == 1:
         station = matches[0]
-        # context.user_data гарантированно является словарем
         context.user_data['from_station_name'] = station['name'] 
         await update.message.reply_text(
             f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
@@ -91,20 +88,22 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     
-    # 🐞 ИСПРАВЛЕНИЕ: Убираем проверку 'if not context.user_data:'
     if not query or not query.data or not query.message: 
         if query: await query.answer() 
         return ConversationHandler.END
         
-    # user_data гарантированно существует. Строка 'context.user_data = {}' удалена.
+    if not context.user_data:
+        context.user_data = {}
         
     await query.answer() 
 
     chosen_name = query.data.replace("dist_from_", "") 
-    if context.user_data: # Добавляем проверку на NoneType для Pylance
+    if context.user_data:
         context.user_data['from_station_name'] = chosen_name
 
-    await query.message.edit_message_text( 
+    # 🐞 *** ВОТ ИСПРАВЛЕНИЕ ***
+    # Вызываем .edit_message_text() у самого 'query'
+    await query.edit_message_text( 
         f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b>\n"
         f"Теперь введите <b>станцию назначения</b>.",
         parse_mode='HTML'
@@ -114,7 +113,6 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Шаг 3: Получаем станцию НАЗНАЧЕНИЯ ---
 async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
-    # Эта проверка всегда была правильной, т.к. она ищет КЛЮЧ
     if (not update.message or not update.message.text or 
         not context.user_data or 'from_station_name' not in context.user_data):
         return ConversationHandler.END
@@ -147,19 +145,21 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     
-    # 🐞 ИСПРАВЛЕНИЕ: Убираем проверку 'if not context.user_data:'
     if not query or not query.data: 
         if query: await query.answer()
         return ConversationHandler.END
         
-    # user_data гарантированно существует. Строка 'context.user_data = {}' удалена.
+    if not context.user_data:
+        context.user_data = {}
 
     await query.answer() 
 
     chosen_name = query.data.replace("dist_to_", "") 
-    if context.user_data: # Добавляем проверку на NoneType для Pylance
+    if context.user_data: 
         context.user_data['to_station_name'] = chosen_name
 
+    # Эта функция НЕ редактирует сообщение, а сразу вызывает расчет,
+    # который отправит НОВЫЙ ответ. Это нормально.
     return await run_distance_calculation(update, context)
 
 # --- Шаг 5: Выполняем расчет ---
@@ -187,7 +187,20 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.") 
         return ConversationHandler.END
 
-    await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...") 
+    # 🐞 *** ИСПРАВЛЕНИЕ (UI) ***
+    # Если мы пришли из resolve_to_station (нажатие кнопки), 
+    # то сначала отредактируем сообщение, убрав кнопки.
+    if query:
+        await query.edit_message_text(
+            f"✅ Станция отправления: <b>{html.escape(from_station_name)}</b>\n"
+            f"✅ Станция назначения: <b>{html.escape(to_station_name)}</b>\n\n"
+            f"⏳ Выполняю расчет...",
+            parse_mode='HTML'
+        )
+    else:
+        # Если мы пришли из process_to_station (ввод текста),
+        # то просто отвечаем.
+        await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...") 
 
     try:
         result = await get_tariff_distance(
@@ -209,8 +222,14 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
                 f"————————————————\n"
                 f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
             )
-
+            
+            # Отправляем итоговый ответ как НОВОЕ сообщение
             await message_to_reply.reply_text(response, parse_mode='HTML') 
+            
+            # Если мы редактировали сообщение (из query), то удалим "⏳ Выполняю расчет..."
+            if query:
+                await query.delete_message()
+
         else:
             response = (
                 f"❌ <b>Не удалось найти маршрут.</b>\n"
