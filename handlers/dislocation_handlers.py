@@ -33,6 +33,9 @@ def build_station_keyboard(stations: list[dict], callback_prefix: str) -> Inline
 async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not update.message:
         return ConversationHandler.END
+    
+    if context.user_data: #
+        context.user_data.clear() 
 
     await update.message.reply_text(
         "Пожалуйста, введите **станцию отправления** (например, 'Хабаровск')."
@@ -40,7 +43,6 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         reply_markup=ReplyKeyboardRemove(),
         parse_mode='Markdown'
     )
-    context.user_data.clear()
     return ASK_FROM_STATION
 
 # --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
@@ -49,13 +51,13 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
     from_station_raw = update.message.text.strip()
-
-    matches = await find_stations_by_name(from_station_raw)
-
+    
+    matches = await find_stations_by_name(from_station_raw) #
+    
     if not matches:
         await update.message.reply_text(f"❌ Станция '{from_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
         return ASK_FROM_STATION
-
+        
     if len(matches) == 1:
         station = matches[0]
         context.user_data['from_station_name'] = station['name'] # Сохраняем точное имя
@@ -65,7 +67,7 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode='HTML'
         )
         return ASK_TO_STATION
-
+        
     if len(matches) > 1:
         context.user_data['ambiguous_stations'] = matches
         keyboard = build_station_keyboard(matches, "dist_from")
@@ -81,16 +83,18 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Шаг 2: Уточняем станцию ОТПРАВЛЕНИЯ (если нужно) ---
 async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    await query.answer()
-
-    if not query.data or not context.user_data:
-         return ConversationHandler.END
-
-    chosen_name = query.data.replace("dist_from_", "")
-
+    # --- 🐞 ИСПРАВЛЕНИЕ ОШИБОК (L353, 355, 358, 362) 🐞 ---
+    if not query or not query.data or not context.user_data or not query.message: #
+        if query: await query.answer() 
+        return ConversationHandler.END
+    await query.answer() #
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+         
+    chosen_name = query.data.replace("dist_from_", "") #
+    
     context.user_data['from_station_name'] = chosen_name
-
-    await query.edit_message_text(
+    
+    await query.message.edit_message_text( #
         f"✅ Станция отправления: <b>{chosen_name}</b>\n"
         f"Теперь введите <b>станцию назначения</b>.",
         parse_mode='HTML'
@@ -104,18 +108,18 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
 
     to_station_raw = update.message.text.strip()
-    matches = await find_stations_by_name(to_station_raw)
-
+    matches = await find_stations_by_name(to_station_raw) #
+    
     if not matches:
         await update.message.reply_text(f"❌ Станция '{to_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
         return ASK_TO_STATION
-
+        
     if len(matches) == 1:
         station = matches[0]
         context.user_data['to_station_name'] = station['name']
         # Обе станции известны, запускаем расчет
         return await run_distance_calculation(update, context)
-
+        
     if len(matches) > 1:
         context.user_data['ambiguous_stations'] = matches
         keyboard = build_station_keyboard(matches, "dist_to")
@@ -125,35 +129,51 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=keyboard
         )
         return RESOLVE_TO_STATION
-
+        
     return ASK_TO_STATION
 
 # --- Шаг 4: Уточняем станцию НАЗНАЧЕНИЯ (если нужно) ---
 async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    await query.answer()
-
-    if not query.data or not context.user_data:
-         return ConversationHandler.END
-
-    chosen_name = query.data.replace("dist_to_", "")
+    # --- 🐞 ИСПРАВЛЕНИЕ ОШИБОК (L403, 405, 408) 🐞 ---
+    if not query or not query.data or not context.user_data: #
+        if query: await query.answer()
+        return ConversationHandler.END
+    await query.answer() #
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+         
+    chosen_name = query.data.replace("dist_to_", "") #
     context.user_data['to_station_name'] = chosen_name
-
+    
     # Обе станции известны, запускаем расчет
     return await run_distance_calculation(update, context)
-
+    
 # --- Шаг 5: Выполняем расчет ---
 async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    message_to_reply = update.message or update.callback_query.message
+    
+    # --- 🐞 ИСПРАВЛЕНИЕ ОШИБОК (L416) 🐞 ---
+    query = update.callback_query
+    message = update.message
+    
+    message_to_reply = None
+    if message:
+        message_to_reply = message
+    elif query and query.message:
+        message_to_reply = query.message
+    
+    if not message_to_reply: #
+        logger.error("Could not find message to reply to in run_distance_calculation")
+        return ConversationHandler.END
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
 
-    from_station_name = context.user_data.get('from_station_name')
-    to_station_name = context.user_data.get('to_station_name')
+    from_station_name = context.user_data.get('from_station_name') if context.user_data else None #
+    to_station_name = context.user_data.get('to_station_name') if context.user_data else None #
 
     if not from_station_name or not to_station_name:
-        await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.")
+        await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.") #
         return ConversationHandler.END
-
-    await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...")
+        
+    await message_to_reply.reply_text("⏳ Выполняю расчет тарифного расстояния...") #
 
     try:
         result = await get_tariff_distance(
@@ -175,30 +195,43 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
                 f"————————————————\n"
                 f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
             )
-
-            await message_to_reply.reply_text(response, parse_mode='HTML')
+            
+            await message_to_reply.reply_text(response, parse_mode='HTML') #
         else:
             response = (
                 f"❌ <b>Не удалось найти маршрут.</b>\n"
                 f"Не найден путь в матрицах между:\n"
                 f"<code>{html.escape(from_station_name)}</code> ➡️ <code>{html.escape(to_station_name)}</code>"
             )
-            await message_to_reply.reply_text(response, parse_mode='HTML')
+            await message_to_reply.reply_text(response, parse_mode='HTML') #
 
     except Exception as e:
         logger.exception(f"Критическая ошибка в /distance (run_distance_calculation): {e}")
-        await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML')
-
-    context.user_data.clear()
+        await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') #
+    
+    if context.user_data: #
+        context.user_data.clear()
     return ConversationHandler.END
 
 # --- Обработка отмены ---
 async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    message_to_reply = update.message or update.callback_query.message
-    if update.callback_query:
-        await update.callback_query.answer()
+    
+    # --- 🐞 ИСПРАВЛЕНИЕ ОШИБОК (L466, 470) 🐞 ---
+    query = update.callback_query
+    message = update.message
+    message_to_reply = None
+    if message:
+        message_to_reply = message
+    elif query and query.message:
+        message_to_reply = query.message #
 
-    await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
+    if query:
+        await query.answer()
+    
+    if message_to_reply: #
+        await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
+    # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+
     if context.user_data:
         context.user_data.clear()
     return ConversationHandler.END
