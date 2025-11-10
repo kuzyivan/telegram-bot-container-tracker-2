@@ -96,7 +96,8 @@ def main():
     # 4. 🐞 ПРИМЕНЯЕМ REQUEST К APPLICATION
     application = Application.builder().token(TOKEN).request(request).build()
     
-    # 1. Диалоги (Группа 0 - высший приоритет)
+    # --- 1. Диалоги (Группа 0 - высший приоритет) ---
+    # Эти обработчики "слушают" первыми
     application.add_handler(broadcast_conversation_handler)
     application.add_handler(tracking_conversation_handler())
     application.add_handler(get_email_conversation_handler())
@@ -105,7 +106,7 @@ def main():
     application.add_handler(get_add_containers_conversation_handler())
     application.add_handler(get_remove_containers_conversation_handler())
     
-    # 2. Команды админа (Группа 0)
+    # --- 2. Команды (Группа 0) ---
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("exportstats", exportstats))
@@ -113,16 +114,16 @@ def main():
     application.add_handler(CommandHandler("upload_file", upload_file_command))
     application.add_handler(CommandHandler("force_notify", force_notify_handler))
     
-    # 3. Команды пользователя (Группа 0)
     application.add_handler(CommandHandler("start", start))
     application.add_handlers(get_email_command_handlers())
     application.add_handlers(get_subscription_management_handlers())
     
-    # 4. Колбэки (Группа 0)
+    # --- 3. Колбэки (Группа 0) ---
     application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(handle_single_container_excel_callback, pattern="^get_excel_single_")) 
     
-    # 5. Обработчики сообщений (Группа 0 и 1)
+    # --- 4. Обработчики сообщений (Группа 0 и 1) ---
+    # Этот обработчик кнопок меню (Regex) имеет приоритет 0 по умолчанию
     application.add_handler(MessageHandler(
         filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
         reply_keyboard_handler
@@ -134,11 +135,12 @@ def main():
         handle_admin_document
     ))
     
-    # 5. 🐞 ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА (Исправление перехвата)
+    # --- 5. 🐞 ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА ---
     # Мы ставим этот "общий" обработчик в группу 1 (низший приоритет),
-    # чтобы он не мешал ConversationHandler'ам (которые в группе 0)
+    # и он срабатывает ТОЛЬКО на текст, содержащий цифры (Regex(r'[\d]')).
+    # Текст "хабаровск" (без цифр) он проигнорирует.
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND, 
+        filters.Regex(r'[\d]') & ~filters.COMMAND, 
         handle_message), 
         group=1 
     )
@@ -158,9 +160,7 @@ def main():
         if dislocation_check_on_start_func:
             logger.info("⚡️ Запуск немедленной проверки дислокации после старта...")
             
-            # --- ИСПРАВЛЕНИЕ: Передаем аргумент 'bot' ---
             await dislocation_check_on_start_func(app.bot) 
-            # --------------------------------------------
             
         logger.info("✅ Бот полностью настроен и запущен.")
 
