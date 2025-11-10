@@ -73,7 +73,9 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                 container_number = record.get("container_number")
                 operation = record.get("operation", "").lower().strip()
                 station = record.get("current_station")
-                operation_date_str = record.get("operation_date")
+                
+                # --- ИЗМЕНЕНИЕ 1: Переименовали переменную для ясности ---
+                operation_date_obj = record.get("operation_date")
 
                 terminal_info = terminal_containers_map.get(container_number)
 
@@ -84,14 +86,18 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                 # Проверяем, входит ли операция в список целевых
                 is_target_operation = any(op in operation for op in TARGET_OPERATIONS)
 
-                if is_target_operation and station and operation_date_str:
-                    try:
-                        # Преобразуем строку времени в datetime
-                        # УБЕДИТЕСЬ, что формат 'DD.MM.YYYY HH24:MI' СООТВЕТСТВУЕТ вашим данным!
-                        event_time = datetime.strptime(operation_date_str, '%d.%m.%Y %H:%M')
-                    except ValueError:
-                        logger.warning(f"Не удалось распознать дату '{operation_date_str}' для контейнера {container_number}. Пропускаю.")
-                        continue
+                # --- ИЗМЕНЕНИЕ 2: Заменили try...except на простую проверку ---
+                if is_target_operation and station and operation_date_obj:
+                    
+                    # operation_date_obj - это уже объект datetime, 
+                    # так как он был преобразован в dislocation_importer.py
+                    event_time = operation_date_obj
+
+                    # Добавим проверку типа на всякий случай
+                    if not isinstance(event_time, datetime):
+                         logger.warning(f"Получена дата неизвестного типа '{type(event_time)}' для контейнера {container_number}. Пропускаю.")
+                         continue
+                    # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
                     # Формируем описание события
                     event_description = f"Операция '{record.get('operation')}' на станции" # Используем оригинальное название операции
