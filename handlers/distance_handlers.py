@@ -34,8 +34,15 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if not update.message:
         return ConversationHandler.END
 
-    if context.user_data: #
+    # 🐞 ИСПРАВЛЕНИЕ:
+    # Мы должны принудительно инициализировать user_data.
+    # Если он был None, 'if context.user_data:' не срабатывал,
+    # и user_data оставался None, что приводило к сбою
+    # на следующем шаге (в 'process_from_station').
+    if context.user_data: 
         context.user_data.clear() 
+    else:
+        context.user_data = {} # <-- ЭТА СТРОКА РЕШАЕТ ПРОБЛЕМУ
 
     await update.message.reply_text(
         "Пожалуйста, введите **станцию отправления** (например, 'Хабаровск')."
