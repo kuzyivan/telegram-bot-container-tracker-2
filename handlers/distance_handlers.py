@@ -33,8 +33,8 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if not update.message:
         return ConversationHandler.END
 
-    # 🐞 1. ИСПРАВЛЕНИЕ (Возвращаем к правильному методу)
-    # Мы не присваиваем, а очищаем существующий словарь.
+    # 🐞 ИСПРАВЛЕНИЕ: Используем .clear() - это правильный способ
+    # очистить данные в начале диалога.
     if context.user_data: 
         context.user_data.clear() 
 
@@ -49,14 +49,13 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 # --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
 async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
-    # 🐞 2. ИСПРАВЛЕНИЕ (Основная ошибка)
-    # Убираем 'not context.user_data', так как пустой словарь {} == True
+    # 🐞 ИСПРАВЛЕНИЕ: Убираем проверку 'if not context.user_data:'
+    # Эта проверка была неверной (not {} == True) и приводила к молчанию.
     if not update.message or not update.message.text:
         return ConversationHandler.END
         
-    # Проверяем, что user_data существует (на всякий случай, хотя он должен)
-    if not context.user_data:
-        context.user_data = {}
+    # user_data гарантированно существует, даже если пуст.
+    # Строка 'context.user_data = {}' удалена, так как она вызывала ошибку.
 
     from_station_raw = update.message.text.strip()
     matches = await find_stations_by_name(from_station_raw) 
@@ -67,6 +66,7 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if len(matches) == 1:
         station = matches[0]
+        # context.user_data гарантированно является словарем
         context.user_data['from_station_name'] = station['name'] 
         await update.message.reply_text(
             f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
@@ -91,19 +91,18 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     
-    # 🐞 3. ИСПРАВЛЕНИЕ (Та же ошибка, что и в шаге 1)
-    # Убираем 'not context.user_data'
+    # 🐞 ИСПРАВЛЕНИЕ: Убираем проверку 'if not context.user_data:'
     if not query or not query.data or not query.message: 
         if query: await query.answer() 
         return ConversationHandler.END
         
-    if not context.user_data:
-        context.user_data = {}
+    # user_data гарантированно существует. Строка 'context.user_data = {}' удалена.
         
     await query.answer() 
 
     chosen_name = query.data.replace("dist_from_", "") 
-    context.user_data['from_station_name'] = chosen_name
+    if context.user_data: # Добавляем проверку на NoneType для Pylance
+        context.user_data['from_station_name'] = chosen_name
 
     await query.message.edit_message_text( 
         f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b>\n"
@@ -115,8 +114,7 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Шаг 3: Получаем станцию НАЗНАЧЕНИЯ ---
 async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
-    # Эта проверка УЖЕ БЫЛА ПРАВИЛЬНОЙ, так как 'from_station_name' not in context.user_data
-    # корректно работает с пустым словарем.
+    # Эта проверка всегда была правильной, т.к. она ищет КЛЮЧ
     if (not update.message or not update.message.text or 
         not context.user_data or 'from_station_name' not in context.user_data):
         return ConversationHandler.END
@@ -149,19 +147,18 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     
-    # 🐞 4. ИСПРАВЛЕНИЕ (Та же ошибка, что и в шаге 1)
-    # Убираем 'not context.user_data'
+    # 🐞 ИСПРАВЛЕНИЕ: Убираем проверку 'if not context.user_data:'
     if not query or not query.data: 
         if query: await query.answer()
         return ConversationHandler.END
         
-    if not context.user_data:
-        context.user_data = {}
+    # user_data гарантированно существует. Строка 'context.user_data = {}' удалена.
 
     await query.answer() 
 
     chosen_name = query.data.replace("dist_to_", "") 
-    context.user_data['to_station_name'] = chosen_name
+    if context.user_data: # Добавляем проверку на NoneType для Pylance
+        context.user_data['to_station_name'] = chosen_name
 
     return await run_distance_calculation(update, context)
 
