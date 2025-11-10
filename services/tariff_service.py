@@ -88,7 +88,9 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
 
     # 4. Если точное совпадение не найдено, возвращаемся к ILIKE как запасной вариант
     if not all_stations:
-        stmt_fallback = select(TariffStation).where(TariffStation.name.ilike(f"%{cleaned_name}%"))
+        # --- 🎯 ИСПРАВЛЕНИЕ ЗДЕСЬ (УБРАН ПЕРВЫЙ '%') ---
+        # Ищем "хабаровск%" (начинается с), а не "%хабаровск%" (содержит)
+        stmt_fallback = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
         result_fallback = await session.execute(stmt_fallback)
         all_stations = result_fallback.scalars().all()
 
@@ -114,7 +116,6 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         'station_code': tp_station.code,
         'operations': tp_station.operations,
         'railway': tp_station.railway, 
-        # Здесь Pylance больше не будет ругаться
         'transit_points': _parse_transit_points_from_db(tp_station.transit_points)
     }
 
@@ -263,6 +264,7 @@ async def find_stations_by_name(station_name: str) -> list[dict]:
         
         # 3. Если точных нет, ищем по "начинается с" (Хабаровск -> Хабаровск 1, Хабаровск 2)
         if not all_stations:
+            # --- 🎯 ИСПРАВЛЕНИЕ ЗДЕСЬ (УБРАН ПЕРВЫЙ '%') ---
             # ILIKE 'хабаровск%' (не '%хабаровск%')
             stmt_startswith = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
             result_startswith = await session.execute(stmt_startswith)
