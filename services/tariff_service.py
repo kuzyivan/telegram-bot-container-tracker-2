@@ -232,4 +232,49 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                 logger.info(f"[Tariff] Маршрут (ТП) не найден в матрице для {from_station_name} -> {to_station_name}.")
                 return None
 
-    except Exception
+    except Exception as e:
+        logger.error(f"❌ [Tariff] Ошибка при SQL-расчете расстояния: {e}", exc_info=True)
+        return None
+
+
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ ПОИСКА СТАНЦИЙ (ШАГ 1) ---
+async def find_stations_by_name(station_name: str) -> list[dict]:
+    """
+    Ищет станции по имени, возвращает список совпадений.
+    """
+    if not TariffSessionLocal:
+        logger.error("[Tariff] TARIFF_DATABASE_URL не настроен. Поиск невозможен.")
+        return []
+
+    cleaned_name = _normalize_station_name_for_db(station_name) # Очищает от (кода)
+    
+    # 1. Создаем варианты поиска (для "Хабаровск 2" -> "Хабаровск II")
+    search_variants = {cleaned_name}
+    if " 2" in cleaned_name:
+        search_variants.add(cleaned_name.replace(" 2", " II"))
+    if " 1" in cleaned_name:
+        search_variants.add(cleaned_name.replace(" 1", " I"))
+
+    async with TariffSessionLocal() as session:
+        # 2. Сначала ищем точные совпадения
+        stmt_exact = select(TariffStation).where(TariffStation.name.in_(list(search_variants)))
+        result_exact = await session.execute(stmt_exact)
+        all_stations = result_exact.scalars().all()
+        
+        # 3. Если точных нет, ищем по "начинается с" (Хабаровск -> Хабаровск 1, Хабаровск 2)
+        if not all_stations:
+            # ILIKE 'хабаровск%' (не '%хабаровск%')
+            stmt_startswith = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
+            result_startswith = await session.execute(stmt_startswith)
+            all_stations = result_startswith.scalars().all()
+
+        # 4. Форматируем результат
+        station_list = []
+        for station in all_stations:
+            station_list.append({
+                'name': station.name,
+                'code': station.code,
+                'railway': station.railway
+            })
+        
+        return station_list
