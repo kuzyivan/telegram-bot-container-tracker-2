@@ -30,12 +30,13 @@ def build_station_keyboard(stations: list[dict], callback_prefix: str) -> Inline
 
 # --- Точка входа /distance ---
 async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: /distance command received. Starting conversation.")
+    
     if not update.message:
+        logger.warning(f"[Dist] User {user_id}: /distance called without a message. Ending.")
         return ConversationHandler.END
 
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Используем .clear() - это ЕДИНСТВЕННЫЙ правильный способ
-    # очистить данные в начале диалога.
     if context.user_data: 
         context.user_data.clear() 
 
@@ -49,16 +50,23 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 # --- Шаг 1: Получаем станцию ОТПРАВЛЕНИЯ ---
 async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Убираем все проверки 'if not context.user_data:' и 'context.user_data = {}'
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: Now in ASK_FROM_STATION.")
+
     if not update.message or not update.message.text:
+        logger.warning(f"[Dist] User {user_id}: Exiting ASK_FROM_STATION (no message or text).")
         return ConversationHandler.END
         
-    # context.user_data гарантированно существует.
-
     from_station_raw = update.message.text.strip()
-    matches = await find_stations_by_name(from_station_raw) 
+    logger.info(f"[Dist] User {user_id}: Received 'from_station': {from_station_raw}. Calling find_stations_by_name.")
+
+    try:
+        matches = await find_stations_by_name(from_station_raw)
+        logger.info(f"[Dist] User {user_id}: find_stations_by_name found {len(matches)} matches for 'from_station'.")
+    except Exception as e:
+        logger.error(f"[Dist] User {user_id}: CRITICAL FAILURE in find_stations_by_name for '{from_station_raw}': {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Произошла внутренняя ошибка при поиске станции: {e}")
+        return ConversationHandler.END
 
     if not matches:
         await update.message.reply_text(f"❌ Станция '{from_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
@@ -66,9 +74,9 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if len(matches) == 1:
         station = matches[0]
-        # Pylance может ругаться, но context.user_data не будет None
         if context.user_data:
             context.user_data['from_station_name'] = station['name'] 
+        logger.info(f"[Dist] User {user_id}: Single match found: {station['name']}. Moving to ASK_TO_STATION.")
         await update.message.reply_text(
             f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
             f"Теперь введите <b>станцию назначения</b>.",
@@ -80,6 +88,7 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
         if context.user_data:
             context.user_data['ambiguous_stations'] = matches
         keyboard = build_station_keyboard(matches, "dist_from")
+        logger.info(f"[Dist] User {user_id}: Multiple matches found. Moving to RESOLVE_FROM_STATION.")
         await update.message.reply_text(
             f"⚠️ Найдено несколько станций по запросу '{from_station_raw}'.\n"
             "Пожалуйста, уточните станцию **отправления**:",
@@ -92,10 +101,11 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- Шаг 2: Уточняем станцию ОТПРАВЛЕНИЯ (если нужно) ---
 async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: Now in RESOLVE_FROM_STATION.")
     
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Убираем все проверки 'if not context.user_data:' и 'context.user_data = {}'
     if not query or not query.data or not query.message: 
+        logger.warning(f"[Dist] User {user_id}: Exiting RESOLVE_FROM_STATION (no query, data, or message).")
         if query: await query.answer() 
         return ConversationHandler.END
         
@@ -104,6 +114,7 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     chosen_name = query.data.replace("dist_from_", "") 
     if context.user_data:
         context.user_data['from_station_name'] = chosen_name
+    logger.info(f"[Dist] User {user_id}: Resolved 'from_station' to {chosen_name}. Moving to ASK_TO_STATION.")
 
     await query.edit_message_text( 
         f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b>\n"
@@ -114,13 +125,24 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # --- Шаг 3: Получаем станцию НАЗНАЧЕНИЯ ---
 async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: Now in ASK_TO_STATION.")
     
     if (not update.message or not update.message.text or 
         not context.user_data or 'from_station_name' not in context.user_data):
+        logger.warning(f"[Dist] User {user_id}: Exiting ASK_TO_STATION (invalid state: no message, text, user_data, or from_station_name).")
         return ConversationHandler.END
 
     to_station_raw = update.message.text.strip()
-    matches = await find_stations_by_name(to_station_raw) 
+    logger.info(f"[Dist] User {user_id}: Received 'to_station': {to_station_raw}. Calling find_stations_by_name.")
+
+    try:
+        matches = await find_stations_by_name(to_station_raw) 
+        logger.info(f"[Dist] User {user_id}: find_stations_by_name found {len(matches)} matches for 'to_station'.")
+    except Exception as e:
+        logger.error(f"[Dist] User {user_id}: CRITICAL FAILURE in find_stations_by_name for '{to_station_raw}': {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Произошла внутренняя ошибка при поиске станции: {e}")
+        return ConversationHandler.END
 
     if not matches:
         await update.message.reply_text(f"❌ Станция '{to_station_raw}' не найдена. Попробуйте еще раз или /cancel.")
@@ -129,11 +151,13 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if len(matches) == 1:
         station = matches[0]
         context.user_data['to_station_name'] = station['name']
+        logger.info(f"[Dist] User {user_id}: Single match found: {station['name']}. Moving to run_distance_calculation.")
         return await run_distance_calculation(update, context)
 
     if len(matches) > 1:
         context.user_data['ambiguous_stations'] = matches
         keyboard = build_station_keyboard(matches, "dist_to")
+        logger.info(f"[Dist] User {user_id}: Multiple matches found. Moving to RESOLVE_TO_STATION.")
         await update.message.reply_text(
             f"⚠️ Найдено несколько станций по запросу '{to_station_raw}'.\n"
             "Пожалуйста, уточните станцию **назначения**:",
@@ -146,10 +170,11 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --- Шаг 4: Уточняем станцию НАЗНАЧЕНИЯ (если нужно) ---
 async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: Now in RESOLVE_TO_STATION.")
     
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Убираем все проверки 'if not context.user_data:' и 'context.user_data = {}'
     if not query or not query.data: 
+        logger.warning(f"[Dist] User {user_id}: Exiting RESOLVE_TO_STATION (no query or data).")
         if query: await query.answer()
         return ConversationHandler.END
         
@@ -158,11 +183,14 @@ async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chosen_name = query.data.replace("dist_to_", "") 
     if context.user_data: 
         context.user_data['to_station_name'] = chosen_name
+    logger.info(f"[Dist] User {user_id}: Resolved 'to_station' to {chosen_name}. Moving to run_distance_calculation.")
 
     return await run_distance_calculation(update, context)
 
 # --- Шаг 5: Выполняем расчет ---
 async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: Now in run_distance_calculation.")
 
     query = update.callback_query
     message = update.message
@@ -174,7 +202,7 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         message_to_reply = query.message
 
     if not message_to_reply: 
-        logger.error("Could not find message to reply to in run_distance_calculation")
+        logger.error(f"[Dist] User {user_id}: Could not find message to reply to in run_distance_calculation. Ending.")
         return ConversationHandler.END
 
     assert message_to_reply is not None
@@ -183,8 +211,11 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
     to_station_name = context.user_data.get('to_station_name') if context.user_data else None 
 
     if not from_station_name or not to_station_name:
+        logger.warning(f"[Dist] User {user_id}: Exiting calculation (from_station or to_station missing).")
         await message_to_reply.reply_text("❌ Ошибка: одна из станций не выбрана. Начните заново /distance.") 
         return ConversationHandler.END
+    
+    logger.info(f"[Dist] User {user_id}: Calculating distance for: {from_station_name} -> {to_station_name}.")
 
     if query:
         await query.edit_message_text(
@@ -206,6 +237,7 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             distance = result['distance']
             info_a = result['info_a']
             info_b = result['info_b']
+            logger.info(f"[Dist] User {user_id}: Calculation SUCCESS. Distance: {distance} km.")
 
             response = (
                 f"✅ <b>Расчет успешно выполнен!</b>\n\n"
@@ -217,13 +249,14 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
                 f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
             )
             
-            # Если мы редактировали сообщение (из query), то удалим "⏳ Выполняю расчет..."
             if query:
+                # Если редактировали, удаляем "⏳ Выполняю расчет..."
                 await query.delete_message()
             
             await message_to_reply.reply_text(response, parse_mode='HTML') 
 
         else:
+            logger.warning(f"[Dist] User {user_id}: Calculation FAILED (route not found in matrix) for {from_station_name} -> {to_station_name}.")
             response = (
                 f"❌ <b>Не удалось найти маршрут.</b>\n"
                 f"Не найден путь в матрицах между:\n"
@@ -232,15 +265,18 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             await message_to_reply.reply_text(response, parse_mode='HTML') 
 
     except Exception as e:
-        logger.exception(f"Критическая ошибка в /distance (run_distance_calculation): {e}")
+        logger.exception(f"[Dist] User {user_id}: CRITICAL FAILURE in run_distance_calculation: {e}")
         await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
     if context.user_data: 
         context.user_data.clear()
+    logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
     return ConversationHandler.END
 
 # --- Обработка отмены ---
 async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id if update.effective_user else "Unknown"
+    logger.info(f"[Dist] User {user_id}: Cancelling distance conversation.")
 
     query = update.callback_query
     message = update.message
@@ -253,9 +289,10 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     if query:
         await query.answer()
-
-    if message_to_reply: 
-        assert message_to_reply is not None
+        # Если отмена пришла с кнопки (Inline), лучше отредактировать сообщение
+        await query.edit_message_text("Расчет расстояния отменён.")
+    elif message_to_reply: 
+        # Если отмена пришла командой /cancel
         await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
 
     if context.user_data:
