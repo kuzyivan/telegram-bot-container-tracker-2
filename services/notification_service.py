@@ -230,7 +230,7 @@ class NotificationService:
                     sub_result = await session.execute(
                         select(Subscription.user_telegram_id)
                         # Используем оператор overlap для проверки пересечения списков
-                        .where(Subscription.containers.overlap(containers_in_train))
+                        .where(Subscription.containers.op('&&')(containers_in_train))
                     )
                     user_ids_to_notify = sub_result.scalars().unique().all()
             
