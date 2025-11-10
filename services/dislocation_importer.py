@@ -16,6 +16,8 @@ from logger import get_logger
 from telegram import Bot
 from services.imap_service import ImapService # Импортируем КЛАСС
 from services import notification_service # Для вызова уведомлений
+# --- 1. ДОБАВЛЕН ИМПОРТ ---
+from services.train_event_notifier import process_dislocation_for_train_events
 
 logger = get_logger(__name__) 
 
@@ -159,7 +161,7 @@ async def process_dislocation_file(filepath: str):
     
     updated_count = 0
     inserted_count = 0
-    events_to_log = [] 
+    # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
 
     session = SessionLocal() # <--- ИСПРАВЛЕНО
     try:
@@ -255,13 +257,7 @@ async def process_dislocation_file(filepath: str):
                         for key, value in row_data.items():
                             setattr(existing_entry, str(key), value)
                         
-                        events_to_log.append(TrainEventLog(
-                            container_number=container_number,
-                            train_number=row_data.get('train_number', 'N/A'),
-                            event_description=row_data.get('operation', 'Обновление'),
-                            station=row_data.get('current_station', 'N/A'),
-                            event_time=new_operation_date
-                        ))
+                        # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
                         updated_count += 1
                 else:
                     # --- ЛОГИКА СОЗДАНИЯ ---
@@ -270,19 +266,23 @@ async def process_dislocation_file(filepath: str):
                     session.add(new_entry)
                     tracking_map[container_number] = new_entry 
                     
-                    events_to_log.append(TrainEventLog(
-                        container_number=container_number,
-                        train_number=row_data.get('train_number', 'N/A'),
-                        event_description="Запись создана",
-                        station=row_data.get('current_station', 'N/A'),
-                        event_time=new_operation_date if new_operation_date else datetime.now()
-                    ))
+                    # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
                     inserted_count += 1
-                    
-        if events_to_log:
-            session.add_all(events_to_log)
+        
+        # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
         
         await session.commit()
+        
+        # --- 3. ДОБАВЛЕН ВЫЗОВ ПРАВИЛЬНОЙ ЛОГИКИ ---
+        if inserted_count > 0 or updated_count > 0:
+            logger.info(f"Запуск анализа событий поезда для {len(data_rows)} записей...")
+            try:
+                # Эта функция сама откроет сессию и запишет события в TrainEventLog
+                await process_dislocation_for_train_events(data_rows)
+            except Exception as e_event:
+                logger.error(f"Ошибка при логировании событий поезда: {e_event}", exc_info=True)
+        # --- КОНЕЦ НОВОГО БЛОКА ---
+
         logger.info(f"Успешно сохранено в БД: {inserted_count} новых, {updated_count} обновленных.")
         
     except Exception as e:

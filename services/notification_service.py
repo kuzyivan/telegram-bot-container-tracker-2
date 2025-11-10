@@ -18,6 +18,8 @@ from logger import get_logger
 from utils.send_tracking import create_excel_file
 from utils.email_sender import send_email 
 # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: УДАЛЕН ошибочный импорт array_overlap
+# --- 1. ДОБАВЛЕН ИМПОРТ ---
+from config import ADMIN_CHAT_ID
 
 logger = get_logger(__name__)
 
@@ -250,6 +252,8 @@ class NotificationService:
             )
 
             # 5. Отправка уведомления и обновление статуса
+            # --- 2. НАЧАЛО ИЗМЕНЕНИЙ ---
+            admin_notified = False
             for user_id in user_ids_to_notify:
                 try:
                     await self.bot.send_message(
@@ -258,8 +262,23 @@ class NotificationService:
                         parse_mode="Markdown"
                     )
                     sent_notifications += 1
+                    if user_id == ADMIN_CHAT_ID:
+                        admin_notified = True
                 except Exception as e:
                     logger.error(f"[TrainEventNotify] Ошибка отправки пользователю {user_id}: {e}")
+
+            # Отправляем админу, если он не получил уведомление как подписчик
+            if not admin_notified:
+                try:
+                    await self.bot.send_message(
+                        chat_id=ADMIN_CHAT_ID,
+                        text=message_text,
+                        parse_mode="Markdown"
+                    )
+                    logger.info(f"[TrainEventNotify] Уведомление о событии поезда также отправлено админу.")
+                except Exception as e:
+                    logger.error(f"[TrainEventNotify] Ошибка при отправке уведомления о событии админу: {e}")
+            # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
             # 6. Отмечаем все логи этого события как отправленные
             for log_id in data['log_ids']:
