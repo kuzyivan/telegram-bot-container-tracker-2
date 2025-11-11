@@ -3,7 +3,7 @@ import os
 import re
 import asyncio
 from pathlib import Path
-from datetime import datetime # <--- ДОБАВЛЕН ИМПОРТ
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
@@ -17,13 +17,22 @@ from services.terminal_importer import (
     import_train_from_excel, 
     extract_train_code_from_filename, 
     process_terminal_report_file,
-    _collect_containers_from_excel # Импортируем сборщик контейнеров
+    _collect_containers_from_excel 
 )
 from services.file_utils import save_temp_file_async
 from utils.notify import notify_admin
 
-# --- ✅ Импортируем новую функцию ---
-from queries.train_queries import upsert_train_on_upload 
+# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
+from queries.train_queries import (
+    upsert_train_on_upload, 
+    get_first_container_in_train,
+    get_train_client_summary_by_code,
+    update_train_status_from_tracking_data,
+    get_train_details
+)
+from queries.containers import get_latest_tracking_data # Нужен для поиска дислокации
+from models import Train # Нужен для форматирования
+# ---
 
 logger = get_logger(__name__)
 
@@ -51,7 +60,124 @@ async def upload_file_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(text, parse_mode='Markdown')
 
 
-# --- НОВЫЙ ДИАЛОГ ЗАГРУЗКИ ---
+# --- ✅ НОВАЯ ФУНКЦИЯ: ФОРМАТИРОВАНИЕ ОТЧЕТА ---
+async def _build_and_send_report(
+    message: Update.message,
+    terminal_train_number: str
+):
+    """
+    Собирает все данные по поезду (Train, Сводка, Контрольный КТК) 
+    и отправляет финальный отчет.
+    """
+    logger.info(f"[TrainReport] Собираю отчет для {terminal_train_number}...")
+    
+    # 1. Получаем основную инфу о поезде (включая дислокацию)
+    train_details = await get_train_details(terminal_train_number)
+    
+    # 2. Получаем сводку по клиентам
+    client_summary = await get_train_client_summary_by_code(terminal_train_number)
+    
+    # 3. Получаем контрольный контейнер
+    control_container = await get_first_container_in_train(terminal_train_number)
+
+    # --- Форматируем отчет ---
+    lines = [f"🚆 **Поезд:** `{terminal_train_number}`"]
+    
+    if train_details:
+        lines.append(f"**Дата отправления:** `{train_details.departure_date.strftime('%d.%m.%Y') if train_details.departure_date else 'н/д'}`")
+        lines.append(f"**Станция назначения:** `{train_details.destination_station or 'н/д'}`")
+        lines.append(f"**Станция перегруза:** `{train_details.overload_station_name or 'Нет'}`")
+        lines.append("-----")
+        if train_details.overload_date:
+            lines.append(f"**Дата перегруза:** `{train_details.overload_date.strftime('%d.%m.%Y %H:%M')}`")
+        
+        lines.append(f"**Станция операции:** `{train_details.last_known_station or 'н/д'}`")
+        lines.append(f"**Дата и время операции:** `{train_details.last_operation_date.strftime('%d.%m.%Y %H:%M') if train_details.last_operation_date else 'н/д'}`")
+    else:
+        lines.append("_(Не удалось загрузить детали поезда из БД `Train`)_")
+        
+    lines.append("───")
+    lines.append("📦 **Сводка по клиентам:**")
+    if client_summary:
+        for client, count in client_summary.items():
+            lines.append(f"• {client} — *{count}*")
+    else:
+        lines.append("_(Сводка не найдена)_")
+        
+    lines.append("───")
+    lines.append(f"**Контрольный контейнер:** `{control_container or 'н/д'}`")
+    
+    await message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+# --- ✅ НОВАЯ ФУНКЦИЯ: ОБЩАЯ ЛОГИКА ЗАВЕРШЕНИЯ ---
+async def _finish_train_upload(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    overload_station: str | None,
+    overload_date: datetime | None
+) -> int:
+    """
+    Общая функция, которая выполняет все шаги и отправляет отчет.
+    """
+    if not context.user_data or 'train_file_path' not in context.user_data:
+        if update.callback_query:
+            await update.callback_query.edit_message_text("❌ Ошибка сессии. Пожалуйста, загрузите файл заново.")
+        return ConversationHandler.END
+
+    dest_path = context.user_data['train_file_path']
+    train_code = context.user_data['train_code']
+    admin_id = context.user_data['admin_id']
+    container_count = context.user_data['container_count']
+
+    # 1. Обновляем TerminalContainer (данные о клиентах)
+    try:
+        await import_train_from_excel(str(dest_path))
+        logger.info(f"[TrainUpload] Шаг 1/4: TerminalContainer для {train_code} обновлен.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка импорта в `TerminalContainer`: {e}", exc_info=True)
+        # Не прерываем, т.к. это не критично для таблицы Train
+
+    # 2. Создаем/Обновляем запись в 'Train' (с инфой о перегрузе)
+    await upsert_train_on_upload(
+        terminal_train_number=train_code,
+        container_count=container_count,
+        admin_id=admin_id,
+        overload_station_name=overload_station,
+        overload_date=overload_date
+    )
+    logger.info(f"[TrainUpload] Шаг 2/4: Таблица `Train` для {train_code} обновлена (перегруз: {overload_station or 'Нет'}).")
+
+    # 3. Находим дислокацию (по контрольному контейнеру)
+    control_container = await get_first_container_in_train(train_code)
+    if control_container:
+        logger.info(f"[TrainUpload] Шаг 3/4: Найден контрольный КТК: {control_container}. Ищу дислокацию...")
+        tracking_data_list = await get_latest_tracking_data(control_container)
+        
+        if tracking_data_list:
+            # 4. Обновляем 'Train' данными дислокации
+            await update_train_status_from_tracking_data(train_code, tracking_data_list[0])
+            logger.info(f"[TrainUpload] Шаг 4/4: Статус поезда {train_code} обновлен дислокацией.")
+        else:
+            logger.warning(f"[TrainUpload] Шаг 4/4: Дислокация для {control_container} не найдена.")
+    else:
+        logger.warning(f"[TrainUpload] Шаг 3/4: Контрольный КТК для {train_code} не найден.")
+
+    # 5. Отправляем отчет
+    # Определяем, куда отвечать (в чат или редактировать сообщение)
+    if update.callback_query:
+        await update.callback_query.delete_message() # Удаляем кнопки "Да/Нет"
+        await _build_and_send_report(update.callback_query.message, train_code)
+    elif update.message:
+        await _build_and_send_report(update.message, train_code)
+
+    # Очистка
+    if os.path.exists(dest_path): os.remove(dest_path)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# --- ОБНОВЛЕННЫЙ ДИАЛОГ ЗАГРУЗКИ ---
 
 async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     """
@@ -135,7 +261,7 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
         context.user_data['train_file_path'] = dest_path
         context.user_data['train_code'] = train_code
         context.user_data['admin_id'] = update.effective_user.id
-        context.user_data['container_count'] = container_count # <--- Сохраняем кол-во
+        context.user_data['container_count'] = container_count 
 
         keyboard = [
             [
@@ -149,7 +275,7 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
-        return ASK_OVERLOAD_CONFIRM # Переходим в состояние ожидания ответа
+        return ASK_OVERLOAD_CONFIRM
             
     else:
         await update.message.reply_text("⚠️ Не удалось определить тип файла (103_, KXX-YYY, или A-Terminal).")
@@ -160,65 +286,30 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
 async def handle_overload_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обрабатывает ответ (Да/Нет) на вопрос о перегрузе."""
     query = update.callback_query
-    await query.answer()
+    await query.answer("Принято, обрабатываю...")
     
-    if not context.user_data or 'train_file_path' not in context.user_data:
-        await query.edit_message_text("❌ Ошибка сессии. Пожалуйста, загрузите файл заново.")
-        return ConversationHandler.END
-
     choice = query.data
-    dest_path = context.user_data['train_file_path']
-    train_code = context.user_data['train_code']
-    admin_id = context.user_data['admin_id']
-    container_count = context.user_data['container_count']
     
     if choice == "overload_no":
-        logger.info(f"Выбрана обычная загрузка для поезда {train_code}")
-        response_lines = []
-        
-        # 1. Запускаем обычный импорт (для TerminalContainer)
-        try:
-            updated_count, total_count, _ = await import_train_from_excel(str(dest_path))
-            response_lines.append(
-                f"✅ Обычный импорт в `TerminalContainer` завершен.\n"
-                f"  (Обновлено/Найдено: **{updated_count}/{total_count}**)"
-            )
-        except Exception as e:
-            logger.error(f"❌ Ошибка импорта в `TerminalContainer`: {e}", exc_info=True)
-            response_lines.append(f"❌ Ошибка импорта в `TerminalContainer`: {e}")
-
-        # 2. Записываем в новую таблицу 'Train' (без перегруза)
-        try:
-            await upsert_train_on_upload(
-                terminal_train_number=train_code, # <--- ✅ Используем правильное поле
-                container_count=container_count,
-                admin_id=admin_id,
-                overload_station_name=None, # <--- Нет перегруза
-                overload_date=None
-            )
-            response_lines.append(f"✅ Запись в таблице Поездов (`Train`) для **{train_code}** создана/обновлена.")
-        except Exception as e:
-            logger.error(f"❌ Ошибка записи в таблицу `Train`: {e}", exc_info=True)
-            response_lines.append(f"❌ Ошибка записи в таблицу `Train`: {e}")
-            
-        await query.edit_message_text("\n\n".join(response_lines), parse_mode='Markdown')
-        
-        if os.path.exists(dest_path): os.remove(dest_path)
-        context.user_data.clear()
-        return ConversationHandler.END
+        logger.info(f"Выбрана обычная загрузка для поезда {context.user_data.get('train_code')}")
+        # Вызываем общую функцию, передавая "Нет" для перегруза
+        return await _finish_train_upload(
+            update, 
+            context, 
+            overload_station=None, 
+            overload_date=None
+        )
         
     elif choice == "overload_yes":
-        # --- ПЕРЕХОД К ВВОДУ СТАНЦИИ ---
-        logger.info(f"Поезд {train_code} помечен как 'с перегрузом'. Запрашиваю станцию.")
+        logger.info(f"Поезд {context.user_data.get('train_code')} помечен как 'с перегрузом'. Запрашиваю станцию.")
         await query.edit_message_text(
-            f"Поезд **{train_code}**.\n\n"
+            f"Поезд **{context.user_data.get('train_code')}**.\n\n"
             f"Пожалуйста, введите **название станции перегруза**:"
             f"\n(Или /cancel для отмены)",
             parse_mode='Markdown'
         )
         return ASK_STATION_NAME
 
-    # Добавляем возврат для случая, если choice не "yes" или "no" (хотя pattern это исключает)
     return ConversationHandler.END
 
 
@@ -229,50 +320,15 @@ async def handle_overload_station_name(update: Update, context: ContextTypes.DEF
         
     station_name = update.message.text.strip()
     
-    dest_path = context.user_data['train_file_path']
-    train_code = context.user_data['train_code']
-    admin_id = context.user_data['admin_id']
-    container_count = context.user_data['container_count']
+    await update.message.reply_text(f"Принято: станция перегруза **{station_name}**. Начинаю обработку...", parse_mode="Markdown")
 
-    response_lines = []
-
-    # 1. Сначала выполняем обычный импорт (для TerminalContainer)
-    try:
-        updated_count, total_count, _ = await import_train_from_excel(str(dest_path))
-        response_lines.append(
-            f"✅ Обычный импорт в `TerminalContainer` завершен.\n"
-            f"  (Обновлено/Найдено: **{updated_count}/{total_count}**)"
-        )
-    except Exception as e:
-        logger.error(f"❌ Ошибка импорта в `TerminalContainer`: {e}", exc_info=True)
-        response_lines.append(f"❌ Ошибка импорта в `TerminalContainer`: {e}")
-
-    # 2. Логируем событие перегруза в 'Train'
-    try:
-        success = await upsert_train_on_upload(
-            terminal_train_number=train_code, # <--- ✅ Используем правильное поле
-            container_count=container_count,
-            admin_id=admin_id,
-            overload_station_name=station_name, # <--- Станция указана
-            overload_date=datetime.now() # <--- Ставим текущую дату
-        )
-        if success:
-            response_lines.append(
-                f"✅ Событие перегруза поезда **{train_code}** на станции **{station_name}** "
-                f"успешно зарегистрировано в таблице `Train`."
-            )
-        else:
-            response_lines.append(f"❌ Не удалось зарегистрировать событие перегруза в `Train`.")
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка логирования перегруза в `Train`: {e}", exc_info=True)
-        response_lines.append(f"❌ Критическая ошибка логирования перегруза в `Train`: {e}")
-
-    # Отправляем сводный отчет
-    await update.message.reply_text("\n\n".join(response_lines), parse_mode='Markdown')
-    
-    if os.path.exists(dest_path): os.remove(dest_path)
-    context.user_data.clear()
-    return ConversationHandler.END
+    # Вызываем общую функцию, передавая станцию и текущую дату
+    return await _finish_train_upload(
+        update, 
+        context, 
+        overload_station=station_name, 
+        overload_date=datetime.now()
+    )
 
 
 async def cancel_overload_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

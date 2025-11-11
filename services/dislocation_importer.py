@@ -14,11 +14,14 @@ from datetime import datetime
 # --- Импорты из вашего проекта ---
 from db import SessionLocal
 from models import Tracking, TrainEventLog, Train # <--- ✅ Добавлен импорт Train
+from model.terminal_container import TerminalContainer # <--- ✅ Добавлен импорт
 from logger import get_logger 
 from telegram import Bot
 from services.imap_service import ImapService # Импортируем КЛАСС
 from services import notification_service # Для вызова уведомлений
 from services.train_event_notifier import process_dislocation_for_train_events
+# --- ✅ Добавлен импорт для обновления статуса ---
+from queries.train_queries import update_train_status_from_tracking_data
 
 logger = get_logger(__name__) 
 
@@ -28,7 +31,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 # ---
 
 # =========================================================================
-# === 1. КАРТА СОПОСТАВЛЕНИЯ ДЛЯ НОВОГО ФОРМАТА ===
+# === 1. КАРТА СОПОСТАВЛЕНИЯ (без изменений) ===
 # =========================================================================
 
 COLUMN_MAPPING_RZD_NEW = {
@@ -80,7 +83,7 @@ COLUMN_MAPPING_RZD_NEW = {
 }
 
 # =========================================================================
-# === 2. ХЕЛПЕРЫ ===
+# === 2. ХЕЛПЕРЫ (без изменений) ===
 # =========================================================================
 
 def _fill_empty_rows_with_previous(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
@@ -89,19 +92,16 @@ def _fill_empty_rows_with_previous(df: pd.DataFrame, column_name: str) -> pd.Dat
     return df
 
 # =========================================================================
-# === 3. "УМНЫЙ" ЧИТАТЕЛЬ ФАЙЛОВ ===
+# === 3. "УМНЫЙ" ЧИТАТЕЛЬ ФАЙЛОВ (без изменений) ===
 # =========================================================================
 
 def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     """
-    Считывает данные из .xlsx файла дислокации от РЖД, 
-    пропуская 3 строки и используя 4-ю как заголовок.
-    Возвращает DataFrame с УЖЕ ПЕРЕИМЕНОВАННЫМИ столбцами (ключами модели).
+    Считывает данные из .xlsx файла дислокации от РЖД.
     """
     logger.info(f"Чтение файла дислокации: {filepath}")
     
     try:
-        # --- Читаем все текстовые колонки как 'str' ---
         excel_cols_as_str = [
             'Грузоотправитель (ТГНЛ)', 'Грузоотправитель (ОКПО)', 'Грузоотправитель (наим)',
             'Грузополучатель (ТГНЛ)', 'Грузополучатель (ОКПО)', 'Грузополучатель (наим)',
@@ -143,87 +143,84 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
 
 
 # =========================================================================
-# === 4. ✅ НОВАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN ===
+# === 4. ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN ===
 # =========================================================================
 
-async def update_train_statuses_from_tracking(session: AsyncSession, processed_container_rows: list[dict]):
+async def update_train_statuses_from_tracking(
+    session: AsyncSession, 
+    processed_tracking_objects: List[Tracking]
+):
     """
     Агрегирует данные из Tracking и обновляет таблицу 'Train'.
     Вызывается ВНУТРИ сессии process_dislocation_file.
     """
-    logger.info(f"[TrainTable] Запуск обновления статусов поездов для {len(processed_container_rows)} записей.")
+    logger.info(f"[TrainTable] Запуск обновления статусов поездов для {len(processed_tracking_objects)} записей.")
     
-    # 1. Находим последнюю операцию для каждого поезда из ОБРАБОТАННЫХ данных
-    train_latest_op: Dict[str, Dict[str, Any]] = {}
-    
-    for row in processed_container_rows:
-        train_number = row.get('train_number')
-        op_date = row.get('operation_date') # Это уже datetime объект
-        
-        if not train_number or not op_date:
-            continue # Пропускаем строки без поезда или даты операции
+    # 1. Находим последнюю операцию для каждого КОНТЕЙНЕРА из обработанных
+    container_latest_op: Dict[str, Tracking] = {}
+    for tracking_obj in processed_tracking_objects:
+        op_date = tracking_obj.operation_date
+        if not op_date:
+            continue
             
-        if train_number not in train_latest_op:
-            train_latest_op[train_number] = row
-        else:
-            # Сравниваем даты, чтобы найти самую свежую
-            current_latest_date = train_latest_op[train_number].get('operation_date')
-            if current_latest_date is None or op_date > current_latest_date:
-                train_latest_op[train_number] = row
+        container_num = tracking_obj.container_number
+        # Обновляем, только если дата новее или ее не было
+        if container_num not in container_latest_op or op_date > container_latest_op[container_num].operation_date:
+            container_latest_op[container_num] = tracking_obj
     
+    if not container_latest_op:
+        logger.info("[TrainTable] Нет данных для обновления статусов поездов.")
+        return 0
+
+    # 2. Находим связь Контейнер -> Терминальный Поезд (K25-xxx)
+    container_keys = list(container_latest_op.keys())
+    result = await session.execute(
+        select(TerminalContainer.container_number, TerminalContainer.train)
+        .where(TerminalContainer.container_number.in_(container_keys))
+        .where(TerminalContainer.train.isnot(None))
+    )
+    
+    # Создаем карту: {'контейнер': 'K25-103'}
+    container_to_train_map: Dict[str, str] = {row[0]: row[1] for row in result.all()}
+
+    # 3. Агрегируем по ТЕРМИНАЛЬНОМУ ПОЕЗДУ
+    # Нам нужна последняя операция для каждого *поезда*
+    train_latest_op: Dict[str, Tracking] = {}
+    
+    for container_num, tracking_obj in container_latest_op.items():
+        terminal_train_num = container_to_train_map.get(container_num)
+        
+        # Если этот контейнер не привязан к поезду (K25-xxx), пропускаем
+        if not terminal_train_num:
+            continue
+            
+        if terminal_train_num not in train_latest_op:
+            train_latest_op[terminal_train_num] = tracking_obj
+        else:
+            # Ищем самую свежую операцию среди всех контейнеров этого поезда
+            current_latest_date = train_latest_op[terminal_train_num].operation_date
+            if tracking_obj.operation_date and (current_latest_date is None or tracking_obj.operation_date > current_latest_date):
+                train_latest_op[terminal_train_num] = tracking_obj
+
     if not train_latest_op:
-        logger.info("[TrainTable] В этом файле дислокации не найдено поездов с датами операций. Обновление не требуется.")
+        logger.info("[TrainTable] Нет отслеживаемых поездов (K25-xxx) в этом обновлении.")
         return 0
 
     logger.info(f"[TrainTable] Найдены {len(train_latest_op)} уникальных поездов для обновления: {list(train_latest_op.keys())}")
-    
+
+    # 4. Обновляем таблицу 'Train'
     updated_train_count = 0
-    
-    # 2. Обновляем таблицу 'Train' для каждого поезда
-    for train_number, latest_track_row in train_latest_op.items():
+    for terminal_train_number, latest_tracking_obj in train_latest_op.items():
         try:
-            # 3. Собираем данные для обновления
-            update_data = {
-                "last_known_station": latest_track_row.get('current_station'),
-                "last_known_road": latest_track_row.get('operation_road'),
-                "last_operation": latest_track_row.get('operation'),
-                "last_operation_date": latest_track_row.get('operation_date'),
-                "km_remaining": latest_track_row.get('km_left'),
-                # Используем 'forecast_days' из файла, если он есть
-                "eta_days": latest_track_row.get('forecast_days'), 
-            }
-            
-            # Обновляем маршрут, только если он есть в этой записи
-            if latest_track_row.get('to_station'):
-                update_data["destination_station"] = latest_track_row.get('to_station')
-            if latest_track_row.get('trip_start_datetime'):
-                # Убедимся, что это date, а не datetime
-                start_dt = latest_track_row.get('trip_start_datetime')
-                if isinstance(start_dt, datetime):
-                    update_data["departure_date"] = start_dt.date()
-                else:
-                    update_data["departure_date"] = start_dt
-
-
-            # 4. Используем UPSERT (Insert on conflict update)
-            # Это создаст запись о поезде, если ее нет, или обновит, если есть
-            stmt = pg_insert(Train).values(
-                train_number=train_number,
-                **update_data
-            ).on_conflict_do_update(
-                index_elements=['train_number'], # Уникальный ключ
-                set_={
-                    **update_data, # Обновляем все поля
-                    "updated_at": func.now()
-                }
+            # Используем функцию из train_queries, т.к. она уже написана
+            success = await update_train_status_from_tracking_data(
+                terminal_train_number, 
+                latest_tracking_obj
             )
-            
-            await session.execute(stmt)
-            updated_train_count += 1
-            
+            if success:
+                updated_train_count += 1
         except Exception as e:
-            logger.error(f"[TrainTable] Не удалось обновить статус для поезда {train_number}: {e}", exc_info=True)
-            # Не прерываем, продолжаем со следующим поездом
+            logger.error(f"[TrainTable] Не удалось обновить статус для поезда {terminal_train_number}: {e}", exc_info=True)
 
     logger.info(f"[TrainTable] Успешно обновлены статусы для {updated_train_count} поездов.")
     return updated_train_count
@@ -249,8 +246,8 @@ async def process_dislocation_file(filepath: str):
     updated_count = 0
     inserted_count = 0
     
-    # --- ✅ Список для сбора обновленных данных ---
-    processed_rows_for_train_update: List[Dict[str, Any]] = []
+    # --- ✅ Список для сбора обновленных ОБЪЕКТОВ Tracking ---
+    processed_tracking_objects: List[Tracking] = []
 
     session = SessionLocal()
     try:
@@ -260,7 +257,6 @@ async def process_dislocation_file(filepath: str):
         ]
         if not container_numbers_from_file:
             logger.warning(f"В файле {filepath} не найдено ни одной строки с номером контейнера.")
-            # Добавим finally, чтобы сессия закрылась
         else:
             existing_trackings = (await session.execute(
                 select(Tracking).where(Tracking.container_number.in_(set(container_numbers_from_file)))
@@ -336,7 +332,7 @@ async def process_dislocation_file(filepath: str):
                             setattr(existing_entry, str(key), value)
                         
                         updated_count += 1
-                        processed_rows_for_train_update.append(row_data) # <--- ✅ Сбор данных
+                        processed_tracking_objects.append(existing_entry) # <--- ✅ Сбор данных
                 else:
                     # --- ЛОГИКА СОЗДАНИЯ ---
                     new_entry_data = {str(k): v for k, v in row_data.items()}
@@ -345,13 +341,14 @@ async def process_dislocation_file(filepath: str):
                     tracking_map[container_number] = new_entry 
                     
                     inserted_count += 1
-                    processed_rows_for_train_update.append(row_data) # <--- ✅ Сбор данных
+                    processed_tracking_objects.append(new_entry) # <--- ✅ Сбор данных
         
         logger.info(f"Успешно сохранено в БД Tracking: {inserted_count} новых, {updated_count} обновленных.")
         
         # --- ✅ ВЫЗОВ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN (перед коммитом) ---
-        if processed_rows_for_train_update:
-            await update_train_statuses_from_tracking(session, processed_rows_for_train_update)
+        if processed_tracking_objects:
+            # Передаем сессию
+            await update_train_statuses_from_tracking(session, processed_tracking_objects)
         # ---
         
         await session.commit()
@@ -378,7 +375,7 @@ async def process_dislocation_file(filepath: str):
 
 
 # =========================================================================
-# === 6. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ ===
+# === 6. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ (без изменений) ===
 # =========================================================================
 
 # Фильтры из вашего repomix
