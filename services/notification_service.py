@@ -4,22 +4,20 @@ import asyncio
 import os 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession # <-- ✅ Импорт
 from telegram import Bot
-# Добавлены Dict, Tuple
 from typing import List, Any, Dict, Tuple 
 
 from db import SessionLocal
-# Импортируем Subscription, Tracking, SubscriptionEmail
-from models import Subscription, Tracking, SubscriptionEmail 
-# Импортируем TerminalContainer из его файла
+from models import Subscription, Tracking, SubscriptionEmail, TrainEventLog # <--- ✅ Импорт
 from model.terminal_container import TerminalContainer 
 from logger import get_logger
-# Импортируем утилиты для работы с Excel и почтой
 from utils.send_tracking import create_excel_file
 from utils.email_sender import send_email 
-# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: УДАЛЕН ошибочный импорт array_overlap
-# --- 1. ДОБАВЛЕН ИМПОРТ ---
-from config import ADMIN_CHAT_ID
+# --- ✅ Импорты для новой логики ---
+from services.train_event_notifier import get_unsent_train_events, mark_event_as_sent
+from utils.notify import notify_admin
+# ---
 
 logger = get_logger(__name__)
 
@@ -29,12 +27,11 @@ class NotificationService:
 
     async def send_scheduled_notifications(self, target_time: time) -> tuple[int, int]:
         """
-        Отправляет уведомления пользователям, чьи подписки соответствуют target_time.
+        Отправляет плановые уведомления (09:00, 16:00) пользователям по их подпискам.
         """
         sent_count = 0
         total_active_subscriptions = 0
 
-        # Заголовки для Excel
         EXCEL_HEADERS = [
              'Номер контейнера', 'Станция отправления', 'Станция назначения',
              'Станция операции', 'Операция', 'Дата и время операции',
@@ -45,7 +42,7 @@ class NotificationService:
         logger.info(f"[Notification] Запрос активных подписок на время {target_time.strftime('%H:%M')}...")
         
         async with SessionLocal() as session:
-            # 1. Находим все активные подписки на целевое время, включая связи с пользователем и Email.
+            # 1. Находим все активные подписки на целевое время
             result = await session.execute(
                 select(Subscription)
                 .filter(Subscription.is_active == True)
@@ -83,7 +80,6 @@ class NotificationService:
                     if tracking_info:
                         container_data_list.append(tracking_info)
                         
-                        # Собираем данные в формате списка для Excel
                         excel_rows.append([
                              tracking_info.container_number, tracking_info.from_station, tracking_info.to_station,
                              tracking_info.current_station, tracking_info.operation, tracking_info.operation_date,
@@ -96,17 +92,13 @@ class NotificationService:
                     message_parts = [f"🔔 **Отчет по подписке: {sub.subscription_name}** 🔔"]
                     for info in container_data_list:
                         
-                        # --- ✅ ИСПРАВЛЕНИЕ: info.operation_date - это datetime, а не str ---
                         date_obj = info.operation_date 
                         formatted_date = "н/д"
-                        if date_obj: # Проверяем, что это не None
+                        if date_obj: 
                             try:
-                                # Просто форматируем datetime объект
-                                # Добавляем (UTC), т.к. мы теперь храним в UTC
                                 formatted_date = date_obj.strftime('%d.%m %H:%M (UTC)')
                             except Exception as e:
                                 logger.warning(f"[Notification] Не удалось отформатировать дату '{date_obj}' для {info.container_number}: {e}")
-                        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
                         
                         message_parts.append(f"*{info.container_number}*: {info.operation} на {info.current_station} ({formatted_date})")
                     
@@ -127,7 +119,6 @@ class NotificationService:
                     if sub.target_emails and excel_rows:
                         logger.info(f"📬 [Notification] Подписка ID {sub.id} имеет {len(sub.target_emails)} email адресов. Генерация Excel...")
                         
-                        # Собираем только подтвержденные email
                         email_recipients = [se.email.email for se in sub.target_emails if se.email.is_verified]
                         
                         if sub.target_emails:
@@ -136,12 +127,9 @@ class NotificationService:
                         
                         file_path = None
                         try:
-                            # Проверяем, есть ли хотя бы один получатель
                             if email_recipients:
-                                
                                 logger.info(f"DEBUG [Excel Gen] Начинаю генерацию Excel для подписки {sub.id}.") 
                                 
-                                # Генерация Excel в отдельном потоке
                                 file_path = await asyncio.to_thread(
                                     create_excel_file,
                                     excel_rows,
@@ -150,7 +138,6 @@ class NotificationService:
                                 
                                 logger.info(f"DEBUG [Email Send] Начинаю отправку Email с вложением: {os.path.basename(file_path)}.") 
                                 
-                                # Отправка Email в отдельном потоке
                                 await asyncio.to_thread(
                                     send_email,
                                     to=email_recipients,
@@ -175,28 +162,25 @@ class NotificationService:
         return sent_count, total_active_subscriptions
 
 # =========================================================================
-# === ОБНОВЛЕННЫЙ МЕТОД (ОТПРАВКА ТОЛЬКО АДМИНУ) ===
+# === ✅ ОБНОВЛЕННАЯ ЛОГИКА АГРЕГАЦИИ И ОТПРАВКИ АДМИНУ ===
 # =========================================================================
     async def send_aggregated_train_event_notifications(self) -> int:
         """
-        Отправляет агрегированные уведомления о незаотправленных событиях по поездам.
-        Уведомления отправляются ТОЛЬКО АДМИНИСТРАТОРУ.
+        Отправляет агрегированные уведомления о НЕЗА_ОТПРАВЛЕННЫХ событиях по поездам.
+        Одно уведомление на уникальную комбинацию Поезд + Событие + Станция + Время.
+        Отправляет ТОЛЬКО АДМИНУ.
         """
-        # Импорт необходимых функций и моделей
-        from services.train_event_notifier import get_unsent_train_events, mark_event_as_sent
-        from models import TrainEventLog, Subscription
-        from model.terminal_container import TerminalContainer
-        from utils.notify import notify_admin 
-        from sqlalchemy import select, func # Добавляем импорт func
-
+        
         # 1. Получаем все незаотправленные события
         events = await get_unsent_train_events()
         if not events:
-            logger.info("[TrainEventNotify] Нет новых событий для отправки.")
+            logger.info("[TrainEventNotify] Нет новых событий для отправки админу.")
             return 0
         
         # 2. Группировка событий по уникальному ключу
+        # (Поезд, Событие, Станция, Время)
         aggregated_events: Dict[Tuple[str, str, str, datetime], Dict[str, Any]] = {}
+        
         for event in events:
             # Ключ для агрегации: округляем время до минуты
             event_time_key = event.event_time.replace(second=0, microsecond=0, tzinfo=None)
@@ -205,57 +189,54 @@ class NotificationService:
             if key not in aggregated_events:
                 aggregated_events[key] = {
                     'earliest_time': event.event_time,
-                    'log_ids': [event.id]
+                    'log_ids': [event.id], # Собираем ID всех логов
+                    'containers': {event.container_number} # Собираем контейнеры
                 }
             else:
+                 # Обновляем время на самое раннее (на всякий случай)
                  if event.event_time < aggregated_events[key]['earliest_time']:
                       aggregated_events[key]['earliest_time'] = event.event_time
                  aggregated_events[key]['log_ids'].append(event.id)
+                 aggregated_events[key]['containers'].add(event.container_number)
         
         sent_notifications = 0
-
+        
+        # 3. Отправляем ОДНО сообщение на КАЖДОЕ УНИКАЛЬНОЕ событие
         async with SessionLocal() as session:
-            for (train_number, event_description, station, _), data in aggregated_events.items():
-                
-                # --- ✅ ИЗМЕНЕНИЕ: УДАЛЕНА ЛОГИКА ПОИСКА ПОДПИСЧИКОВ ---
-                # Мы больше не ищем user_ids_to_notify
-                
-                # 3. (Опционально) Получаем кол-во контейнеров для информации админа
-                container_count = 0
-                try:
-                    container_count_result = await session.execute(
-                        select(func.count(TerminalContainer.id))
-                        .where(TerminalContainer.train == train_number)
+            async with session.begin():
+                for (train_number, event_description, station, _), data in aggregated_events.items():
+                    
+                    log_ids_to_mark = data['log_ids']
+                    container_count = len(data['containers'])
+                    
+                    # 4. Формирование сообщения
+                    message_text = (
+                        f"🚨 **Обнаружено событие поезда!** 🚨\n\n"
+                        f"Поезд: **{train_number}**\n"
+                        f"Событие: **{event_description}**\n"
+                        f"Станция: **{station}**\n"
+                        f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M (UTC)')}`\n\n"
+                        f"*(Касается {container_count} контейнеров)*"
                     )
-                    container_count = container_count_result.scalar() or 0
-                except Exception as e:
-                    logger.warning(f"[TrainEventNotify] Не удалось посчитать контейнеры для поезда {train_number}: {e}")
 
-                # 4. Формирование сообщения
-                message_text = (
-                    f"🚨 **Обнаружено событие поезда!** 🚨\n\n"
-                    f"Поезд: **{train_number}**\n"
-                    f"Событие: **{event_description}**\n"
-                    f"Станция: **{station}**\n"
-                    f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M (UTC)')}`\n\n"
-                    f"*(Событие касается {container_count} контейнеров в этом поезде)*"
-                )
+                    # 5. Отправка уведомления ТОЛЬКО АДМИНУ
+                    try:
+                        await notify_admin(
+                            message_text,
+                            silent=True,
+                            parse_mode="Markdown"
+                        )
+                        sent_notifications += 1
+                        
+                        # 6. Отмечаем все логи этого события как отправленные
+                        for log_id in log_ids_to_mark:
+                             # Используем ту же сессию
+                             await mark_event_as_sent(log_id, session) 
+                        
+                    except Exception as e:
+                        logger.error(f"[TrainEventNotify] Не удалось уведомить админа или пометить как отправленное: {e}")
 
-                # 5. Отправка уведомления ТОЛЬКО АДМИНУ
-                try:
-                    # Отправляем "тихое" (silent=True) уведомление админу
-                    await notify_admin(
-                        message_text,
-                        silent=True,
-                        parse_mode="Markdown"
-                    )
-                    sent_notifications += 1
-                except Exception as e:
-                    logger.error(f"[TrainEventNotify] Не удалось уведомить админа о событии: {e}")
-
-                # 6. Отмечаем все логи этого события как отправленные
-                for log_id in data['log_ids']:
-                     await mark_event_as_sent(log_id)
+            await session.commit() # Коммитим все изменения (пометки 'sent')
             
-        logger.info(f"✅ [TrainEventNotify] Рассылка агрегированных событий (только админу) завершена. Отправлено: {sent_notifications}")
+        logger.info(f"✅ [TrainEventNotify] Рассылка агрегированных событий (только админу) завершена. Отправлено уникальных событий: {sent_notifications}")
         return sent_notifications
