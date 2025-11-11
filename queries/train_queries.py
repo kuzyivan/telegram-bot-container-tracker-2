@@ -2,15 +2,19 @@
 """
 Запросы SQLAlchemy для получения информации о поездах и связанных контейнерах.
 """
-from sqlalchemy import select, func, desc, distinct # <<< ДОБАВЛЕН distinct
+# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
+from sqlalchemy import select, func, desc, distinct, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import aliased
 from typing import List
+from datetime import datetime
 
 from db import SessionLocal
-# ✅ Исправляем импорт TerminalContainer
-from models import Tracking
+# ✅ Исправляем импорт TerminalContainer и добавляем Train
+from models import Tracking, Train
 from model.terminal_container import TerminalContainer
 from logger import get_logger
+# --- КОНЕЦ ОБНОВЛЕННЫХ ИМПОРТОВ ---
 
 logger = get_logger(__name__)
 
@@ -96,14 +100,45 @@ async def get_first_container_in_train(train_code: str) -> str | None:
               logger.debug(f"Не найден пример контейнера для поезда {train_code} в terminal_containers")
          return container
 
-# --- Старые/Ненужные функции (можно удалить, если не используются) ---
+# --- ✅ НОВАЯ ФУНКЦИЯ ДЛЯ ТАБЛИЦЫ TRAIN ---
 
-# async def get_train_summary(train_no: str) -> dict[str, int]:
-#     """ (Устарело?) Получает сводку по клиентам для поезда """
-#     # Реализация похожа на get_train_client_summary_by_code
-#     pass 
+async def upsert_train_on_upload(
+    train_number: str, 
+    container_count: int, 
+    admin_id: int,
+    overload_station_name: str | None = None,
+    overload_date: datetime | None = None
+) -> Train | None:
+    """
+    Создает или обновляет запись в таблице 'trains' при загрузке файла поезда.
+    (Upsert = Update + Insert)
+    """
+    async with SessionLocal() as session:
+        try:
+            # 1. Создаем оператор INSERT ... ON CONFLICT DO UPDATE
+            stmt = pg_insert(Train).values(
+                train_number=train_number,
+                container_count=container_count,
+                overload_station_name=overload_station_name,
+                overload_date=overload_date
+            ).on_conflict_do_update(
+                index_elements=['train_number'], # Ключ, по которому проверяется конфликт
+                set_={
+                    'container_count': container_count,
+                    'overload_station_name': overload_station_name,
+                    'overload_date': overload_date,
+                    'updated_at': func.now()
+                }
+            ).returning(Train) # Возвращаем обновленную или созданную строку
 
-# async def get_train_latest_status(train_no: str) -> Optional[tuple[str, str, str]]:
-#     """ (Устарело?) Получает последний статус поезда по одному из его контейнеров """
-#     # Эта логика теперь, вероятно, внутри train.py (_get_full_train_report_text)
-#     pass
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            created_or_updated_train = result.scalar_one()
+            logger.info(f"[TrainTable] Админ {admin_id} создал/обновил поезд {train_number} (Перегруз: {overload_station_name or 'Нет'})")
+            return created_or_updated_train
+            
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"[TrainTable] Ошибка при upsert поезда {train_number}: {e}", exc_info=True)
+            return None

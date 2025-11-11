@@ -4,19 +4,20 @@ import pandas as pd
 import asyncio
 import re
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Any
 from sqlalchemy.future import select
-from sqlalchemy import update, delete
+from sqlalchemy import update, delete, func, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import datetime
 
 # --- Импорты из вашего проекта ---
-from db import SessionLocal # <--- ИСПРАВЛЕНИЕ: Импортируем SessionLocal
-from models import Tracking, TrainEventLog
+from db import SessionLocal
+from models import Tracking, TrainEventLog, Train # <--- ✅ Добавлен импорт Train
 from logger import get_logger 
 from telegram import Bot
 from services.imap_service import ImapService # Импортируем КЛАСС
 from services import notification_service # Для вызова уведомлений
-# --- 1. ДОБАВЛЕН ИМПОРТ ---
 from services.train_event_notifier import process_dislocation_for_train_events
 
 logger = get_logger(__name__) 
@@ -100,7 +101,7 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
     logger.info(f"Чтение файла дислокации: {filepath}")
     
     try:
-        # --- ✅ ИСПРАВЛЕНИЕ ДЛЯ DataError: Читаем все текстовые колонки как 'str' ---
+        # --- Читаем все текстовые колонки как 'str' ---
         excel_cols_as_str = [
             'Грузоотправитель (ТГНЛ)', 'Грузоотправитель (ОКПО)', 'Грузоотправитель (наим)',
             'Грузополучатель (ТГНЛ)', 'Грузополучатель (ОКПО)', 'Грузополучатель (наим)',
@@ -111,7 +112,6 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
         dtype_map = {col: str for col in excel_cols_as_str}
         
         df = pd.read_excel(filepath, skiprows=3, header=0, engine='openpyxl', dtype=dtype_map)
-        # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
         
         if 'Идентификатор отправки' in df.columns or 'Тип контейнера' in df.columns:
             logger.info(f"Обнаружен НОВЫЙ формат дислокации (РЖД, 45 столбцов).")
@@ -143,13 +143,100 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
 
 
 # =========================================================================
-# === 4. УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД ===
+# === 4. ✅ НОВАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN ===
+# =========================================================================
+
+async def update_train_statuses_from_tracking(session: AsyncSession, processed_container_rows: list[dict]):
+    """
+    Агрегирует данные из Tracking и обновляет таблицу 'Train'.
+    Вызывается ВНУТРИ сессии process_dislocation_file.
+    """
+    logger.info(f"[TrainTable] Запуск обновления статусов поездов для {len(processed_container_rows)} записей.")
+    
+    # 1. Находим последнюю операцию для каждого поезда из ОБРАБОТАННЫХ данных
+    train_latest_op: Dict[str, Dict[str, Any]] = {}
+    
+    for row in processed_container_rows:
+        train_number = row.get('train_number')
+        op_date = row.get('operation_date') # Это уже datetime объект
+        
+        if not train_number or not op_date:
+            continue # Пропускаем строки без поезда или даты операции
+            
+        if train_number not in train_latest_op:
+            train_latest_op[train_number] = row
+        else:
+            # Сравниваем даты, чтобы найти самую свежую
+            current_latest_date = train_latest_op[train_number].get('operation_date')
+            if current_latest_date is None or op_date > current_latest_date:
+                train_latest_op[train_number] = row
+    
+    if not train_latest_op:
+        logger.info("[TrainTable] В этом файле дислокации не найдено поездов с датами операций. Обновление не требуется.")
+        return 0
+
+    logger.info(f"[TrainTable] Найдены {len(train_latest_op)} уникальных поездов для обновления: {list(train_latest_op.keys())}")
+    
+    updated_train_count = 0
+    
+    # 2. Обновляем таблицу 'Train' для каждого поезда
+    for train_number, latest_track_row in train_latest_op.items():
+        try:
+            # 3. Собираем данные для обновления
+            update_data = {
+                "last_known_station": latest_track_row.get('current_station'),
+                "last_known_road": latest_track_row.get('operation_road'),
+                "last_operation": latest_track_row.get('operation'),
+                "last_operation_date": latest_track_row.get('operation_date'),
+                "km_remaining": latest_track_row.get('km_left'),
+                # Используем 'forecast_days' из файла, если он есть
+                "eta_days": latest_track_row.get('forecast_days'), 
+            }
+            
+            # Обновляем маршрут, только если он есть в этой записи
+            if latest_track_row.get('to_station'):
+                update_data["destination_station"] = latest_track_row.get('to_station')
+            if latest_track_row.get('trip_start_datetime'):
+                # Убедимся, что это date, а не datetime
+                start_dt = latest_track_row.get('trip_start_datetime')
+                if isinstance(start_dt, datetime):
+                    update_data["departure_date"] = start_dt.date()
+                else:
+                    update_data["departure_date"] = start_dt
+
+
+            # 4. Используем UPSERT (Insert on conflict update)
+            # Это создаст запись о поезде, если ее нет, или обновит, если есть
+            stmt = pg_insert(Train).values(
+                train_number=train_number,
+                **update_data
+            ).on_conflict_do_update(
+                index_elements=['train_number'], # Уникальный ключ
+                set_={
+                    **update_data, # Обновляем все поля
+                    "updated_at": func.now()
+                }
+            )
+            
+            await session.execute(stmt)
+            updated_train_count += 1
+            
+        except Exception as e:
+            logger.error(f"[TrainTable] Не удалось обновить статус для поезда {train_number}: {e}", exc_info=True)
+            # Не прерываем, продолжаем со следующим поездом
+
+    logger.info(f"[TrainTable] Успешно обновлены статусы для {updated_train_count} поездов.")
+    return updated_train_count
+
+
+# =========================================================================
+# === 5. ОБНОВЛЕННЫЙ УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД ===
 # =========================================================================
 
 async def process_dislocation_file(filepath: str):
     """
     Обрабатывает файл дислокации, обновляет/вставляет данные в БД
-    и готовит события для логгирования.
+    и запускает обновление таблицы Train.
     """
     
     df = await asyncio.to_thread(_read_excel_data, filepath)
@@ -161,9 +248,11 @@ async def process_dislocation_file(filepath: str):
     
     updated_count = 0
     inserted_count = 0
-    # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
+    
+    # --- ✅ Список для сбора обновленных данных ---
+    processed_rows_for_train_update: List[Dict[str, Any]] = []
 
-    session = SessionLocal() # <--- ИСПРАВЛЕНО
+    session = SessionLocal()
     try:
         
         container_numbers_from_file = [
@@ -171,13 +260,13 @@ async def process_dislocation_file(filepath: str):
         ]
         if not container_numbers_from_file:
             logger.warning(f"В файле {filepath} не найдено ни одной строки с номером контейнера.")
+            # Добавим finally, чтобы сессия закрылась
         else:
             existing_trackings = (await session.execute(
                 select(Tracking).where(Tracking.container_number.in_(set(container_numbers_from_file)))
             )).scalars().all()
             tracking_map = {t.container_number: t for t in existing_trackings}
 
-            # Список полей, которые ДОЛЖНЫ быть СТРОКАМИ
             STRING_COLS_TO_CONVERT = [
                 'sender_tgnl', 'sender_okpo', 'sender_name',
                 'receiver_tgnl', 'receiver_okpo', 'receiver_name',
@@ -185,8 +274,6 @@ async def process_dislocation_file(filepath: str):
                 'dispatch_id', 'sender_name_short', 'receiver_name_short',
                 'train_index_full'
             ]
-            
-            # Форматы, которые мы ожидаем из Excel
             dt_format_with_time = '%d.%m.%Y %H:%M'
             dt_format_date_only = '%d.%m.%Y'
 
@@ -197,11 +284,10 @@ async def process_dislocation_file(filepath: str):
                 if not container_number:
                     continue
 
-                # --- Приведение типов (Новая, более строгая версия) ---
+                # --- Приведение типов ---
                 if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
                     row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
                 
-                # --- ✅ ИСПРАВЛЕНИЕ ОШИБКИ СРАВНЕНИЯ ДАТ ---
                 for date_col in ['operation_date', 'trip_start_datetime', 'trip_end_datetime', 'delivery_deadline']:
                     if date_col in row_data and row_data[date_col] is not None:
                         if pd.isna(row_data[date_col]):
@@ -209,18 +295,14 @@ async def process_dislocation_file(filepath: str):
                             continue
                         
                         try:
-                            # Сначала пытаемся распознать дату и время
                             py_dt = datetime.strptime(str(row_data[date_col]), dt_format_with_time)
                             row_data[date_col] = py_dt
                         except ValueError:
                             try:
-                                # Если не получилось, пытаемся распознать только дату
                                 py_dt = datetime.strptime(str(row_data[date_col]), dt_format_date_only)
                                 row_data[date_col] = py_dt
                             except Exception as e:
-                                # Если оба формата не подошли, используем стандартный парсер pandas
                                 try:
-                                    # dayfirst=True исправляет UserWarning
                                     py_dt = pd.to_datetime(row_data[date_col], dayfirst=True).to_pydatetime()
                                     if py_dt.tzinfo:
                                         py_dt = py_dt.replace(tzinfo=None)
@@ -228,7 +310,6 @@ async def process_dislocation_file(filepath: str):
                                 except Exception as e_pandas:
                                     logger.warning(f"Не удалось распознать дату '{row_data[date_col]}' для {container_number}: {e_pandas}")
                                     row_data[date_col] = None
-                # --- КОНЕЦ ИСПРАВЛЕНИЯ ДАТ ---
 
                 for key in ['cargo_weight_kg', 'total_distance', 'distance_traveled', 'km_left']:
                     if key in row_data and row_data[key] is not None:
@@ -237,11 +318,11 @@ async def process_dislocation_file(filepath: str):
                         except (ValueError, TypeError):
                             row_data[key] = None 
                 
-                # --- ✅ ИСПРАВЛЕНИЕ DataError (дублируется из read_excel, для надежности) ---
                 for col_name in STRING_COLS_TO_CONVERT:
                     if col_name in row_data and row_data[col_name] is not None:
                         row_data[col_name] = str(row_data[col_name]).removesuffix('.0')
                 
+                # --- Конец приведения типов ---
                 
                 existing_entry = tracking_map.get(container_number)
                 new_operation_date = row_data.get('operation_date') 
@@ -250,15 +331,12 @@ async def process_dislocation_file(filepath: str):
                     # --- ЛОГИКА ОБНОВЛЕНИЯ ---
                     current_date = existing_entry.operation_date 
                     
-                    # Логика сравнения:
-                    # 1. current_date ЕЩЕ НЕТ (None) -> Обновляем
-                    # 2. new_operation_date ЕСТЬ И ОНА > current_date -> Обновляем
                     if new_operation_date and (current_date is None or new_operation_date > current_date):
                         for key, value in row_data.items():
                             setattr(existing_entry, str(key), value)
                         
-                        # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
                         updated_count += 1
+                        processed_rows_for_train_update.append(row_data) # <--- ✅ Сбор данных
                 else:
                     # --- ЛОГИКА СОЗДАНИЯ ---
                     new_entry_data = {str(k): v for k, v in row_data.items()}
@@ -266,14 +344,19 @@ async def process_dislocation_file(filepath: str):
                     session.add(new_entry)
                     tracking_map[container_number] = new_entry 
                     
-                    # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
                     inserted_count += 1
+                    processed_rows_for_train_update.append(row_data) # <--- ✅ Сбор данных
         
-        # --- 2. УДАЛЕНА ЛОГИКА events_to_log ---
+        logger.info(f"Успешно сохранено в БД Tracking: {inserted_count} новых, {updated_count} обновленных.")
+        
+        # --- ✅ ВЫЗОВ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN (перед коммитом) ---
+        if processed_rows_for_train_update:
+            await update_train_statuses_from_tracking(session, processed_rows_for_train_update)
+        # ---
         
         await session.commit()
         
-        # --- 3. ДОБАВЛЕН ВЫЗОВ ПРАВИЛЬНОЙ ЛОГИКИ ---
+        # --- Логика событий поезда (вызывается ПОСЛЕ коммита) ---
         if inserted_count > 0 or updated_count > 0:
             logger.info(f"Запуск анализа событий поезда для {len(data_rows)} записей...")
             try:
@@ -281,9 +364,7 @@ async def process_dislocation_file(filepath: str):
                 await process_dislocation_for_train_events(data_rows)
             except Exception as e_event:
                 logger.error(f"Ошибка при логировании событий поезда: {e_event}", exc_info=True)
-        # --- КОНЕЦ НОВОГО БЛОКА ---
 
-        logger.info(f"Успешно сохранено в БД: {inserted_count} новых, {updated_count} обновленных.")
         
     except Exception as e:
         await session.rollback()
@@ -297,7 +378,7 @@ async def process_dislocation_file(filepath: str):
 
 
 # =========================================================================
-# === 5. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ (ИСПРАВЛЕНА) ===
+# === 6. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ ===
 # =========================================================================
 
 # Фильтры из вашего repomix
@@ -322,13 +403,14 @@ async def check_and_process_dislocation(bot_instance: Bot):
         if filepath:
             logger.info(f"Обнаружен новый файл дислокации: {filepath}")
             try:
-                # 1. Обрабатываем файл
+                # 1. Обрабатываем файл (Обновляет Tracking И Train)
                 processed_count = await process_dislocation_file(filepath)
                 
                 # 2. Рассылаем уведомления (если что-то обработано)
                 if processed_count > 0:
                     logger.info(f"Обработано {processed_count} записей. Запуск немедленной рассылки...")
                     service = notification_service.NotificationService(bot_instance)
+                    # Эта функция отправляет админу события из TrainEventLog
                     await service.send_aggregated_train_event_notifications()
                 else:
                     logger.info("Файл дислокации не привел к изменениям, рассылка не требуется.")
