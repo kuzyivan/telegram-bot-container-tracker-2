@@ -22,7 +22,7 @@ from services.terminal_importer import (
 from services.file_utils import save_temp_file_async
 from utils.notify import notify_admin
 
-# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
+# --- ОБНОВЛЕННЫЕ ИМПОРТЫ ---
 from queries.train_queries import (
     upsert_train_on_upload, 
     get_first_container_in_train,
@@ -60,7 +60,7 @@ async def upload_file_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(text, parse_mode='Markdown')
 
 
-# --- ✅ НОВАЯ ФУНКЦИЯ: ФОРМАТИРОВАНИЕ ОТЧЕТА ---
+# --- ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: ФОРМАТИРОВАНИЕ ОТЧЕТА ---
 async def _build_and_send_report(
     message: Update.message,
     terminal_train_number: str
@@ -89,7 +89,13 @@ async def _build_and_send_report(
         lines.append(f"**Станция перегруза:** `{train_details.overload_station_name or 'Нет'}`")
         lines.append("-----")
         if train_details.overload_date:
-            lines.append(f"**Дата перегруза:** `{train_details.overload_date.strftime('%d.%m.%Y %H:%M')}`")
+            # Используем .astimezone(None), чтобы показать локальное время сервера
+            local_time = train_details.overload_date.astimezone(None)
+            lines.append(f"**Дата перегруза:** `{local_time.strftime('%d.%m.%Y %H:%M')}`")
+        
+        # --- ✅ НОВАЯ СТРОКА ---
+        lines.append(f"**Операция с поездом:** `{train_details.last_operation or 'н/д'}`") 
+        # ---
         
         lines.append(f"**Станция операции:** `{train_details.last_known_station or 'н/д'}`")
         lines.append(f"**Дата и время операции:** `{train_details.last_operation_date.strftime('%d.%m.%Y %H:%M') if train_details.last_operation_date else 'н/д'}`")
@@ -110,7 +116,7 @@ async def _build_and_send_report(
     await message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
-# --- ✅ НОВАЯ ФУНКЦИЯ: ОБЩАЯ ЛОГИКА ЗАВЕРШЕНИЯ ---
+# --- ОБЩАЯ ЛОГИКА ЗАВЕРШЕНИЯ (без изменений) ---
 async def _finish_train_upload(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -177,7 +183,7 @@ async def _finish_train_upload(
     return ConversationHandler.END
 
 
-# --- ОБНОВЛЕННЫЙ ДИАЛОГ ЗАГРУЗКИ ---
+# --- ДИАЛОГ ЗАГРУЗКИ (без изменений) ---
 
 async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     """
