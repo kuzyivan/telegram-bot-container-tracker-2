@@ -38,7 +38,8 @@ from handlers.distance_handlers import distance_conversation_handler
 
 # --- Импорты для админ-панели ---
 from handlers.admin.panel import admin_panel, admin_panel_callback
-from handlers.admin.uploads import upload_file_command, handle_admin_document
+# --- ✅ ИЗМЕНЕННЫЙ ИМПОРТ ---
+from handlers.admin.uploads import upload_file_command, get_admin_upload_conversation_handler
 from handlers.admin.exports import stats, exportstats, tracking
 from handlers.admin.notifications import force_notify_handler 
 
@@ -106,6 +107,9 @@ def main():
     application.add_handler(get_add_containers_conversation_handler())
     application.add_handler(get_remove_containers_conversation_handler())
     
+    # --- ✅ ДОБАВЛЕН НОВЫЙ ДИАЛОГ ЗАГРУЗКИ ---
+    application.add_handler(get_admin_upload_conversation_handler())
+    
     # --- 2. Команды (Группа 0) ---
     application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(CommandHandler("stats", stats))
@@ -130,10 +134,12 @@ def main():
     ))
     
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
-    application.add_handler(MessageHandler(
-        filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
-        handle_admin_document
-    ))
+
+    # --- ❌ СТАРЫЙ ОБРАБОТЧИК УДАЛЕН ---
+    # application.add_handler(MessageHandler(
+    #     filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
+    #     handle_admin_document
+    # ))
     
     # --- 5. 🐞 ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА ---
     # Мы ставим этот "общий" обработчик в группу 1 (низший приоритет),
