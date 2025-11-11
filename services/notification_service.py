@@ -175,16 +175,19 @@ class NotificationService:
         return sent_count, total_active_subscriptions
 
 # =========================================================================
-# НОВЫЙ МЕТОД ДЛЯ АГРЕГИРОВАННОЙ РАССЫЛКИ СОБЫТИЙ ПОЕЗДА
+# === ОБНОВЛЕННЫЙ МЕТОД (ОТПРАВКА ТОЛЬКО АДМИНУ) ===
 # =========================================================================
     async def send_aggregated_train_event_notifications(self) -> int:
         """
         Отправляет агрегированные уведомления о незаотправленных событиях по поездам.
-        Одно уведомление на уникальную комбинацию Поезд + Событие + Станция + Время.
+        Уведомления отправляются ТОЛЬКО АДМИНИСТРАТОРУ.
         """
-        # Импорт необходимых функций и моделей (для уменьшения циклической зависимости)
+        # Импорт необходимых функций и моделей
         from services.train_event_notifier import get_unsent_train_events, mark_event_as_sent
-        from models import TrainEventLog 
+        from models import TrainEventLog, Subscription
+        from model.terminal_container import TerminalContainer
+        from utils.notify import notify_admin 
+        from sqlalchemy import select, func # Добавляем импорт func
 
         # 1. Получаем все незаотправленные события
         events = await get_unsent_train_events()
@@ -211,78 +214,48 @@ class NotificationService:
         
         sent_notifications = 0
 
-        for (train_number, event_description, station, _), data in aggregated_events.items():
-            
-            # 3. Поиск пользователей, отслеживающих контейнеры этого поезда
-            user_ids_to_notify = []
-            containers_in_train = []
-            
-            async with SessionLocal() as session:
-                 # 3.1. Находим все контейнеры, связанные с этим номером поезда в TerminalContainer
-                container_results = await session.execute(
-                    select(TerminalContainer.container_number)
-                    .where(TerminalContainer.train == train_number)
-                )
-                containers_in_train = container_results.scalars().all()
+        async with SessionLocal() as session:
+            for (train_number, event_description, station, _), data in aggregated_events.items():
                 
-                # 3.2. Ищем уникальных пользователей, отслеживающих хотя бы один из этих контейнеров
-                if containers_in_train:
-                    sub_result = await session.execute(
-                        select(Subscription.user_telegram_id)
-                        # Используем оператор overlap для проверки пересечения списков
-                        .where(Subscription.containers.op('&&')(containers_in_train))
-                    )
-                    user_ids_to_notify = sub_result.scalars().unique().all()
-            
-            if not user_ids_to_notify:
-                logger.debug(f"[TrainEventNotify] Поезд {train_number} не отслеживается. Пропуск.")
-                # Отмечаем логи как отправленные, чтобы не проверять их повторно
-                for log_id in data['log_ids']:
-                     await mark_event_as_sent(log_id)
-                continue
-
-            # 4. Формирование сообщения (одно на поезд/событие)
-            message_text = (
-                f"🚨 **Обнаружено событие поезда!** 🚨\n\n"
-                f"Поезд: **{train_number}**\n"
-                f"Событие: **{event_description}**\n"
-                f"Станция: **{station}**\n"
-                f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M (UTC)')}`\n\n" # <--- Добавлено (UTC)
-                f"*(Касается {len(containers_in_train)} контейнеров)*"
-            )
-
-            # 5. Отправка уведомления и обновление статуса
-            # --- 2. НАЧАЛО ИЗМЕНЕНИЙ ---
-            admin_notified = False
-            for user_id in user_ids_to_notify:
+                # --- ✅ ИЗМЕНЕНИЕ: УДАЛЕНА ЛОГИКА ПОИСКА ПОДПИСЧИКОВ ---
+                # Мы больше не ищем user_ids_to_notify
+                
+                # 3. (Опционально) Получаем кол-во контейнеров для информации админа
+                container_count = 0
                 try:
-                    await self.bot.send_message(
-                        chat_id=user_id,
-                        text=message_text,
+                    container_count_result = await session.execute(
+                        select(func.count(TerminalContainer.id))
+                        .where(TerminalContainer.train == train_number)
+                    )
+                    container_count = container_count_result.scalar() or 0
+                except Exception as e:
+                    logger.warning(f"[TrainEventNotify] Не удалось посчитать контейнеры для поезда {train_number}: {e}")
+
+                # 4. Формирование сообщения
+                message_text = (
+                    f"🚨 **Обнаружено событие поезда!** 🚨\n\n"
+                    f"Поезд: **{train_number}**\n"
+                    f"Событие: **{event_description}**\n"
+                    f"Станция: **{station}**\n"
+                    f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M (UTC)')}`\n\n"
+                    f"*(Событие касается {container_count} контейнеров в этом поезде)*"
+                )
+
+                # 5. Отправка уведомления ТОЛЬКО АДМИНУ
+                try:
+                    # Отправляем "тихое" (silent=True) уведомление админу
+                    await notify_admin(
+                        message_text,
+                        silent=True,
                         parse_mode="Markdown"
                     )
                     sent_notifications += 1
-                    if user_id == ADMIN_CHAT_ID:
-                        admin_notified = True
                 except Exception as e:
-                    logger.error(f"[TrainEventNotify] Ошибка отправки пользователю {user_id}: {e}")
+                    logger.error(f"[TrainEventNotify] Не удалось уведомить админа о событии: {e}")
 
-            # Отправляем админу, если он не получил уведомление как подписчик
-            if not admin_notified:
-                try:
-                    await self.bot.send_message(
-                        chat_id=ADMIN_CHAT_ID,
-                        text=message_text,
-                        parse_mode="Markdown"
-                    )
-                    logger.info(f"[TrainEventNotify] Уведомление о событии поезда также отправлено админу.")
-                except Exception as e:
-                    logger.error(f"[TrainEventNotify] Ошибка при отправке уведомления о событии админу: {e}")
-            # --- КОНЕЦ ИЗМЕНЕНИЙ ---
-
-            # 6. Отмечаем все логи этого события как отправленные
-            for log_id in data['log_ids']:
-                 await mark_event_as_sent(log_id)
+                # 6. Отмечаем все логи этого события как отправленные
+                for log_id in data['log_ids']:
+                     await mark_event_as_sent(log_id)
             
-        logger.info(f"✅ [TrainEventNotify] Рассылка агрегированных событий поезда завершена.")
+        logger.info(f"✅ [TrainEventNotify] Рассылка агрегированных событий (только админу) завершена. Отправлено: {sent_notifications}")
         return sent_notifications
