@@ -207,4 +207,39 @@ class TrainEventLog(Base):
     event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True)) # Время события из отчета
     notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)) # Когда отправили уведомление
 
-# ❌ Удален импорт TerminalContainer отсюда
+
+# --- ✅ НОВАЯ МОДЕЛЬ: ТАБЛИЦА ПОЕЗДОВ ---
+class Train(Base):
+    """
+    Централизованная таблица для отслеживания АКТУАЛЬНОГО СТАТУСА
+    каждого поезда, агрегируя данные из Tracking и TerminalContainer.
+    """
+    __tablename__ = "trains"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    
+    # 1. Ключевая информация (из файла поезда)
+    train_number: Mapped[str] = mapped_column(String(50), unique=True, index=True) # № поезда (К25-103)
+    container_count: Mapped[int | None] = mapped_column(Integer) # Кол-во контейнеров
+    
+    # 2. Маршрут (из файла поезда или дислокации)
+    destination_station: Mapped[str | None] = mapped_column(String, index=True)
+    departure_date: Mapped[date | None] = mapped_column(Date)
+
+    # 3. Информация о перегрузе (из диалога с админом)
+    overload_station_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    overload_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # 4. Динамический статус (обновляется из dislocation_importer)
+    last_known_station: Mapped[str | None] = mapped_column(String)
+    last_known_road: Mapped[str | None] = mapped_column(String)
+    last_operation: Mapped[str | None] = mapped_column(String)
+    last_operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False)) # <-- Используем False, как в Tracking
+    
+    # 5. Прогноз (обновляется из dislocation_importer)
+    km_remaining: Mapped[int | None] = mapped_column(Integer)
+    eta_days: Mapped[float | None] = mapped_column(Float)
+
+    # 6. Системные
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
