@@ -4,20 +4,18 @@ import asyncio
 import os 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import AsyncSession # <-- ✅ Импорт
+from sqlalchemy.ext.asyncio import AsyncSession
 from telegram import Bot
 from typing import List, Any, Dict, Tuple 
 
 from db import SessionLocal
-from models import Subscription, Tracking, SubscriptionEmail, TrainEventLog # <--- ✅ Импорт
+from models import Subscription, Tracking, SubscriptionEmail, TrainEventLog
 from model.terminal_container import TerminalContainer 
 from logger import get_logger
 from utils.send_tracking import create_excel_file
 from utils.email_sender import send_email 
-# --- ✅ Импорты для новой логики ---
 from services.train_event_notifier import get_unsent_train_events, mark_event_as_sent
 from utils.notify import notify_admin
-# ---
 
 logger = get_logger(__name__)
 
@@ -162,12 +160,12 @@ class NotificationService:
         return sent_count, total_active_subscriptions
 
 # =========================================================================
-# === ✅ ОБНОВЛЕННАЯ ЛОГИКА АГРЕГАЦИИ И ОТПРАВКИ АДМИНУ ===
+# === ✅ ОБНОВЛЕННАЯ ЛОГИКА АГРЕГАЦИИ (ИСПРАВЛЕНИЕ СПАМА) ===
 # =========================================================================
     async def send_aggregated_train_event_notifications(self) -> int:
         """
         Отправляет агрегированные уведомления о НЕЗА_ОТПРАВЛЕННЫХ событиях по поездам.
-        Одно уведомление на уникальную комбинацию Поезд + Событие + Станция + Время.
+        Одно уведомление на уникальную комбинацию Поезд + Событие + Станция + ДАТА.
         Отправляет ТОЛЬКО АДМИНУ.
         """
         
@@ -178,24 +176,26 @@ class NotificationService:
             return 0
         
         # 2. Группировка событий по уникальному ключу
-        # (Поезд, Событие, Станция, Время)
-        aggregated_events: Dict[Tuple[str, str, str, datetime], Dict[str, Any]] = {}
+        # (Поезд, Событие, Станция, ДАТА)
+        aggregated_events: Dict[Tuple[str, str, str, datetime.date], Dict[str, Any]] = {}
         
         for event in events:
-            # Ключ для агрегации: округляем время до минуты
-            event_time_key = event.event_time.replace(second=0, microsecond=0, tzinfo=None)
-            key = (event.train_number, event.event_description, event.station, event_time_key)
+            # --- ✅ ИЗМЕНЕНИЕ: Агрегируем по ДАТЕ, а не по МИНУТЕ ---
+            # (Мы используем .date(), чтобы получить '2025-11-09')
+            event_date_key = event.event_time.date() 
+            key = (event.train_number, event.event_description, event.station, event_date_key)
             
             if key not in aggregated_events:
                 aggregated_events[key] = {
-                    'earliest_time': event.event_time,
+                    'earliest_time': event.event_time, # Запоминаем самое ПЕРВОЕ время
                     'log_ids': [event.id], # Собираем ID всех логов
                     'containers': {event.container_number} # Собираем контейнеры
                 }
             else:
-                 # Обновляем время на самое раннее (на всякий случай)
+                 # Ищем самое раннее время для этого события
                  if event.event_time < aggregated_events[key]['earliest_time']:
                       aggregated_events[key]['earliest_time'] = event.event_time
+                 
                  aggregated_events[key]['log_ids'].append(event.id)
                  aggregated_events[key]['containers'].add(event.container_number)
         
@@ -215,6 +215,7 @@ class NotificationService:
                         f"Поезд: **{train_number}**\n"
                         f"Событие: **{event_description}**\n"
                         f"Станция: **{station}**\n"
+                        # Используем самое раннее время из группы
                         f"Время: `{data['earliest_time'].strftime('%d.%m %H:%M (UTC)')}`\n\n"
                         f"*(Касается {container_count} контейнеров)*"
                     )
@@ -228,9 +229,8 @@ class NotificationService:
                         )
                         sent_notifications += 1
                         
-                        # 6. Отмечаем все логи этого события как отправленные
+                        # 6. Отмечаем ВСЕ логи этого события как отправленные
                         for log_id in log_ids_to_mark:
-                             # Используем ту же сессию
                              await mark_event_as_sent(log_id, session) 
                         
                     except Exception as e:
