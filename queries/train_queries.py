@@ -34,20 +34,11 @@ async def get_all_train_codes() -> List[str]:
             .where(TerminalContainer.train.isnot(None), TerminalContainer.train != '')
             .order_by(TerminalContainer.train)
         )
-        # SQLAlchemy вернет список str, поскольку мы отфильтровали None и ''
         train_codes = result.scalars().all()
-        
-        # NOTE: Несмотря на фильтр в .where(), Pylance может требовать 
-        # дополнительной фильтрации в Python, если не может полностью доверять 
-        # SQL-типизации. Однако в этом случае достаточно, чтобы запрос был точным. 
-        # Если ошибка сохраняется, используйте list(filter(None, train_codes)) 
-        # или List[str | None].
-        
-        # Для соответствия типу List[str] используем list(train_codes)
         final_list: List[str] = list(train_codes) 
         
         logger.info(f"Найдено {len(final_list)} уникальных номеров поездов.")
-        return final_list # <<< ИСПРАВЛЕНО: возвращаем гарантированный List[str]
+        return final_list
 
 # =====================================================================
 # КОНЕЦ НОВОЙ ФУНКЦИИ
@@ -100,10 +91,10 @@ async def get_first_container_in_train(train_code: str) -> str | None:
               logger.debug(f"Не найден пример контейнера для поезда {train_code} в terminal_containers")
          return container
 
-# --- ✅ НОВАЯ ФУНКЦИЯ ДЛЯ ТАБЛИЦЫ TRAIN ---
+# --- ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ ДЛЯ ТАБЛИЦЫ TRAIN ---
 
 async def upsert_train_on_upload(
-    train_number: str, 
+    terminal_train_number: str, # <--- ✅ ИЗМЕНЕНО
     container_count: int, 
     admin_id: int,
     overload_station_name: str | None = None,
@@ -117,28 +108,28 @@ async def upsert_train_on_upload(
         try:
             # 1. Создаем оператор INSERT ... ON CONFLICT DO UPDATE
             stmt = pg_insert(Train).values(
-                train_number=train_number,
+                terminal_train_number=terminal_train_number, # <--- ✅ ИЗМЕНЕНО
                 container_count=container_count,
                 overload_station_name=overload_station_name,
                 overload_date=overload_date
             ).on_conflict_do_update(
-                index_elements=['train_number'], # Ключ, по которому проверяется конфликт
+                index_elements=['terminal_train_number'], # <--- ✅ ИЗМЕНЕНО
                 set_={
                     'container_count': container_count,
                     'overload_station_name': overload_station_name,
                     'overload_date': overload_date,
                     'updated_at': func.now()
                 }
-            ).returning(Train) # Возвращаем обновленную или созданную строку
+            ).returning(Train) 
 
             result = await session.execute(stmt)
             await session.commit()
             
             created_or_updated_train = result.scalar_one()
-            logger.info(f"[TrainTable] Админ {admin_id} создал/обновил поезд {train_number} (Перегруз: {overload_station_name or 'Нет'})")
+            logger.info(f"[TrainTable] Админ {admin_id} создал/обновил поезд {terminal_train_number} (Перегруз: {overload_station_name or 'Нет'})")
             return created_or_updated_train
             
         except Exception as e:
             await session.rollback()
-            logger.error(f"[TrainTable] Ошибка при upsert поезда {train_number}: {e}", exc_info=True)
+            logger.error(f"[TrainTable] Ошибка при upsert поезда {terminal_train_number}: {e}", exc_info=True)
             return None

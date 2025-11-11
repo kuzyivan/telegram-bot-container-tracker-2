@@ -154,7 +154,7 @@ class Tracking(Base):
 
     # --- Данные о Поезде и Вагоне ---
     train_index_full: Mapped[str | None] = mapped_column(String)
-    train_number: Mapped[str | None] = mapped_column(String, index=True)
+    train_number: Mapped[str | None] = mapped_column(String, index=True) # <--- Это номер поезда РЖД (напр. "3005")
     wagon_number: Mapped[str | None] = mapped_column(String, index=True)
     seals_count: Mapped[int | None] = mapped_column(Integer)
     
@@ -208,7 +208,7 @@ class TrainEventLog(Base):
     notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)) # Когда отправили уведомление
 
 
-# --- ✅ НОВАЯ МОДЕЛЬ: ТАБЛИЦА ПОЕЗДОВ ---
+# --- ✅ ОБНОВЛЕННАЯ МОДЕЛЬ: ТАБЛИЦА ПОЕЗДОВ ---
 class Train(Base):
     """
     Централизованная таблица для отслеживания АКТУАЛЬНОГО СТАТУСА
@@ -219,7 +219,7 @@ class Train(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     
     # 1. Ключевая информация (из файла поезда)
-    train_number: Mapped[str] = mapped_column(String(50), unique=True, index=True) # № поезда (К25-103)
+    terminal_train_number: Mapped[str] = mapped_column(String(50), unique=True, index=True) # № поезда (К25-103)
     container_count: Mapped[int | None] = mapped_column(Integer) # Кол-во контейнеров
     
     # 2. Маршрут (из файла поезда или дислокации)
@@ -231,6 +231,7 @@ class Train(Base):
     overload_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # 4. Динамический статус (обновляется из dislocation_importer)
+    rzd_train_number: Mapped[str | None] = mapped_column(String, index=True, nullable=True) # (e.g., "3005")
     last_known_station: Mapped[str | None] = mapped_column(String)
     last_known_road: Mapped[str | None] = mapped_column(String)
     last_operation: Mapped[str | None] = mapped_column(String)
