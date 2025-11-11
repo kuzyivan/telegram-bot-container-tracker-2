@@ -16,14 +16,12 @@ from config import ADMIN_CHAT_ID
 from logger import get_logger
 import re
 
-# 1. ИЗМЕНЕННЫЕ ИМПОРТЫ ЗАПРОСОВ
+# 1. ИЗМЕНЕННЫЕ ИМПОРТЫ
 from queries.train_queries import (
-    get_train_client_summary_by_code, 
-    get_first_container_in_train,
     get_all_train_codes
 ) 
-from queries.containers import get_latest_tracking_data
-from utils.railway_utils import get_railway_abbreviation
+# --- ✅ НОВЫЙ ИМПОРТ ФУНКЦИИ ОТЧЕТА ---
+from handlers.admin.uploads import _build_and_send_report
 
 logger = get_logger(__name__)
 
@@ -42,68 +40,7 @@ def normalize_train_no(text: str) -> str | None:
     return f"К{m.group(1)}-{m.group(2)}"
 
 
-# --- Бизнес-логика формирования отчёта (ОБНОВЛЕНА) ---
-async def _respond_train_report(message, train_no: str):
-    logger.info("[/train] train_no(normalized)=%s", train_no)
-    
-    # 1. Получаем сводку по клиентам
-    summary_rows_dict = await get_train_client_summary_by_code(train_no)
-
-    # 2. Получаем последнюю дислокацию по одному из контейнеров
-    latest = None
-    example_ctn = await get_first_container_in_train(train_no)
-    
-    if example_ctn:
-        # get_latest_tracking_data возвращает Sequence[Tracking] (список)
-        latest_tracking_list = await get_latest_tracking_data(example_ctn)
-        if latest_tracking_list:
-            latest = latest_tracking_list[0] # Берем самую свежую запись
-    
-    logger.debug("[/train] latest_status=%s", latest)
-
-    # 3. Формирование текста отчета
-    lines = [f"🚆 Поезд: *{train_no}*", "───"]
-
-    if summary_rows_dict:
-        lines.append("📦 *Сводка по клиентам:*")
-        for client, cnt in summary_rows_dict.items():
-            lines.append(f"• {client or 'Без клиента'} — *{cnt}*")
-    else:
-        lines.append("❌ Контейнеры для этого поезда в базе *TerminalContainer* не найдены.")
-
-    if latest:
-        # В этом блоке latest - это объект Tracking (из списка)
-        lines += ["───", "*Последняя дислокация поезда (по одному из контейнеров):*", f"Контейнер: `{latest.container_number}`"]
-        
-        # ❗️ НОВОЕ: ДОБАВЛЯЕМ СТАНЦИЮ НАЗНАЧЕНИЯ
-        lines.append(f"Станция назначения: `{latest.to_station or 'н/д'}`")
-        
-        if latest.current_station: 
-            # Используем get_railway_abbreviation для форматирования дороги
-            railway_abbr = get_railway_abbreviation(latest.operation_road) 
-            lines.append(f"Дислокация: ст. *{latest.current_station}* (Дорога: `{railway_abbr}`)")
-        
-        if latest.operation: 
-            lines.append(f"Операция: *{latest.operation}*")
-        
-        if latest.operation_date: 
-            lines.append(f"Дата/время: `{latest.operation_date}`")
-
-    elif summary_rows_dict:
-        lines.append("\n⚠️ Дислокация поезда (Tracking) не найдена.")
-
-
-    try:
-        await message.reply_text("\n".join(lines), parse_mode='Markdown')
-        logger.info("[/train] reply sent for train=%s", train_no)
-    except Exception as e:
-        logger.exception("Ошибка в /train для train=%s: %s", train_no, e)
-        try:
-            await message.reply_text("Не удалось получить данные по поезду.")
-        except Exception:
-            pass
-            
-    return ConversationHandler.END
+# --- 2. ❌ СТАРАЯ ФУНКЦИЯ _respond_train_report УДАЛЕНА ---
 
 
 # --- НОВЫЕ ХЕНДЛЕРЫ: Список поездов и обработка выбора ---
@@ -113,7 +50,9 @@ async def show_train_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not user or user.id != ADMIN_CHAT_ID:
         return ConversationHandler.END
-        
+    
+    # --- ✅ ИЗМЕНЕНИЕ: Используем новую таблицу Train ---
+    # (Мы все еще берем список из TerminalContainer, т.к. там все поезда)
     train_codes = await get_all_train_codes()
     
     if not train_codes:
@@ -121,13 +60,11 @@ async def show_train_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(text, parse_mode='Markdown')
         return ConversationHandler.END
 
-    text = "🚆 *Выберите поезд для получения дислокации:*"
+    text = "🚆 *Выберите поезд для получения отчета:*"
     keyboard = []
     
-    # Создаем кнопки: по 3 в ряд (для удобства)
     row = []
     for code in train_codes:
-        # data будет содержать префикс 'train_code_' и сам код поезда
         row.append(InlineKeyboardButton(code, callback_data=f"train_code_{code}"))
         if len(row) == 3: # По 3 кнопки в ряд
             keyboard.append(row)
@@ -137,11 +74,9 @@ async def show_train_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Отправка/редактирование сообщения
     if update.message:
         await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     elif update.callback_query and update.callback_query.message:
-        # Редактируем сообщение, которое могло быть "Загружаю список поездов..."
         await update.callback_query.message.edit_text(
             text, 
             reply_markup=reply_markup, 
@@ -159,11 +94,11 @@ async def handle_train_code_callback(update: Update, context: ContextTypes.DEFAU
     await query.answer("⏳ Собираю отчет...")
     train_no = query.data.split("_")[-1]
     
-    # Редактируем сообщение, чтобы убрать кнопки
     await query.message.edit_text(f"⏳ Готовлю отчет по поезду *{train_no}*...", parse_mode='Markdown')
     
-    # Вызываем основную логику отчета (используем query.message)
-    return await _respond_train_report(query.message, train_no)
+    # --- 3. ✅ ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ОТЧЕТА ---
+    await _build_and_send_report(query.message, train_no)
+    return ConversationHandler.END
 
 
 # --- Точка входа /train (ИЗМЕНЕНА) ---
@@ -184,13 +119,19 @@ async def train_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user or user.id != ADMIN_CHAT_ID:
         logger.warning("[/train] access denied for id=%s", getattr(user, "id", None))
         return ConversationHandler.END
+    
+    if not update.message:
+        return ConversationHandler.END
 
     args = context.args or []
     if args:
         raw = " ".join(args)
         train_no = normalize_train_no(raw) or raw.strip()
-        # Если есть аргументы - сразу генерируем отчет
-        return await _respond_train_report(update.message, train_no)
+        
+        # --- 3. ✅ ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ОТЧЕТА ---
+        await update.message.reply_text(f"⏳ Готовлю отчет по поезду *{train_no}*...", parse_mode='Markdown')
+        await _build_and_send_report(update.message, train_no)
+        return ConversationHandler.END
 
     # Если аргументов нет - показываем список поездов
     return await show_train_list(update, context)
@@ -205,19 +146,20 @@ async def train_ask_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     train_no_raw = update.message.text.strip()
     train_no = normalize_train_no(train_no_raw) or train_no_raw
 
+    # --- 3. ✅ ВЫЗЫВАЕМ НОВУЮ ФУНКЦИЮ ОТЧЕТА ---
     await update.message.reply_text(f"⏳ Готовлю отчет по поезду *{train_no}*...", parse_mode='Markdown')
-    
-    return await _respond_train_report(update.message, train_no)
+    await _build_and_send_report(update.message, train_no)
+    return ConversationHandler.END
 
 
-# --- Функция регистрации хендлеров (ДОПОЛНЕНА) ---
+# --- Функция регистрации хендлеров (ОБНОВЛЕНА) ---
 
 def setup_handlers(app):
     """
     Регистрирует хендлеры для работы с поездами.
     """
     
-    # Регистрация хендлера для CallbackQuery
+    # Отдельный обработчик для нажатия кнопок (вне диалога)
     app.add_handler(
         CallbackQueryHandler(
             handle_train_code_callback, 
@@ -225,7 +167,10 @@ def setup_handlers(app):
         )
     )
     
-    # ConversationHandler для ручного ввода номера поезда
+    # ConversationHandler нужен только для случая, если /train вызван без аргументов,
+    # а затем пользователь вводит текст.
+    # (Хотя текущая логика train_cmd сразу показывает кнопки, 
+    # этот ConversationHandler остается для совместимости)
     conv = ConversationHandler(
         entry_points=[CommandHandler("train", train_cmd)],
         states={
