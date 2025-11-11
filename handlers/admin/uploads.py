@@ -4,7 +4,7 @@ import re
 import asyncio
 from pathlib import Path
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
     MessageHandler, CallbackQueryHandler, filters
@@ -22,17 +22,18 @@ from services.terminal_importer import (
 from services.file_utils import save_temp_file_async
 from utils.notify import notify_admin
 
-# --- ОБНОВЛЕННЫЕ ИМПОРТЫ ---
+# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
 from queries.train_queries import (
     upsert_train_on_upload, 
     get_first_container_in_train,
     get_train_client_summary_by_code,
     update_train_status_from_tracking_data,
-    get_train_details
+    get_train_details,
+    get_latest_active_tracking_for_train # <--- "Умный" поиск дислокации
 )
-from queries.containers import get_latest_tracking_data # Нужен для поиска дислокации
-from models import Train # Нужен для форматирования
-# ---
+# Импортируем сессию, чтобы передать ее в update_train_status
+from db import SessionLocal 
+from models import Train 
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,7 @@ async def upload_file_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # --- ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: ФОРМАТИРОВАНИЕ ОТЧЕТА ---
 async def _build_and_send_report(
-    message: Update.message,
+    message: Message,
     terminal_train_number: str
 ):
     """
@@ -88,15 +89,26 @@ async def _build_and_send_report(
         lines.append(f"**Станция назначения:** `{train_details.destination_station or 'н/д'}`")
         lines.append(f"**Станция перегруза:** `{train_details.overload_station_name or 'Нет'}`")
         lines.append("-----")
-        if train_details.overload_date:
-            # Используем .astimezone(None), чтобы показать локальное время сервера
-            local_time = train_details.overload_date.astimezone(None)
-            lines.append(f"**Дата перегруза:** `{local_time.strftime('%d.%m.%Y %H:%M')}`")
         
-        # --- ✅ НОВАЯ СТРОКА ---
-        lines.append(f"**Операция с поездом:** `{train_details.last_operation or 'н/д'}`") 
+        # --- ✅ ЛОГИКА ОТОБРАЖЕНИЯ ДАТЫ ПЕРЕГРУЗА ---
+        # Дата перегруза (покажется только если она была установлена импортером дислокации)
+        if train_details.overload_date:
+            try:
+                # astimezone(None) преобразует UTC (если оно в БД) в локальное время сервера
+                local_time = train_details.overload_date.astimezone(None)
+                lines.append(f"**Дата перегруза:** `{local_time.strftime('%d.%m.%Y %H:%M')}`")
+            except (ValueError, AttributeError):
+                # На случай, если время в БД не имеет таймзоны
+                lines.append(f"**Дата перегруза:** `{train_details.overload_date.strftime('%d.%m.%Y %H:%M')}`")
+        elif train_details.overload_station_name:
+             # Если станция задана, но даты нет
+            lines.append(f"**Дата перегруза:** `(Ожидает прибытия на станцию)`")
+        else:
+            # Если станция не задана
+             lines.append(f"**Дата перегруза:** `(Не указана)`")
         # ---
         
+        lines.append(f"**Операция с поездом:** `{train_details.last_operation or 'н/д'}`") 
         lines.append(f"**Станция операции:** `{train_details.last_known_station or 'н/д'}`")
         lines.append(f"**Дата и время операции:** `{train_details.last_operation_date.strftime('%d.%m.%Y %H:%M') if train_details.last_operation_date else 'н/д'}`")
     else:
@@ -113,15 +125,19 @@ async def _build_and_send_report(
     lines.append("───")
     lines.append(f"**Контрольный контейнер:** `{control_container or 'н/д'}`")
     
-    await message.reply_text("\n".join(lines), parse_mode="Markdown")
+    # Убедимся, что message - это Message, а не None
+    if message:
+        await message.reply_text("\n".join(lines), parse_mode="Markdown")
+    else:
+        logger.error("[TrainReport] Не удалось отправить отчет, 'message' is None")
 
 
-# --- ОБЩАЯ ЛОГИКА ЗАВЕРШЕНИЯ (без изменений) ---
+# --- ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: ОБЩАЯ ЛОГИКА ЗАВЕРШЕНИЯ ---
 async def _finish_train_upload(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     overload_station: str | None,
-    overload_date: datetime | None
+    overload_date: datetime | None # <--- Теперь он ВСЕГДА будет None при вызове
 ) -> int:
     """
     Общая функция, которая выполняет все шаги и отправляет отчет.
@@ -142,40 +158,45 @@ async def _finish_train_upload(
         logger.info(f"[TrainUpload] Шаг 1/4: TerminalContainer для {train_code} обновлен.")
     except Exception as e:
         logger.error(f"❌ Ошибка импорта в `TerminalContainer`: {e}", exc_info=True)
-        # Не прерываем, т.к. это не критично для таблицы Train
 
-    # 2. Создаем/Обновляем запись в 'Train' (с инфой о перегрузе)
+    # 2. Создаем/Обновляем запись в 'Train' (с инфой о перегрузе, но БЕЗ ДАТЫ)
     await upsert_train_on_upload(
         terminal_train_number=train_code,
         container_count=container_count,
         admin_id=admin_id,
         overload_station_name=overload_station,
-        overload_date=overload_date
+        overload_date=None # <--- ✅ ДАТА НЕ УСТАНАВЛИВАЕТСЯ ПРИ ЗАГРУЗКЕ
     )
     logger.info(f"[TrainUpload] Шаг 2/4: Таблица `Train` для {train_code} обновлена (перегруз: {overload_station or 'Нет'}).")
 
-    # 3. Находим дислокацию (по контрольному контейнеру)
-    control_container = await get_first_container_in_train(train_code)
-    if control_container:
-        logger.info(f"[TrainUpload] Шаг 3/4: Найден контрольный КТК: {control_container}. Ищу дислокацию...")
-        tracking_data_list = await get_latest_tracking_data(control_container)
-        
-        if tracking_data_list:
-            # 4. Обновляем 'Train' данными дислокации
-            await update_train_status_from_tracking_data(train_code, tracking_data_list[0])
-            logger.info(f"[TrainUpload] Шаг 4/4: Статус поезда {train_code} обновлен дислокацией.")
-        else:
-            logger.warning(f"[TrainUpload] Шаг 4/4: Дислокация для {control_container} не найдена.")
+    # 3. Находим АКТИВНУЮ дислокацию (с номером поезда РЖД)
+    logger.info(f"[TrainUpload] Шаг 3/4: Ищу АКТИВНУЮ дислокацию для {train_code}...")
+    tracking_data = await get_latest_active_tracking_for_train(train_code)
+    
+    if tracking_data:
+        # 4. Обновляем 'Train' данными дислокации
+        # (Эта функция сама откроет сессию и выполнит логику проверки даты перегруза)
+        async with SessionLocal() as session:
+             # Передаем сессию, т.к. update_train_status... ожидает ее
+            await update_train_status_from_tracking_data(train_code, tracking_data, session)
+            await session.commit()
+        logger.info(f"[TrainUpload] Шаг 4/4: Статус поезда {train_code} обновлен дислокацией.")
     else:
-        logger.warning(f"[TrainUpload] Шаг 3/4: Контрольный КТК для {train_code} не найден.")
+        logger.warning(f"[TrainUpload] Шаг 4/4: АКТИВНАЯ дислокация (с поездом РЖД) для {train_code} не найдена.")
 
     # 5. Отправляем отчет
-    # Определяем, куда отвечать (в чат или редактировать сообщение)
+    message_to_reply_to = None
     if update.callback_query:
-        await update.callback_query.delete_message() # Удаляем кнопки "Да/Нет"
-        await _build_and_send_report(update.callback_query.message, train_code)
+        await update.callback_query.delete_message()
+        message_to_reply_to = update.callback_query.message
     elif update.message:
-        await _build_and_send_report(update.message, train_code)
+        message_to_reply_to = update.message
+
+    if message_to_reply_to:
+        await _build_and_send_report(message_to_reply_to, train_code)
+    else:
+        logger.error(f"[TrainUpload] Не удалось найти сообщение для ответа по поезду {train_code}")
+
 
     # Очистка
     if os.path.exists(dest_path): os.remove(dest_path)
@@ -183,7 +204,7 @@ async def _finish_train_upload(
     return ConversationHandler.END
 
 
-# --- ДИАЛОГ ЗАГРУЗКИ (без изменений) ---
+# --- ДИАЛОГ ЗАГРУЗКИ (handle_admin_document_entry - без изменений) ---
 
 async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int | None:
     """
@@ -254,16 +275,13 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
         train_code = extract_train_code_from_filename(original_filename)
         logger.info(f"📥 [Admin Upload] Обнаружен файл поезда: {train_code}. Запускаю диалог перегруза.")
         
-        # --- Сразу считаем контейнеры ---
         container_map = await _collect_containers_from_excel(str(dest_path))
         container_count = len(container_map)
         if container_count == 0:
              await update.message.reply_text(f"⚠️ В файле поезда {train_code} не найдено ни одного контейнера. Импорт отменен.")
              if os.path.exists(dest_path): os.remove(dest_path)
              return ConversationHandler.END
-        # ---
 
-        # Сохраняем данные для следующих шагов
         context.user_data['train_file_path'] = dest_path
         context.user_data['train_code'] = train_code
         context.user_data['admin_id'] = update.effective_user.id
@@ -288,7 +306,7 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
         if os.path.exists(dest_path): os.remove(dest_path)
         return ConversationHandler.END
 
-
+# --- (handle_overload_confirm - без изменений) ---
 async def handle_overload_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обрабатывает ответ (Да/Нет) на вопрос о перегрузе."""
     query = update.callback_query
@@ -318,7 +336,7 @@ async def handle_overload_confirm(update: Update, context: ContextTypes.DEFAULT_
 
     return ConversationHandler.END
 
-
+# --- ✅ ОБНОВЛЕННЫЙ `handle_overload_station_name` ---
 async def handle_overload_station_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает станцию, выполняет оба импорта и завершает диалог."""
     if not update.message or not update.message.text or not context.user_data:
@@ -328,12 +346,13 @@ async def handle_overload_station_name(update: Update, context: ContextTypes.DEF
     
     await update.message.reply_text(f"Принято: станция перегруза **{station_name}**. Начинаю обработку...", parse_mode="Markdown")
 
-    # Вызываем общую функцию, передавая станцию и текущую дату
+    # --- ✅ ИЗМЕНЕНИЕ: Мы передаем overload_date=None ---
+    # Дата будет установлена позже, когда дислокация совпадет
     return await _finish_train_upload(
         update, 
         context, 
         overload_station=station_name, 
-        overload_date=datetime.now()
+        overload_date=None 
     )
 
 

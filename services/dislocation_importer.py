@@ -13,6 +13,7 @@ from datetime import datetime
 
 # --- Импорты из вашего проекта ---
 from db import SessionLocal
+# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
 from models import Tracking, TrainEventLog, Train 
 from model.terminal_container import TerminalContainer 
 from logger import get_logger 
@@ -20,6 +21,7 @@ from telegram import Bot
 from services.imap_service import ImapService 
 from services import notification_service 
 from services.train_event_notifier import process_dislocation_for_train_events
+# --- ✅ ИМПОРТ ФУНКЦИИ ОБНОВЛЕНИЯ ---
 from queries.train_queries import update_train_status_from_tracking_data
 
 logger = get_logger(__name__) 
@@ -142,7 +144,7 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
 
 
 # =========================================================================
-# === 4. ОБНОВЛЕННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN (без изменений) ===
+# === 4. ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN ===
 # =========================================================================
 
 async def update_train_statuses_from_tracking(
@@ -158,6 +160,7 @@ async def update_train_statuses_from_tracking(
     # 1. Находим последнюю операцию для каждого КОНТЕЙНЕРА из обработанных
     container_latest_op: Dict[str, Tracking] = {}
     for tracking_obj in processed_tracking_objects:
+        # Убедимся, что у объекта есть дата, иначе он бесполезен для сортировки
         op_date = tracking_obj.operation_date
         if not op_date:
             continue
@@ -211,10 +214,11 @@ async def update_train_statuses_from_tracking(
     updated_train_count = 0
     for terminal_train_number, latest_tracking_obj in train_latest_op.items():
         try:
-            # Используем функцию из train_queries
+            # --- ✅ ИЗМЕНЕНИЕ: Передаем сессию ---
             success = await update_train_status_from_tracking_data(
                 terminal_train_number, 
-                latest_tracking_obj
+                latest_tracking_obj,
+                session=session # <--- ПЕРЕДАЕМ СЕССИЮ
             )
             if success:
                 updated_train_count += 1
@@ -226,7 +230,7 @@ async def update_train_statuses_from_tracking(
 
 
 # =========================================================================
-# === 5. ОБНОВЛЕННЫЙ УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД (без изменений) ===
+# === 5. ОБНОВЛЕННЫЙ УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД ===
 # =========================================================================
 
 async def process_dislocation_file(filepath: str):
@@ -245,6 +249,7 @@ async def process_dislocation_file(filepath: str):
     updated_count = 0
     inserted_count = 0
     
+    # --- ✅ Список для сбора обновленных ОБЪЕКТОВ Tracking ---
     processed_tracking_objects: List[Tracking] = []
 
     session = SessionLocal()
@@ -278,7 +283,7 @@ async def process_dislocation_file(filepath: str):
                 if not container_number:
                     continue
 
-                # --- Приведение типов ---
+                # --- Приведение типов (без изменений) ---
                 if 'is_loaded_trip' in row_data and row_data['is_loaded_trip'] is not None:
                     row_data['is_loaded_trip'] = bool(row_data['is_loaded_trip'])
                 
@@ -330,7 +335,7 @@ async def process_dislocation_file(filepath: str):
                             setattr(existing_entry, str(key), value)
                         
                         updated_count += 1
-                        processed_tracking_objects.append(existing_entry) 
+                        processed_tracking_objects.append(existing_entry) # <--- ✅ Сбор данных
                 else:
                     # --- ЛОГИКА СОЗДАНИЯ ---
                     new_entry_data = {str(k): v for k, v in row_data.items()}
@@ -339,18 +344,23 @@ async def process_dislocation_file(filepath: str):
                     tracking_map[container_number] = new_entry 
                     
                     inserted_count += 1
-                    processed_tracking_objects.append(new_entry) 
+                    processed_tracking_objects.append(new_entry) # <--- ✅ Сбор данных
         
         logger.info(f"Успешно сохранено в БД Tracking: {inserted_count} новых, {updated_count} обновленных.")
         
+        # --- ✅ ВЫЗОВ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN (перед коммитом) ---
         if processed_tracking_objects:
+            # Передаем сессию
             await update_train_statuses_from_tracking(session, processed_tracking_objects)
+        # ---
         
         await session.commit()
         
+        # --- Логика событий поезда (вызывается ПОСЛЕ коммита) ---
         if inserted_count > 0 or updated_count > 0:
             logger.info(f"Запуск анализа событий поезда для {len(data_rows)} записей...")
             try:
+                # Эта функция сама откроет сессию и запишет события в TrainEventLog
                 await process_dislocation_for_train_events(data_rows)
             except Exception as e_event:
                 logger.error(f"Ошибка при логировании событий поезда: {e_event}", exc_info=True)
@@ -368,11 +378,12 @@ async def process_dislocation_file(filepath: str):
 
 
 # =========================================================================
-# === 6. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ ===
+# === 6. ФУНКЦИЯ, ВЫЗЫВАЕМАЯ ПЛАНИРОВЩИКОМ (с гибким фильтром) ===
 # =========================================================================
 
-# --- ✅ ИЗМЕНЕНИЕ: Фильтр темы стал более гибким (учитывает пробелы) ---
-# r'Отчёт слежения TrackerBot №' -> r'Отчёт\s+слежения\s+TrackerBot\s*№'
+# --- ✅ ОБНОВЛЕННЫЙ ГИБКИЙ ФИЛЬТР ---
+# Ищет "Отчёт" + (1+ пробел) + "слежения" + (1+ пробел) + "TrackerBot" + (0+ пробелов) + "№"
+# Это позволяет находить "Ошибка...Отчёт слежения..." и "Отчёт  слежения TrackerBot№"
 SUBJECT_FILTER_DISLOCATION = r'Отчёт\s+слежения\s+TrackerBot\s*№'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru'
 FILENAME_PATTERN_DISLOCATION = r'\.(xlsx|xls)$' # Допускаем оба расширения
