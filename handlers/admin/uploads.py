@@ -3,7 +3,7 @@ import os
 import re
 import asyncio
 from pathlib import Path
-from datetime import datetime # <--- ДОБАВЬТЕ ЭТОТ ИМПОРТ
+from datetime import datetime # <--- ДОБАВЛЕН ИМПОРТ
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, 
@@ -17,12 +17,12 @@ from services.terminal_importer import (
     import_train_from_excel, 
     extract_train_code_from_filename, 
     process_terminal_report_file,
-    _collect_containers_from_excel
+    _collect_containers_from_excel # Импортируем сборщик контейнеров
 )
 from services.file_utils import save_temp_file_async
 from utils.notify import notify_admin
 
-# --- ✅ ИЗМЕНЕНИЕ: Импортируем новую функцию ---
+# --- ✅ Импортируем новую функцию ---
 from queries.train_queries import upsert_train_on_upload 
 
 logger = get_logger(__name__)
@@ -35,7 +35,6 @@ TERMINAL_REPORT_PATTERN = r'A-Terminal.*\.xlsx$'
 
 async def upload_file_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Информирует администратора о способе загрузки файлов."""
-    # ... (Код этой функции остается без изменений) ...
     if update.effective_user.id != ADMIN_CHAT_ID or not update.message:
         return
 
@@ -94,6 +93,7 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
             processed_count = await process_dislocation_file(str(dest_path))
             await update.message.reply_text(f"✅ Обработка дислокации завершена. Обновлено записей: **{processed_count}**.", parse_mode='Markdown')
         except Exception as e:
+            logger.error(f"❌ [Admin Upload] Ошибка при обработке файла дислокации: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Критическая ошибка при обработке файла дислокации: {e}")
         
         if os.path.exists(dest_path): os.remove(dest_path)
@@ -111,6 +111,7 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
                 parse_mode='Markdown'
             )
         except Exception as e:
+            logger.error(f"❌ [Admin Upload] Ошибка при обработке отчета терминала: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Критическая ошибка при обработке отчета терминала: {e}")
             
         if os.path.exists(dest_path): os.remove(dest_path)
@@ -121,7 +122,7 @@ async def handle_admin_document_entry(update: Update, context: ContextTypes.DEFA
         train_code = extract_train_code_from_filename(original_filename)
         logger.info(f"📥 [Admin Upload] Обнаружен файл поезда: {train_code}. Запускаю диалог перегруза.")
         
-        # --- ✅ ИЗМЕНЕНИЕ: Сразу считаем контейнеры ---
+        # --- Сразу считаем контейнеры ---
         container_map = await _collect_containers_from_excel(str(dest_path))
         container_count = len(container_map)
         if container_count == 0:
@@ -183,12 +184,13 @@ async def handle_overload_confirm(update: Update, context: ContextTypes.DEFAULT_
                 f"  (Обновлено/Найдено: **{updated_count}/{total_count}**)"
             )
         except Exception as e:
+            logger.error(f"❌ Ошибка импорта в `TerminalContainer`: {e}", exc_info=True)
             response_lines.append(f"❌ Ошибка импорта в `TerminalContainer`: {e}")
 
         # 2. Записываем в новую таблицу 'Train' (без перегруза)
         try:
             await upsert_train_on_upload(
-                train_number=train_code,
+                terminal_train_number=train_code, # <--- ✅ Используем правильное поле
                 container_count=container_count,
                 admin_id=admin_id,
                 overload_station_name=None, # <--- Нет перегруза
@@ -196,6 +198,7 @@ async def handle_overload_confirm(update: Update, context: ContextTypes.DEFAULT_
             )
             response_lines.append(f"✅ Запись в таблице Поездов (`Train`) для **{train_code}** создана/обновлена.")
         except Exception as e:
+            logger.error(f"❌ Ошибка записи в таблицу `Train`: {e}", exc_info=True)
             response_lines.append(f"❌ Ошибка записи в таблицу `Train`: {e}")
             
         await query.edit_message_text("\n\n".join(response_lines), parse_mode='Markdown')
@@ -214,6 +217,9 @@ async def handle_overload_confirm(update: Update, context: ContextTypes.DEFAULT_
             parse_mode='Markdown'
         )
         return ASK_STATION_NAME
+
+    # Добавляем возврат для случая, если choice не "yes" или "no" (хотя pattern это исключает)
+    return ConversationHandler.END
 
 
 async def handle_overload_station_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -238,12 +244,13 @@ async def handle_overload_station_name(update: Update, context: ContextTypes.DEF
             f"  (Обновлено/Найдено: **{updated_count}/{total_count}**)"
         )
     except Exception as e:
+        logger.error(f"❌ Ошибка импорта в `TerminalContainer`: {e}", exc_info=True)
         response_lines.append(f"❌ Ошибка импорта в `TerminalContainer`: {e}")
 
     # 2. Логируем событие перегруза в 'Train'
     try:
         success = await upsert_train_on_upload(
-            train_number=train_code,
+            terminal_train_number=train_code, # <--- ✅ Используем правильное поле
             container_count=container_count,
             admin_id=admin_id,
             overload_station_name=station_name, # <--- Станция указана
@@ -257,6 +264,7 @@ async def handle_overload_station_name(update: Update, context: ContextTypes.DEF
         else:
             response_lines.append(f"❌ Не удалось зарегистрировать событие перегруза в `Train`.")
     except Exception as e:
+        logger.error(f"❌ Критическая ошибка логирования перегруза в `Train`: {e}", exc_info=True)
         response_lines.append(f"❌ Критическая ошибка логирования перегруза в `Train`: {e}")
 
     # Отправляем сводный отчет
@@ -269,7 +277,6 @@ async def handle_overload_station_name(update: Update, context: ContextTypes.DEF
 
 async def cancel_overload_dialog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет диалог и удаляет временный файл."""
-    # ... (Код этой функции остается без изменений) ...
     if context.user_data:
         dest_path = context.user_data.get('train_file_path')
         if dest_path and os.path.exists(dest_path):
@@ -287,7 +294,6 @@ async def cancel_overload_dialog(update: Update, context: ContextTypes.DEFAULT_T
 
 def get_admin_upload_conversation_handler():
     """Возвращает ConversationHandler для загрузки файлов."""
-    # ... (Код этой функции остается без изменений) ...
     return ConversationHandler(
         entry_points=[
             MessageHandler(
