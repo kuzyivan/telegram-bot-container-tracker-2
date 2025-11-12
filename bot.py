@@ -110,12 +110,13 @@ def main():
     application.add_handler(get_email_conversation_handler())
     setup_train_handlers(application)
     application.add_handler(distance_conversation_handler()) # <-- Вызываем функцию ()
-            application.add_handler(get_add_containers_conversation_handler())
-            application.add_handler(get_remove_containers_conversation_handler())
-            
-            # --- ✅ ДОБАВЬТЕ ЭТОТ ХЕНДЛЕР ---
-            application.add_handlers(get_event_email_handlers())
-            # ---    
+    application.add_handler(get_add_containers_conversation_handler())
+    application.add_handler(get_remove_containers_conversation_handler())
+    
+    # --- ✅ ДОБАВЬТЕ ЭТОТ ХЕНДЛЕР ---
+    application.add_handlers(get_event_email_handlers())
+    # ---
+    
     # --- ✅ ДОБАВЛЕН НОВЫЙ ДИАЛОГ ЗАГРУЗКИ ---
     application.add_handler(get_admin_upload_conversation_handler())
     
