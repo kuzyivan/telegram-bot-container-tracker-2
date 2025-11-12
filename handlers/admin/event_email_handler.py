@@ -15,11 +15,6 @@ from queries.event_queries import (
     delete_event_rule_by_id
 )
 
-# --- ⭐️ НОВЫЙ ИМПОРТ ⭐️ ---
-# Импортируем текст кнопки из menu_handlers
-from handlers.menu_handlers import BUTTON_SETTINGS_EVENT_EMAILS
-# --- ⭐️
-
 logger = get_logger(__name__)
 
 # Состояния для диалога
