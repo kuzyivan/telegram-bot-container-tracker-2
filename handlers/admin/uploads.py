@@ -21,6 +21,7 @@ from services.terminal_importer import (
 )
 from services.file_utils import save_temp_file_async
 from utils.notify import notify_admin
+from utils.railway_utils import get_railway_abbreviation
 
 # --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
 from queries.train_queries import (
@@ -109,7 +110,13 @@ async def _build_and_send_report(
         # ---
         
         lines.append(f"**Операция с поездом:** `{train_details.last_operation or 'н/д'}`") 
-        lines.append(f"**Станция операции:** `{train_details.last_known_station or 'н/д'}`")
+        
+        # --- 🛠️ ИЗМЕНЕНИЕ: Добавляем аббревиатуру дороги ---
+        railway_abbreviation = get_railway_abbreviation(train_details.last_known_road)
+        station_display = f"{train_details.last_known_station or 'н/д'} (Дорога: {railway_abbreviation})"
+        lines.append(f"**Станция операции:** `{station_display}`")
+        # ---
+        
         lines.append(f"**Дата и время операции:** `{train_details.last_operation_date.strftime('%d.%m.%Y %H:%M') if train_details.last_operation_date else 'н/д'}`")
     else:
         lines.append("_(Не удалось загрузить детали поезда из БД `Train`)_")
