@@ -173,6 +173,7 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     elif is_admin and BUTTON_SETTINGS_MY_EMAILS in text:
         # Убедимся, что /my_email - это /my_emails
+        from handlers.email_management_handler import my_emails_command
         await my_emails_command(update, context) 
 
     # --- 4. Если ни одна кнопка не нажата -> это запрос Дислокации ---

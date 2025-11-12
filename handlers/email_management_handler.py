@@ -7,7 +7,6 @@ from telegram.ext import (
 )
 from queries.user_queries import get_user_emails, add_unverified_email, delete_user_email, register_user_if_not_exists, generate_and_save_verification_code, verify_code_and_activate_email, delete_unverified_email
 from logger import get_logger
-from handlers.menu_handlers import reply_keyboard_handler
 import asyncio
 from utils.email_sender import send_email, generate_verification_email
 
@@ -145,18 +144,6 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.clear()
     return ConversationHandler.END
 
-async def cancel_and_reroute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.effective_user: return ConversationHandler.END
-    
-    # Очистка неподтвержденного email и кодов
-    email_to_clear = context.user_data.get('email_to_verify')
-    await delete_unverified_email(update.effective_user.id, email_to_clear)
-
-    await update.message.reply_text("Действие отменено. Выполняю команду из меню...")
-    await reply_keyboard_handler(update, context)
-    context.user_data.clear()
-    return ConversationHandler.END
-
 def get_email_conversation_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[CallbackQueryHandler(add_email_start, pattern="^add_email_start$")],
@@ -168,7 +155,6 @@ def get_email_conversation_handler() -> ConversationHandler:
         },
         fallbacks=[
             CommandHandler("cancel", cancel_conversation),
-            MessageHandler(filters.Regex("^(📦 Дислокация|📂 Мои подписки)$"), cancel_and_reroute)
         ],
     )
 
