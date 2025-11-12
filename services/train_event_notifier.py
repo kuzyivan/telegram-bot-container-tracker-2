@@ -14,11 +14,9 @@ from models import TrainEventLog
 from model.terminal_container import TerminalContainer 
 from logger import get_logger
 
-# --- ⭐️ ИЗМЕНЕННЫЕ ИМПОРТЫ ⭐️ ---
-# Мы больше не используем config, а берем email из БД
 from queries.event_queries import get_global_email_rules 
 from utils.email_sender import send_email
-# --- ⭐️ КОНЕЦ ИЗМЕНЕНИЙ ⭐️ ---
+from typing import List, Dict, Any # <-- ✅ Добавлен импорт
 
 
 logger = get_logger(__name__)
@@ -36,10 +34,6 @@ async def log_train_event(session: AsyncSession, container_number: str, train_nu
                           event_description: str, station: str, event_time: datetime):
     """Логирует событие поезда в базу данных, избегая дубликатов."""
 
-    # --- ✅ НАЧАЛО ИЗМЕНЕНИЯ: Проверка на дубликат ---
-    # Ищем, был ли УЖЕ залогирован этот уникальный набор:
-    # (Контейнер + Событие + Станция + Точное Время)
-    
     existing_event = await session.execute(
         select(TrainEventLog).filter(
             TrainEventLog.container_number == container_number,
@@ -50,11 +44,8 @@ async def log_train_event(session: AsyncSession, container_number: str, train_nu
     )
     
     if existing_event.scalar_one_or_none():
-        # Такое событие уже есть в базе. 
-        # Просто логируем, что мы его снова увидели, но не добавляем.
         logger.debug(f"[Dedup] Событие для {container_number} ({event_description} на {station}) уже залогировано. Пропуск.")
         return False # Не добавлено
-    # --- ⛔️ КОНЕЦ ИЗМЕНЕНИЯ ---
 
     log_entry = TrainEventLog(
         container_number=container_number,
@@ -74,6 +65,10 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
     """
     logger.info(f"Начинаю анализ {len(dislocation_records)} записей дислокации на события поезда...")
     processed_count = 0
+    
+    # --- ⭐️ ШАГ 1: Создаем пустой список для сбора событий ⭐️ ---
+    unload_events_found: List[Dict[str, Any]] = []
+    
     async with SessionLocal() as session:
         async with session.begin(): # Используем одну транзакцию для всех логов
 
@@ -108,46 +103,17 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                     # Формируем описание события
                     event_description = f"Операция '{operation_raw}'" # Используем оригинальное название операции
 
-                    # --- ⭐️ НАЧАЛО ОБНОВЛЕННОЙ ЛОГИКИ (ОТПРАВКА EMAIL) ⭐️ ---
+                    # --- ⭐️ ШАГ 2: Логика отправки E-mail УДАЛЕНА отсюда ⭐️ ---
                     
-                    # 1. Проверяем, является ли это событием "Выгрузка"
+                    # --- ⭐️ ШАГ 3: Собираем данные о выгрузке в список ⭐️ ---
                     if "выгрузка" in operation_lower:
-                        
-                        # 2. Получаем список email'ов из БАЗЫ ДАННЫХ
-                        recipient_rules = await get_global_email_rules()
-                        email_list = [rule.recipient_email for rule in recipient_rules if rule.recipient_email]
-
-                        if email_list:
-                            logger.info(f"Обнаружено событие 'Выгрузка' для {container_number}. Отправка E-mail на {email_list}...")
-                            
-                            # 3. Формируем тему и тело письма
-                            email_subject = f"Уведомление о Выгрузке: Контейнер {container_number}"
-                            email_body = (
-                                f"Здравствуйте,\n\n"
-                                f"Контейнер **{container_number}** получил статус 'Выгрузка'.\n\n"
-                                f"**Детали события:**\n"
-                                f"• **Поезд (терминал):** {terminal_info.train}\n"
-                                f"• **Операция:** {operation_raw}\n"
-                                f"• **Станция:** {station}\n"
-                                f"• **Время:** {operation_date_dt.strftime('%d.%m.%Y %H:%M (UTC)')}\n"
-                            )
-                            
-                            try:
-                                # 4. Отправляем email в отдельном потоке
-                                await asyncio.to_thread(
-                                    send_email,
-                                    to=email_list,
-                                    subject=email_subject,
-                                    body=email_body,
-                                    attachments=None # Вложений нет
-                                )
-                                logger.info(f"E-mail о выгрузке {container_number} успешно отправлен.")
-                            except Exception as email_err:
-                                logger.error(f"Не удалось отправить E-mail о выгрузке {container_number}: {email_err}", exc_info=True)
-                        else:
-                            logger.info(f"Событие 'Выгрузка' для {container_number} обнаружено, но в БД не настроено ни одного E-mail получателя.")
-                            
-                    # --- ⭐️ КОНЕЦ ОБНОВЛЕННОЙ ЛОГИКИ ⭐️ ---
+                        unload_events_found.append({
+                            "container": container_number,
+                            "train": terminal_info.train,
+                            "operation": operation_raw,
+                            "station": station,
+                            "time": operation_date_dt
+                        })
 
                     # Логируем событие (с дедупликацией)
                     added = await log_train_event(
@@ -160,6 +126,50 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                     )
                     if added:
                         processed_count += 1
+            
+            # --- ⭐️ ШАГ 4: Отправляем ОДНО письмо (ПОСЛЕ цикла) ⭐️ ---
+            if unload_events_found:
+                logger.info(f"Обнаружено {len(unload_events_found)} событий 'Выгрузка'. Агрегирую в одно E-mail сообщение.")
+                
+                # 1. Получаем email-адреса из БД
+                recipient_rules = await get_global_email_rules()
+                email_list = [rule.recipient_email for rule in recipient_rules if rule.recipient_email]
+
+                if email_list:
+                    # 2. Формируем ОДНО большое письмо
+                    email_subject = f"Сводка по Выгрузке: {len(unload_events_found)} контейнеров"
+                    body_lines = [
+                        "Здравствуйте,", 
+                        "", 
+                        f"Обнаружены события 'Выгрузка' для следующих контейнеров:"
+                    ]
+                    
+                    # Сортируем по поезду, потом по контейнеру для удобства
+                    sorted_events = sorted(unload_events_found, key=lambda x: (x['train'], x['container']))
+                    
+                    for event in sorted_events:
+                        body_lines.append(
+                            f"• **{event['container']}** (Поезд: {event['train']}) - {event['operation']} на ст. {event['station']} ({event['time'].strftime('%d.%m %H:%M')})"
+                        )
+                    
+                    email_body = "\n".join(body_lines)
+                    
+                    # 3. Отправляем ОДНО письмо
+                    try:
+                        await asyncio.to_thread(
+                            send_email,
+                            to=email_list,
+                            subject=email_subject,
+                            body=email_body,
+                            attachments=None
+                        )
+                        logger.info(f"Сводный E-mail о выгрузке {len(unload_events_found)} контейнеров успешно отправлен.")
+                    except Exception as email_err:
+                        logger.error(f"Не удалось отправить СВОДНЫЙ E-mail о выгрузке: {email_err}", exc_info=True)
+                else:
+                    logger.info("События 'Выгрузка' обнаружены, но в БД нет E-mail получателей.")
+            
+            # --- ⭐️ КОНЕЦ НОВОЙ ЛОГИКИ ⭐️ ---
                 
         # Коммит транзакции 
         await session.commit()
