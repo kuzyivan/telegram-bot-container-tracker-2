@@ -92,6 +92,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     user = update.effective_user
 
+    # --- ✅ ИСПРАВЛЕНИЕ: ПРОВЕРКА НА АКТИВНЫЙ ДИАЛОГ ---
+    if context.user_data:
+        # Ключи из handlers/tracking_handlers.py
+        if 'sub_name' in context.user_data or 'sub_containers' in context.user_data:
+            logger.warning(
+                f"[dislocation] handle_message проигнорировано, "
+                f"т.к. пользователь {user.id if user else 'N/A'} находится в диалоге 'add_subscription'."
+            )
+            # Просто выходим, давая диалогу завершить работу
+            return 
+    # --- ✅ КОНЕЦ ИСПРАВЛЕНИЯ ---
+
     if not message or not message.text or not user:
         logger.warning("Получено сообщение без текста или пользователя.")
         return
