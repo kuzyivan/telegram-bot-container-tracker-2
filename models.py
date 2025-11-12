@@ -241,6 +241,53 @@ class Train(Base):
     km_remaining: Mapped[int | None] = mapped_column(Integer)
     eta_days: Mapped[float | None] = mapped_column(Float)
 
-    # 6. Системные
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+
+
+# =========================================================================
+# === ✅ НОВАЯ МОДЕЛЬ: ПРАВИЛА УВЕДОМЛЕНИЙ О СОБЫТИЯХ ===
+# =========================================================================
+class EventAlertRule(Base):
+    """
+    Таблица для хранения правил уведомлений о событиях поезда.
+    Отвечает на вопросы: КОГО, КУДА, О ЧЕМ и ПОЧЕМУ уведомлять.
+    """
+    __tablename__ = "event_alert_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    
+    # Понятное имя, чтобы админ не запутался (н-р, "Выгрузка для клиента А", "Админ: все события")
+    rule_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # 1. ЧТО случилось? (Триггер)
+    # Возможные значения: 'UNLOAD', 'DEPARTURE', 'OVERLOAD_ARRIVAL', 'IDLE_48H', 'ALL'
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+
+    # 2. КУДА отправить? (Канал)
+    # Возможные значения: 'EMAIL', 'TELEGRAM'
+    channel: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+
+    # 3. КОГО уведомить? (Получатель)
+    # Если channel='EMAIL'
+    recipient_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Если channel='TELEGRAM'
+    recipient_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.telegram_id", ondelete="SET NULL"), 
+        nullable=True
+    )
+
+    # 4. ЗА ЧЕМ следить? (Область видимости)
+    # Если NULL -> Глобальное правило (все поезда)
+    # Если ID -> Только для контейнеров из этой подписки
+    subscription_id: Mapped[int | None] = mapped_column(
+        ForeignKey("subscriptions.id", ondelete="CASCADE"), 
+        nullable=True
+    )
+
+    # Связи (для удобства)
+    user: Mapped["User" | None] = relationship()
+    subscription: Mapped["Subscription" | None] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<EventAlertRule(id={self.id}, name='{self.rule_name}', event='{self.event_type}', channel='{self.channel}')>"
