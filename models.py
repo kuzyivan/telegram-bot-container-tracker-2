@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func
 from datetime import datetime, date, time
+from typing import Optional # <-- ✅ ДОБАВЛЕН ЭТОТ ИМПОРТ
 
 # Импортируем Base из нового файла
 from db_base import Base
@@ -241,9 +242,9 @@ class Train(Base):
     km_remaining: Mapped[int | None] = mapped_column(Integer)
     eta_days: Mapped[float | None] = mapped_column(Float)
 
+    # 6. Системные
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-
 
 # =========================================================================
 # === ✅ НОВАЯ МОДЕЛЬ: ПРАВИЛА УВЕДОМЛЕНИЙ О СОБЫТИЯХ ===
@@ -271,6 +272,7 @@ class EventAlertRule(Base):
     # 3. КОГО уведомить? (Получатель)
     # Если channel='EMAIL'
     recipient_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    
     # Если channel='TELEGRAM'
     recipient_user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.telegram_id", ondelete="SET NULL"), 
@@ -286,8 +288,10 @@ class EventAlertRule(Base):
     )
 
     # Связи (для удобства)
-    user: Mapped[Optional["User"]] = relationship()
-    subscription: Mapped[Optional["Subscription"]] = relationship()
+    # --- ⭐️ ИСПРАВЛЕНИЕ ЗДЕСЬ ⭐️ ---
+    user: Mapped[Optional["User"]] = relationship(foreign_keys=[recipient_user_id])
+    subscription: Mapped[Optional["Subscription"]] = relationship(foreign_keys=[subscription_id])
+    # --- ⭐️ КОНЕЦ ИСПРАВЛЕНИЯ ⭐️ ---
 
     def __repr__(self) -> str:
         return f"<EventAlertRule(id={self.id}, name='{self.rule_name}', event='{self.event_type}', channel='{self.channel}')>"
