@@ -15,6 +15,11 @@ from queries.event_queries import (
     delete_event_rule_by_id
 )
 
+# --- ⭐️ НОВЫЙ ИМПОРТ ⭐️ ---
+# Импортируем текст кнопки из menu_handlers
+from handlers.menu_handlers import BUTTON_SETTINGS_EVENT_EMAILS
+# --- ⭐️
+
 logger = get_logger(__name__)
 
 # Состояния для диалога
@@ -56,6 +61,10 @@ async def build_and_show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    # Сохраняем состояние в user_data, чтобы reply_keyboard_handler (group 1) "увидел" его
+    if context.user_data is not None:
+        context.user_data[MAIN_MENU] = True # Маркер того, что мы в этом меню
+    
     # Отправляем или редактируем сообщение
     if update.callback_query:
         try:
@@ -72,7 +81,7 @@ async def build_and_show_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def event_emails_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
-    Точка входа /event_emails. Показывает главное меню.
+    Точка входа /event_emails ИЛИ нажатия кнопки. Показывает главное меню.
     """
     if context.user_data:
         context.user_data.clear()
@@ -88,6 +97,11 @@ async def prompt_for_email_to_add(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     if not query:
         return MAIN_MENU
+    
+    # Обновляем маркеры состояния
+    if context.user_data is not None:
+        context.user_data.pop(MAIN_MENU, None)
+        context.user_data[AWAITING_EMAIL_TO_ADD] = True
         
     await query.answer()
     await query.edit_message_text(
@@ -117,6 +131,10 @@ async def handle_new_email_input(update: Update, context: ContextTypes.DEFAULT_T
         intro_text = f"✅ Email `{email_to_add}` успешно добавлен."
     else:
         intro_text = f"⚠️ Email `{email_to_add}` уже был в списке."
+    
+    # Очищаем маркер состояния
+    if context.user_data is not None:
+        context.user_data.pop(AWAITING_EMAIL_TO_ADD, None)
         
     return await build_and_show_menu(update, context, intro_text=intro_text)
 
@@ -131,12 +149,20 @@ async def prompt_for_email_to_delete(update: Update, context: ContextTypes.DEFAU
         return MAIN_MENU
     await query.answer()
 
+    # Обновляем маркеры состояния
+    if context.user_data is not None:
+        context.user_data.pop(MAIN_MENU, None)
+        context.user_data[AWAITING_DELETE_CHOICE] = True
+
     recipients = await get_global_email_rules()
     if not recipients:
+        # Очищаем маркер
+        if context.user_data is not None:
+            context.user_data.pop(AWAITING_DELETE_CHOICE, None)
         return await build_and_show_menu(update, context, intro_text="Нечего удалять. Список пуст.")
 
     keyboard = []
-    text = "Нажмите на E-mail, который хотите **удалить** החדש:"
+    text = "Нажмите на E-mail, который хотите **удалить**:"
     
     for rcp in recipients:
         # callback_data="event_email_delete_id_{ID_ПРАВИЛА}"
@@ -162,6 +188,9 @@ async def handle_delete_email_callback(update: Update, context: ContextTypes.DEF
     try:
         rule_id = int(query.data.split("_")[-1])
     except (ValueError, IndexError):
+        # Очищаем маркер
+        if context.user_data is not None:
+            context.user_data.pop(AWAITING_DELETE_CHOICE, None)
         return await build_and_show_menu(update, context, intro_text="❌ Ошибка: Некорректный ID для удаления.")
         
     success = await delete_event_rule_by_id(rule_id)
@@ -170,6 +199,10 @@ async def handle_delete_email_callback(update: Update, context: ContextTypes.DEF
         intro_text = "✅ Email успешно удален."
     else:
         intro_text = "❌ Ошибка: Не удалось удалить Email."
+    
+    # Очищаем маркер
+    if context.user_data is not None:
+        context.user_data.pop(AWAITING_DELETE_CHOICE, None)
         
     return await build_and_show_menu(update, context, intro_text=intro_text)
 
@@ -206,7 +239,16 @@ def get_event_email_handlers() -> list:
     """
     
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("event_emails", event_emails_menu)],
+        entry_points=[
+            CommandHandler("event_emails", event_emails_menu),
+            # --- ⭐️ НОВАЯ ТОЧКА ВХОДА ⭐️ ---
+            # Теперь диалог будет запускаться и по нажатию кнопки из ReplyKeyboard
+            MessageHandler(
+                filters.TEXT & filters.Regex(f"^{re.escape(BUTTON_SETTINGS_EVENT_EMAILS)}$"), 
+                event_emails_menu
+            )
+            # --- ⭐️
+        ],
         states={
             MAIN_MENU: [
                 CallbackQueryHandler(prompt_for_email_to_add, pattern="^event_email_add$"),
@@ -217,14 +259,15 @@ def get_event_email_handlers() -> list:
             ],
             AWAITING_DELETE_CHOICE: [
                 CallbackQueryHandler(handle_delete_email_callback, pattern="^event_email_delete_id_"),
-                CallbackQueryHandler(event_emails_menu, pattern="^event_email_back$")
+                # "Назад" просто возвращает в главное меню
+                CallbackQueryHandler(event_emails_menu, pattern="^event_email_back$") 
             ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_event_email_dialog),
             CallbackQueryHandler(cancel_event_email_dialog, pattern="^event_email_cancel$")
         ],
-        allow_reentry=True # Позволяет /event_emails перезапустить диалог в любом состоянии
+        allow_reentry=True 
     )
     
     return [conv_handler]

@@ -12,18 +12,21 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from config import ADMIN_CHAT_ID 
 
 # --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
-# Импорт хендлеров из других модулей, как в вашем проекте
 from handlers.subscription_management_handler import my_subscriptions_command 
 from .train import train_cmd 
-# Импортируем функции, которые будут вызываться из меню настроек
 from handlers.admin.panel import admin_panel
-from handlers.admin.event_email_handler import event_emails_menu
+# --- ⭐️ УДАЛЯЕМ event_emails_menu, ОН БОЛЬШЕ ЗДЕСЬ НЕ НУЖЕН ---
 from handlers.admin.uploads import upload_file_command
 from handlers.email_management_handler import my_emails_command
-# Импортируем главный обработчик дислокации
 from handlers.dislocation_handlers import handle_message 
-# --- 🏁 КОНЕЦ ИМПОРТОВ ---
 
+# --- ⭐️ НОВЫЙ ИМПОРТ СОСТОЯНИЙ ⭐️ ---
+from handlers.admin.event_email_handler import (
+    MAIN_MENU as EVENT_EMAIL_MENU, 
+    AWAITING_EMAIL_TO_ADD, 
+    AWAITING_DELETE_CHOICE
+)
+# --- 🏁
 logger = get_logger(__name__)
 
 # --- Константы для кнопок ---
@@ -100,7 +103,7 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Обрабатывает ВСЕ текстовые сообщения, не являющиеся командами.
+    Обрабатывает ВСЕ текстовые сообщения, не являющиеся командами (в group=1).
     Выполняет роль диспетчера: сначала проверяет кнопки меню, 
     затем (если кнопки не нажаты) передает управление 
     обработчику дислокации (handle_message).
@@ -112,20 +115,30 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     is_admin = user.id == ADMIN_CHAT_ID
     
-    # --- ✅ ПРЕДОХРАНИТЕЛЬ (Guard Clause) ---
-    # Проверяем, не активен ли сейчас какой-либо ConversationHandler.
-    # Если да, этот обработчик не должен "красть" у него сообщения.
+    # --- ✅ ОБНОВЛЕННЫЙ ПРЕДОХРАНИТЕЛЬ (Guard Clause) ---
+    # ConversationHandler'ы (group 0) уже отработали.
+    # Если они "забрали" сообщение, они УЖЕ установили состояние.
+    # Мы проверяем, не активно ли какое-либо состояние,
+    # прежде чем этот обработчик (group 1) начнет что-то делать.
     if context.user_data:
         # Ключи из tracking_handlers
         if 'sub_name' in context.user_data or 'sub_containers' in context.user_data:
+            logger.debug("[Menu] reply_keyboard_handler уступает диалогу add_subscription.")
             return # Уступаем диалогу создания подписки
-        # Ключи из event_email_handler
+        
+        # --- ⭐️ НОВЫЕ ПРОВЕРКИ СОСТОЯНИЙ ⭐️ ---
         if text.startswith('/'): # Позволяем /cancel работать
              pass
-        elif MAIN_MENU in context.user_data or AWAITING_EMAIL_TO_ADD in context.user_data or AWAITING_DELETE_CHOICE in context.user_data:
-             return # Уступаем диалогу управления E-mail
-        # (Можно добавить другие ключи по мере необходимости)
-    # --- 🏁 КОНЕЦ ПРЕДОХРАНИТЕЛЯ ---
+        # Проверяем маркеры, которые мы установили в event_email_handler
+        elif (EVENT_EMAIL_MENU in context.user_data or 
+              AWAITING_EMAIL_TO_ADD in context.user_data or 
+              AWAITING_DELETE_CHOICE in context.user_data):
+            
+            logger.debug("[Menu] reply_keyboard_handler уступает диалогу event_emails.")
+            return # Уступаем диалогу управления E-mail
+        # --- 🏁
+        
+        # (Можно добавить другие проверки для других диалогов)
     
     logger.info(f"[Menu] Пользователь {user.id} нажал кнопку или ввел текст: {text}")
 
@@ -164,25 +177,24 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif is_admin and BUTTON_SETTINGS_ADMIN in text:
         await admin_panel(update, context)
 
+    # --- ⭐️ ВАЖНО: ЭТОТ БЛОК ТЕПЕРЬ ПУСТОЙ ⭐️ ---
+    # Кнопка "Email-событий" теперь перехватывается ConversationHandler-ом
+    # в group=0, поэтому этот код никогда не выполнится.
     elif is_admin and BUTTON_SETTINGS_EVENT_EMAILS in text:
-        # Эта функция ЗАПУСКАЕТ ConversationHandler
-        await event_emails_menu(update, context) 
+        # Этот код не должен выполниться, но мы его оставим
+        # на случай, если ConversationHandler не сработает.
+        logger.warning("[Menu] ConversationHandler для Email-событий не сработал. Вызов через reply_keyboard_handler.")
+        # await event_emails_menu(update, context) # <--- УДАЛЕНО
+        pass
 
     elif is_admin and BUTTON_SETTINGS_UPLOAD in text:
         await upload_file_command(update, context)
 
     elif is_admin and BUTTON_SETTINGS_MY_EMAILS in text:
-        # Убедимся, что /my_email - это /my_emails
-        from handlers.email_management_handler import my_emails_command
         await my_emails_command(update, context) 
 
     # --- 4. Если ни одна кнопка не нажата -> это запрос Дислокации ---
     else:
-        # Мы больше не используем Regex в bot.py
-        # Вместо этого, если текст не совпал ни с одной кнопкой,
-        # мы *предполагаем*, что это запрос дислокации,
-        # и передаем управление в `handle_message`.
-        
         logger.debug(f"[Menu] Текст '{text}' не является кнопкой. Передача в handle_message (дислокация).")
         await handle_message(update, context)
 
