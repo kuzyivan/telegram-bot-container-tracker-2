@@ -270,9 +270,9 @@ class EventAlertRule(Base):
 
     # 3. КОГО уведомить? (Получатель)
     # Если channel='EMAIL'
-    recipient_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    recipient_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     # Если channel='TELEGRAM'
-    recipient_user_id: Mapped[int | None] = mapped_column(
+    recipient_user_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.telegram_id", ondelete="SET NULL"), 
         nullable=True
     )
@@ -280,14 +280,14 @@ class EventAlertRule(Base):
     # 4. ЗА ЧЕМ следить? (Область видимости)
     # Если NULL -> Глобальное правило (все поезда)
     # Если ID -> Только для контейнеров из этой подписки
-    subscription_id: Mapped[int | None] = mapped_column(
+    subscription_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("subscriptions.id", ondelete="CASCADE"), 
         nullable=True
     )
 
     # Связи (для удобства)
-    user: Mapped["User" | None] = relationship()
-    subscription: Mapped["Subscription" | None] = relationship()
+    user: Mapped[Optional["User"]] = relationship()
+    subscription: Mapped[Optional["Subscription"]] = relationship()
 
     def __repr__(self) -> str:
         return f"<EventAlertRule(id={self.id}, name='{self.rule_name}', event='{self.event_type}', channel='{self.channel}')>"
