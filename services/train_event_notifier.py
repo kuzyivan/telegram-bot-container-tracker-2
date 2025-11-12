@@ -3,6 +3,7 @@
 Сервис для обнаружения и логирования событий поезда (прибытие/отправление)
 на основе данных дислокации и терминала.
 """
+import asyncio 
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -12,6 +13,13 @@ from db import SessionLocal
 from models import TrainEventLog 
 from model.terminal_container import TerminalContainer 
 from logger import get_logger
+
+# --- ⭐️ ИЗМЕНЕННЫЕ ИМПОРТЫ ⭐️ ---
+# Мы больше не используем config, а берем email из БД
+from queries.event_queries import get_global_email_rules 
+from utils.email_sender import send_email
+# --- ⭐️ КОНЕЦ ИЗМЕНЕНИЙ ⭐️ ---
+
 
 logger = get_logger(__name__)
 
@@ -99,6 +107,47 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                     
                     # Формируем описание события
                     event_description = f"Операция '{operation_raw}'" # Используем оригинальное название операции
+
+                    # --- ⭐️ НАЧАЛО ОБНОВЛЕННОЙ ЛОГИКИ (ОТПРАВКА EMAIL) ⭐️ ---
+                    
+                    # 1. Проверяем, является ли это событием "Выгрузка"
+                    if "выгрузка" in operation_lower:
+                        
+                        # 2. Получаем список email'ов из БАЗЫ ДАННЫХ
+                        recipient_rules = await get_global_email_rules()
+                        email_list = [rule.recipient_email for rule in recipient_rules if rule.recipient_email]
+
+                        if email_list:
+                            logger.info(f"Обнаружено событие 'Выгрузка' для {container_number}. Отправка E-mail на {email_list}...")
+                            
+                            # 3. Формируем тему и тело письма
+                            email_subject = f"Уведомление о Выгрузке: Контейнер {container_number}"
+                            email_body = (
+                                f"Здравствуйте,\n\n"
+                                f"Контейнер **{container_number}** получил статус 'Выгрузка'.\n\n"
+                                f"**Детали события:**\n"
+                                f"• **Поезд (терминал):** {terminal_info.train}\n"
+                                f"• **Операция:** {operation_raw}\n"
+                                f"• **Станция:** {station}\n"
+                                f"• **Время:** {operation_date_dt.strftime('%d.%m.%Y %H:%M (UTC)')}\n"
+                            )
+                            
+                            try:
+                                # 4. Отправляем email в отдельном потоке
+                                await asyncio.to_thread(
+                                    send_email,
+                                    to=email_list,
+                                    subject=email_subject,
+                                    body=email_body,
+                                    attachments=None # Вложений нет
+                                )
+                                logger.info(f"E-mail о выгрузке {container_number} успешно отправлен.")
+                            except Exception as email_err:
+                                logger.error(f"Не удалось отправить E-mail о выгрузке {container_number}: {email_err}", exc_info=True)
+                        else:
+                            logger.info(f"Событие 'Выгрузка' для {container_number} обнаружено, но в БД не настроено ни одного E-mail получателя.")
+                            
+                    # --- ⭐️ КОНЕЦ ОБНОВЛЕННОЙ ЛОГИКИ ⭐️ ---
 
                     # Логируем событие (с дедупликацией)
                     added = await log_train_event(
