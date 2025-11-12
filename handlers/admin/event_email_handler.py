@@ -239,7 +239,7 @@ def get_event_email_handlers() -> list:
             # --- ⭐️ НОВАЯ ТОЧКА ВХОДА ⭐️ ---
             # Теперь диалог будет запускаться и по нажатию кнопки из ReplyKeyboard
             MessageHandler(
-                filters.TEXT & filters.Regex(f"^{re.escape(BUTTON_SETTINGS_EVENT_EMAILS)}$"), 
+                filters.TEXT & filters.Regex(f"^{re.escape('📬 Email-событий')}$"), 
                 event_emails_menu
             )
             # --- ⭐️
