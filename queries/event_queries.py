@@ -40,31 +40,36 @@ async def add_global_email_rule(email: str) -> bool:
     email_lower = email.strip().lower()
     rule_name = f"Global Unload Notification for {email_lower}"
     
-    stmt = pg_insert(EventAlertRule).values(
-        rule_name=rule_name,
-        event_type=EVENT_TYPE_UNLOAD,
-        channel=CHANNEL_EMAIL,
-        recipient_email=email_lower,
-        subscription_id=None,
-        recipient_user_id=None
-    ).on_conflict_do_nothing( # Не создавать, если такое правило уже есть
-       index_elements=[EventAlertRule.recipient_email, EventAlertRule.event_type, EventAlertRule.channel] 
-       # Нужен будет уникальный индекс в БД, но on_conflict_do_nothing сработает и без него,
-       # просто будет менее эффективно. Для email этого достаточно.
-    )
-    
     async with SessionLocal() as session:
         try:
-            # Проверим, нет ли уже такого email
+            # --- ✅ ИСПРАВЛЕНИЕ: СНАЧАЛА ПРОВЕРЯЕМ ---
+            # Проверим, нет ли уже такого email с такими же настройками
             existing = await session.execute(
-                select(EventAlertRule).where(EventAlertRule.recipient_email == email_lower)
+                select(EventAlertRule).where(
+                    EventAlertRule.recipient_email == email_lower,
+                    EventAlertRule.event_type == EVENT_TYPE_UNLOAD,
+                    EventAlertRule.channel == CHANNEL_EMAIL,
+                    EventAlertRule.subscription_id == None # Убедимся, что это глобальное правило
+                )
             )
             if existing.scalar_one_or_none():
                 logger.warning(f"Правило для {email_lower} уже существует.")
                 return False # Уже существует
             
-            # Если нет, вставляем
-            await session.execute(stmt)
+            # --- ✅ ИСПРАВЛЕНИЕ: ТЕПЕРЬ ПРОСТО ВСТАВЛЯЕМ ---
+            # Мы убрали on_conflict_do_nothing, так как он требовал
+            # уникального индекса, которого у нас нет.
+            # Ручной проверки (select) выше - достаточно.
+            new_rule = EventAlertRule(
+                rule_name=rule_name,
+                event_type=EVENT_TYPE_UNLOAD,
+                channel=CHANNEL_EMAIL,
+                recipient_email=email_lower,
+                subscription_id=None,
+                recipient_user_id=None
+            )
+            session.add(new_rule)
+            
             await session.commit()
             logger.info(f"Добавлено новое правило уведомления для {email_lower}")
             return True
