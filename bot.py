@@ -136,30 +136,32 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_panel_callback, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(handle_single_container_excel_callback, pattern="^get_excel_single_")) 
     
-    # --- 4. Обработчики сообщений (Группа 0 и 1) ---
-    # Этот обработчик кнопок меню (Regex) имеет приоритет 0 по умолчанию
-    application.add_handler(MessageHandler(
-        filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
-        reply_keyboard_handler
-    ))
+    # --- 4. Обработчики сообщений ---
     
     application.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
 
-    # --- ❌ СТАРЫЙ ОБРАБОТЧИК УДАЛЕН ---
+    # --- ⭐️ ИЗМЕНЕНИЕ ЗДЕСЬ ⭐️ ---
+    
+    # УДАЛЯЕМ СТАРЫЙ ОБРАБОТЧИК КНОПОК:
     # application.add_handler(MessageHandler(
-    #     filters.Chat(ADMIN_CHAT_ID) & filters.Document.FileExtension("xlsx"), 
-    #     handle_admin_document
+    #     filters.TEXT & filters.Regex(r'(Дислокация|подписки|поезда|Настройки)'), 
+    #     reply_keyboard_handler
     # ))
     
-    # --- 5. 🐞 ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ "МОЛЧАЩЕГО" БОТА ---
-    # Мы ставим этот "общий" обработчик в группу 1 (низший приоритет),
-    # и он срабатывает ТОЛЬКО на текст, содержащий цифры (Regex(r'[\d]')).
-    # Текст "хабаровск" (без цифр) он проигнорирует.
+    # УДАЛЯЕМ СТАРЫЙ ОБРАБОТЧИК ДИСЛОКАЦИИ:
+    # application.add_handler(MessageHandler(
+    #     filters.Regex(r'[\d]') & ~filters.COMMAND, 
+    #     handle_message), 
+    #     group=1 
+    # )
+
+    # ДОБАВЛЯЕМ НОВЫЙ ЕДИНЫЙ ДИСПЕТЧЕР ТЕКСТА (в группу 1, чтобы не мешать диалогам)
     application.add_handler(MessageHandler(
-        filters.Regex(r'[\d]') & ~filters.COMMAND, 
-        handle_message), 
+        filters.TEXT & ~filters.COMMAND, 
+        reply_keyboard_handler), 
         group=1 
     )
+    # --- ⭐️ КОНЕЦ ИЗМЕНЕНИЙ ⭐️ ---
     
     application.add_error_handler(error_handler)
 

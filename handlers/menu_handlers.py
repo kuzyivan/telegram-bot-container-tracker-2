@@ -11,20 +11,34 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..')) 
 from config import ADMIN_CHAT_ID 
 
+# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
 # Импорт хендлеров из других модулей, как в вашем проекте
 from handlers.subscription_management_handler import my_subscriptions_command 
-
-# ❗️ ИМПОРТ НОВОЙ ЛОГИКИ ИЗ TRAIN.PY
-# Используем относительный импорт, если оба файла находятся в одной директории 'handlers'
 from .train import train_cmd 
+# Импортируем функции, которые будут вызываться из меню настроек
+from handlers.admin.panel import admin_panel
+from handlers.admin.event_email_handler import event_emails_menu
+from handlers.admin.uploads import upload_file_command
+from handlers.email_management_handler import my_emails_command
+# Импортируем главный обработчик дислокации
+from handlers.dislocation_handlers import handle_message 
+# --- 🏁 КОНЕЦ ИМПОРТОВ ---
 
 logger = get_logger(__name__)
 
 # --- Константы для кнопок ---
 BUTTON_DISLOCATION = "📦 Дислокация"
 BUTTON_SUBSCRIPTIONS = "📂 Мои подписки"
-BUTTON_TRAINS = "🚆 Мои поезда" # Скрытая для обычных
-BUTTON_SETTINGS = "⚙️ Настройки" # Скрытая для обычных
+BUTTON_TRAINS = "🚆 Мои поезда" 
+BUTTON_SETTINGS = "⚙️ Настройки" 
+
+# --- ✅ НОВЫЕ КОНСТАНТЫ ДЛЯ МЕНЮ НАСТРОЕК ---
+BUTTON_SETTINGS_ADMIN = "🛠️ Админ-панель"
+BUTTON_SETTINGS_EVENT_EMAILS = "📬 Email-событий"
+BUTTON_SETTINGS_UPLOAD = "📤 Загрузка файлов"
+BUTTON_SETTINGS_MY_EMAILS = "📧 Мои Email-адреса"
+BUTTON_BACK_TO_MAIN = "🔙 Назад в главное меню"
+# --- 🏁 КОНЕЦ НОВЫХ КОНСТАНТ ---
 
 # --- Клавиатуры ---
 
@@ -41,11 +55,25 @@ USER_KEYBOARD = ReplyKeyboardMarkup(
 ADMIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [KeyboardButton(BUTTON_DISLOCATION), KeyboardButton(BUTTON_TRAINS)],
-        [KeyboardButton(BUTTON_SUBSCRIPTIONS)],
-        [KeyboardButton(BUTTON_SETTINGS)]
+        [KeyboardButton(BUTTON_SUBSCRIPTIONS), KeyboardButton(BUTTON_SETTINGS)],
     ],
     resize_keyboard=True
 )
+
+# --- ✅ НОВАЯ КЛАВИАТУРА МЕНЮ НАСТРОЕК ---
+ADMIN_SETTINGS_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton(BUTTON_SETTINGS_ADMIN)],
+        [KeyboardButton(BUTTON_SETTINGS_EVENT_EMAILS)],
+        [KeyboardButton(BUTTON_SETTINGS_UPLOAD)],
+        [KeyboardButton(BUTTON_SETTINGS_MY_EMAILS)],
+        [KeyboardButton(BUTTON_BACK_TO_MAIN)]
+    ],
+    resize_keyboard=True,
+    input_field_placeholder="Выберите настройку..."
+)
+# --- 🏁 КОНЕЦ НОВОЙ КЛАВИАТУРЫ ---
+
 
 # --- Обработчики команд ---
 
@@ -68,10 +96,15 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text("Спасибо за стикер!")
 
-# --- Обработчик кнопок ReplyKeyboard (reply_keyboard_handler) ---
+# --- ✅ ОБНОВЛЕННЫЙ ОБРАБОТЧИК КНОПОК (ЕДИНЫЙ ДИСПЕТЧЕР) ---
 
 async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает нажатия кнопок ReplyKeyboard."""
+    """
+    Обрабатывает ВСЕ текстовые сообщения, не являющиеся командами.
+    Выполняет роль диспетчера: сначала проверяет кнопки меню, 
+    затем (если кнопки не нажаты) передает управление 
+    обработчику дислокации (handle_message).
+    """
     if not update.message or not update.message.text or not update.effective_user:
          return 
          
@@ -79,36 +112,77 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     is_admin = user.id == ADMIN_CHAT_ID
     
-    logger.info(f"[Menu] Пользователь {user.id} нажал кнопку: {text}")
+    # --- ✅ ПРЕДОХРАНИТЕЛЬ (Guard Clause) ---
+    # Проверяем, не активен ли сейчас какой-либо ConversationHandler.
+    # Если да, этот обработчик не должен "красть" у него сообщения.
+    if context.user_data:
+        # Ключи из tracking_handlers
+        if 'sub_name' in context.user_data or 'sub_containers' in context.user_data:
+            return # Уступаем диалогу создания подписки
+        # Ключи из event_email_handler
+        if text.startswith('/'): # Позволяем /cancel работать
+             pass
+        elif MAIN_MENU in context.user_data or AWAITING_EMAIL_TO_ADD in context.user_data or AWAITING_DELETE_CHOICE in context.user_data:
+             return # Уступаем диалогу управления E-mail
+        # (Можно добавить другие ключи по мере необходимости)
+    # --- 🏁 КОНЕЦ ПРЕДОХРАНИТЕЛЯ ---
+    
+    logger.info(f"[Menu] Пользователь {user.id} нажал кнопку или ввел текст: {text}")
 
-    # Логика для кнопки "📦 Дислокация"
+    # --- 1. Обработка кнопок Главного Меню ---
     if BUTTON_DISLOCATION in text:
-        # NOTE: Обычно здесь нужен переход в ConversationHandler для ожидания ввода
         await update.message.reply_text("Введите номер контейнера или вагона для поиска:")
         
-    # Логика для кнопки "📂 Мои подписки"
     elif BUTTON_SUBSCRIPTIONS in text:
         await update.message.reply_text("Загрузка списка подписок...")
         await my_subscriptions_command(update, context) 
     
-    # Логика для кнопок "🚆 Мои поезда" и "⚙️ Настройки" (только для админа)
-    elif BUTTON_TRAINS in text or BUTTON_SETTINGS in text:
+    elif BUTTON_TRAINS in text:
         if is_admin:
-            if BUTTON_TRAINS in text:
-                # ❗️❗️❗️ ИЗМЕНЕННАЯ ЛОГИКА ДЛЯ "МОИ ПОЕЗДА" ❗️❗️❗️
-                # Вызываем train_cmd. Так как аргументов нет, он запустит show_train_list, 
-                # который покажет Inline-меню со списком поездов.
-                logger.info(f"[Menu] Админ {user.id} запускает логику /train через кнопку.")
-                # Поскольку train_cmd ожидает update.message, и мы его имеем,
-                # это должно корректно запустить процесс.
-                return await train_cmd(update, context)
-            
-            elif BUTTON_SETTINGS in text:
-                # Админ получает меню настроек
-                await update.message.reply_text("Выберите настройки: email, уведомления и т.д.")
+            logger.info(f"[Menu] Админ {user.id} запускает логику /train через кнопку.")
+            return await train_cmd(update, context)
         else:
-            # Обычный пользователь нажал кнопку, которую не должен был видеть
-            await update.message.reply_text("⛔️ Доступ запрещён. Обновляю меню...")
-            await start(update, context) # Перезагружаем меню с USER_KEYBOARD
+            await update.message.reply_text("⛔️ Доступ запрещён.")
+
+    # --- 2. Обработка переключения меню ---
+    elif BUTTON_SETTINGS in text:
+        if is_admin:
+            await update.message.reply_text(
+                "Выберите нужный раздел настроек:",
+                reply_markup=ADMIN_SETTINGS_KEYBOARD # Показываем новое меню
+            )
+        else:
+            await update.message.reply_text("⛔️ Доступ запрещён.")
+            
+    elif BUTTON_BACK_TO_MAIN in text:
+        if is_admin:
+            await start(update, context) # Показываем главное меню
+        else:
+            await update.message.reply_text("⛔️ Доступ запрещён.")
+
+    # --- 3. Обработка кнопок Меню Настроек (только для Админа) ---
+    elif is_admin and BUTTON_SETTINGS_ADMIN in text:
+        await admin_panel(update, context)
+
+    elif is_admin and BUTTON_SETTINGS_EVENT_EMAILS in text:
+        # Эта функция ЗАПУСКАЕТ ConversationHandler
+        await event_emails_menu(update, context) 
+
+    elif is_admin and BUTTON_SETTINGS_UPLOAD in text:
+        await upload_file_command(update, context)
+
+    elif is_admin and BUTTON_SETTINGS_MY_EMAILS in text:
+        # Убедимся, что /my_email - это /my_emails
+        await my_emails_command(update, context) 
+
+    # --- 4. Если ни одна кнопка не нажата -> это запрос Дислокации ---
+    else:
+        # Мы больше не используем Regex в bot.py
+        # Вместо этого, если текст не совпал ни с одной кнопкой,
+        # мы *предполагаем*, что это запрос дислокации,
+        # и передаем управление в `handle_message`.
+        
+        logger.debug(f"[Menu] Текст '{text}' не является кнопкой. Передача в handle_message (дислокация).")
+        await handle_message(update, context)
 
     return
