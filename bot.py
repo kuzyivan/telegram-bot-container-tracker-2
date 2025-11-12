@@ -32,6 +32,9 @@ from handlers.tracking_handlers import tracking_conversation_handler
 from handlers.dislocation_handlers import handle_message, handle_single_container_excel_callback 
 from handlers.broadcast import broadcast_conversation_handler
 from handlers.train import setup_handlers as setup_train_handlers
+# --- ✅ ДОБАВЬТЕ ЭТОТ ИМПОРТ ---
+from handlers.admin.event_email_handler import get_event_email_handlers
+# ---
 
 # ✅ НОВЫЙ ИМПОРТ для расчета расстояния
 from handlers.distance_handlers import distance_conversation_handler
@@ -65,7 +68,10 @@ async def set_bot_commands(application: Application):
         BotCommand("broadcast", "Создать рассылку"),
         BotCommand("force_notify", "Принудительная рассылка"),
         BotCommand("train", "Отчёт по поезду"),
-        BotCommand("upload_file", "Инструкция по загрузке файлов")
+        BotCommand("upload_file", "Инструкция по загрузке файлов"),
+        # --- ✅ ДОБАВЬТЕ ЭТУ КОМАНДУ ---
+        BotCommand("event_emails", "Email для событий поезда")
+        # ---
     ]
     
     try:
@@ -104,9 +110,12 @@ def main():
     application.add_handler(get_email_conversation_handler())
     setup_train_handlers(application)
     application.add_handler(distance_conversation_handler()) # <-- Вызываем функцию ()
-    application.add_handler(get_add_containers_conversation_handler())
-    application.add_handler(get_remove_containers_conversation_handler())
-    
+            application.add_handler(get_add_containers_conversation_handler())
+            application.add_handler(get_remove_containers_conversation_handler())
+            
+            # --- ✅ ДОБАВЬТЕ ЭТОТ ХЕНДЛЕР ---
+            application.add_handlers(get_event_email_handlers())
+            # ---    
     # --- ✅ ДОБАВЛЕН НОВЫЙ ДИАЛОГ ЗАГРУЗКИ ---
     application.add_handler(get_admin_upload_conversation_handler())
     
