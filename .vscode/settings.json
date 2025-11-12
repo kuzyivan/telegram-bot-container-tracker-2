@@ -1,6 +1,7 @@
 {
     "peacock.color": "#1857a4",
     "python.analysis.typeCheckingMode": "basic",
+    "repomix.bundlePath": ".repomix/bundle.json",
     "workbench.colorCustomizations": {
         "activityBar.activeBackground": "#1f6fd0",
         "activityBar.background": "#1f6fd0",
@@ -18,7 +19,7 @@
         "titleBar.activeBackground": "#1857a4",
         "titleBar.activeForeground": "#e7e7e7",
         "titleBar.inactiveBackground": "#1857a499",
-        "titleBar.inactiveForeground": "#e7e7e799",
-        "python.defaultInterpreterPath": "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/.venv/bin/python"
-    }
+        "titleBar.inactiveForeground": "#e7e7e799"
+    },
+    "python.defaultInterpreterPath": "/Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/.venv/bin/python"
 }
