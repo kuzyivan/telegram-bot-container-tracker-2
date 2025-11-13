@@ -11,7 +11,8 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import SessionLocal
-from models import TrainEventLog, Tracking, TerminalContainer
+from models import TrainEventLog, Tracking
+from model.terminal_container import TerminalContainer
 from logger import get_logger
 
 from queries.event_queries import get_global_email_rules 
