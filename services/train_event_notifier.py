@@ -103,10 +103,11 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                     # Формируем описание события
                     event_description = f"Операция '{operation_raw}'" # Используем оригинальное название операции
 
-                    # --- ⭐️ ШАГ 2: Логика отправки E-mail УДАЛЕНА отсюда ⭐️ ---
-                    
                     # --- ⭐️ ШАГ 3: Собираем данные о выгрузке в список ⭐️ ---
                     if "выгрузка" in operation_lower:
+                        # ✅ ИЗМЕНЕНИЕ: В ЭТОТ СПИСОК МЫ ДОЛЖНЫ ДОБАВЛЯТЬ ТОЛЬКО УНИКАЛЬНЫЕ
+                        # Уникальность определяется по ПОЕЗДУ + СТАНЦИИ + ДАТЕ
+                        # Для простоты текущей структуры, собираем все, а агрегацию сделаем ниже.
                         unload_events_found.append({
                             "container": container_number,
                             "train": terminal_info.train,
@@ -136,25 +137,38 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                 email_list = [rule.recipient_email for rule in recipient_rules if rule.recipient_email]
 
                 if email_list:
-                    # 2. Формируем ОДНО большое письмо
-                    email_subject = f"Сводка по Выгрузке: {len(unload_events_found)} контейнеров"
+                    # 2. Агрегация по Поезду + Станции + Дате
+                    # Ключ: (K25-103, ВЫГРУЗКА, СЕЛЯТИНО, 2025-11-09)
+                    aggregated_email_events: Dict[Tuple[str, str, str, datetime.date], List[Dict[str, Any]]] = {}
+                    for event in unload_events_found:
+                        key = (event['train'], event['operation'], event['station'], event['time'].date())
+                        if key not in aggregated_email_events:
+                            aggregated_email_events[key] = []
+                        aggregated_email_events[key].append(event)
+                        
+                    # 3. Формируем ОДНО большое письмо с АГРЕГИРОВАННОЙ сводкой
+                    email_subject = f"Сводка по Выгрузке: {len(aggregated_email_events)} уникальных событий"
                     body_lines = [
                         "Здравствуйте,", 
                         "", 
-                        f"Обнаружены события 'Выгрузка' для следующих контейнеров:"
+                        f"Обнаружены следующие события 'Выгрузка':"
                     ]
                     
-                    # Сортируем по поезду, потом по контейнеру для удобства
-                    sorted_events = sorted(unload_events_found, key=lambda x: (x['train'], x['container']))
+                    # Сортируем агрегированные события по поезду для удобства
+                    sorted_keys = sorted(aggregated_email_events.keys(), key=lambda x: x[0])
                     
-                    for event in sorted_events:
+                    for train_number, operation, station, _ in sorted_keys:
+                        events_for_key = aggregated_email_events[(train_number, operation, station, _)]
+                        first_time = min(e['time'] for e in events_for_key)
+                        container_count = len(events_for_key)
+                        
                         body_lines.append(
-                            f"• **{event['container']}** (Поезд: {event['train']}) - {event['operation']} на ст. {event['station']} ({event['time'].strftime('%d.%m %H:%M')})"
+                            f"• **{train_number}** ({container_count} конт.) - {operation} на ст. {station} ({first_time.strftime('%d.%m %H:%M')})"
                         )
                     
                     email_body = "\n".join(body_lines)
                     
-                    # 3. Отправляем ОДНО письмо
+                    # 4. Отправляем ОДНО письмо
                     try:
                         await asyncio.to_thread(
                             send_email,
@@ -163,7 +177,7 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                             body=email_body,
                             attachments=None
                         )
-                        logger.info(f"Сводный E-mail о выгрузке {len(unload_events_found)} контейнеров успешно отправлен.")
+                        logger.info(f"Сводный E-mail о выгрузке {len(aggregated_email_events)} уникальных событий успешно отправлен.")
                     except Exception as email_err:
                         logger.error(f"Не удалось отправить СВОДНЫЙ E-mail о выгрузке: {email_err}", exc_info=True)
                 else:
