@@ -6,18 +6,17 @@
 import asyncio 
 import os
 from datetime import datetime
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import SessionLocal
-from models import TrainEventLog, Tracking
-from model.terminal_container import TerminalContainer 
+from models import TrainEventLog, Tracking, TerminalContainer
 from logger import get_logger
 
 from queries.event_queries import get_global_email_rules 
 from utils.email_sender import send_email
-from utils.send_tracking import create_excel_file_from_strings # <--- НОВЫЙ ИМПОРТ
+from utils.send_tracking import create_excel_file_from_strings
 from typing import List, Dict, Any, Tuple
 
 
@@ -68,8 +67,8 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
     logger.info(f"Начинаю анализ {len(dislocation_records)} записей дислокации на события поезда...")
     processed_count = 0
     
-    # --- ⭐️ ШАГ 1: Создаем пустой список для сбора событий ⭐️ ---
-    unload_events_found: List[Dict[str, Any]] = []
+    # --- ⭐️ Создаем список для сбора ТОЛЬКО НОВЫХ контейнеров ⭐️ ---
+    newly_logged_container_events: List[Dict[str, Any]] = [] 
     
     async with SessionLocal() as session:
         async with session.begin(): # Используем одну транзакцию для всех логов
@@ -102,37 +101,35 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
 
                 if is_target_operation and station and operation_date_dt:
                     
-                    # Формируем описание события
-                    event_description = f"Операция '{operation_raw}'" # Используем оригинальное название операции
+                    event_description = f"Операция '{operation_raw}'"
 
-                    # --- ⭐️ ШАГ 3: Собираем данные о выгрузке в список ⭐️ ---
-                    if "выгрузка" in operation_lower:
-                        # ✅ ИЗМЕНЕНИЕ: В ЭТОТ СПИСОК МЫ ДОЛЖНЫ ДОБАВЛЯТЬ ТОЛЬКО УНИКАЛЬНЫЕ
-                        # Уникальность определяется по ПОЕЗДУ + СТАНЦИИ + ДАТЕ
-                        # Для простоты текущей структуры, собираем все, а агрегацию сделаем ниже.
-                        unload_events_found.append({
-                            "container": container_number,
-                            "train": terminal_info.train,
-                            "operation": operation_raw,
-                            "station": station,
-                            "time": operation_date_dt
-                        })
-
-                    # Логируем событие (с дедупликацией)
+                    # Логируем событие (с дедупликацией). added = True, если запись добавлена впервые.
                     added = await log_train_event(
                         session=session,
                         container_number=container_number,
                         train_number=terminal_info.train,
                         event_description=event_description,
                         station=station,
-                        event_time=operation_date_dt # Передаем datetime
+                        event_time=operation_date_dt
                     )
-                    if added:
+                    
+                    if added: # <--- ✅ Только если событие залогировано ВПЕРВЫЕ
+                        if "выгрузка" in operation_lower:
+                            # ⭐️ Теперь этот список содержит только контейнеры с НОВЫМИ событиями
+                            newly_logged_container_events.append({
+                                "container": container_number,
+                                "train": terminal_info.train,
+                                "operation": operation_raw,
+                                "station": station,
+                                "time": operation_date_dt
+                            })
+
                         processed_count += 1
             
             # --- ⭐️ ШАГ 4: Отправляем ОДНО письмо (ПОСЛЕ цикла) ⭐️ ---
-            if unload_events_found:
-                logger.info(f"Обнаружено {len(unload_events_found)} событий 'Выгрузка'. Агрегирую и готовлю Excel.")
+            # Теперь используем newly_logged_container_events
+            if newly_logged_container_events: 
+                logger.info(f"Обнаружено {len(newly_logged_container_events)} *новых* событий 'Выгрузка'. Агрегирую и готовлю Excel.")
                 
                 # 1. Получаем email-адреса из БД
                 recipient_rules = await get_global_email_rules()
@@ -141,8 +138,9 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                 if email_list:
                     # 2. Агрегация по Поезду + Станции + Дате
                     aggregated_email_events: Dict[Tuple[str, str, str, datetime.date], Dict[str, Any]] = {}
-                    # ... (логика агрегации) ...
-                    for event in unload_events_found:
+                    
+                    # ⭐️ Используем newly_logged_container_events для агрегации
+                    for event in newly_logged_container_events: 
                         key = (event['train'], event['operation'], event['station'], event['time'].date())
                         if key not in aggregated_email_events:
                             aggregated_email_events[key] = {
@@ -152,21 +150,15 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                         aggregated_email_events[key]['events'].append(event)
                         if event['time'] < aggregated_email_events[key]['earliest_time']:
                             aggregated_email_events[key]['earliest_time'] = event['time']
-                    
-                    # 3. Формируем СВОДНОЕ тело письма (красиво)
-                    
-                    # --- ✅ НОВОЕ ФОРМАТИРОВАНИЕ ТЕЛА ПИСЬМА ---
+
+                    # 3. Формируем СВОДНОЕ тело письма
                     summary_lines = []
                     sorted_keys = sorted(aggregated_email_events.keys(), key=lambda x: x[0])
-                    all_container_numbers = []
                     
                     for train_number, operation, station, _ in sorted_keys:
                         data = aggregated_email_events[(train_number, operation, station, _)]
                         container_count = len(data['events'])
                         earliest_time = data['earliest_time']
-                        
-                        # Добавляем все контейнеры для последующего сбора данных в Excel
-                        all_container_numbers.extend([e['container'] for e in data['events']])
                         
                         summary_lines.append(
                             f"**Поезд:** {train_number}\n"
@@ -176,7 +168,7 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                             f"—"
                         )
                     
-                    # Форматируем окончательное письмо (HTML/Markdown не поддерживается в send_email)
+                    all_container_numbers = list(set([e['container'] for e in newly_logged_container_events]))
                     email_subject = f"Сводка по Выгрузке (с Excel): {len(all_container_numbers)} контейнеров"
                     email_body = (
                         f"Здравствуйте!\n\n"
@@ -188,12 +180,13 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                         f"Подробная дислокация всех контейнеров находится в приложенном файле Excel.\n\n"
                         f"С уважением,\nВаш контейнерный помощник 🤖"
                     )
-                    # --- ✅ КОНЕЦ НОВОГО ФОРМАТИРОВАНИЯ ---
                     
                     # 4. Сбор данных для Excel
                     file_path = None
                     try:
-                        # Получаем все последние записи Tracking для найденных контейнеров
+                        # ⭐️ all_container_numbers теперь содержит ТОЛЬКО контейнеры с НОВЫМИ событиями
+                        
+                        # Получаем данные Tracking для формирования Excel
                         tracking_data = (await session.execute(
                             select(Tracking).filter(Tracking.container_number.in_(all_container_numbers))
                             .order_by(Tracking.operation_date.desc())
@@ -206,7 +199,6 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                         ]
                         excel_rows = []
                         
-                        # Получаем номера поездов из TerminalContainer для отображения
                         train_result = await session.execute(
                             select(TerminalContainer.container_number, TerminalContainer.train)
                             .filter(TerminalContainer.container_number.in_(all_container_numbers))
@@ -214,10 +206,7 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                         container_to_train = {row[0]: row[1] for row in train_result.all()}
 
                         for info in tracking_data:
-                            # ✅ ИСПОЛЬЗУЕМ _format_dt_for_excel (если импортировали ее из dislocation_handlers)
-                            # Если не импортировали, используем простой strftime:
                             formatted_dt = info.operation_date.strftime('%d.%m.%Y %H:%M') if info.operation_date else ''
-
                             excel_rows.append([
                                 info.container_number,
                                 container_to_train.get(info.container_number, 'Н/Д'),
@@ -245,15 +234,39 @@ async def process_dislocation_for_train_events(dislocation_records: list[dict]):
                             attachments=[file_path]
                         )
                         logger.info(f"Сводный E-mail о выгрузке {len(all_container_numbers)} контейнеров с Excel успешно отправлен.")
+                        
+                        # --- ✅ КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: ПОМЕТКА ЛОГОВ КАК ОТПРАВЛЕННЫХ ---
+                        now = datetime.utcnow()
+                        
+                        for (train_number, operation, station, event_date), data in aggregated_email_events.items():
+                            
+                            # Обновляем все записи TrainEventLog, которые:
+                            # 1. Соответствуют агрегированному событию (поезд, станция, описание операции)
+                            # 2. Еще НЕ были отправлены (notification_sent_at == None)
+                            
+                            update_stmt = update(TrainEventLog).where(
+                                TrainEventLog.train_number == train_number,
+                                TrainEventLog.station == station,
+                                # operation - это строка с описанием, например 'Операция 'Выгрузка''
+                                TrainEventLog.event_description == operation, 
+                                TrainEventLog.notification_sent_at == None
+                            ).values(
+                                notification_sent_at=now
+                            )
+                            
+                            # Выполняем обновление в текущей транзакции
+                            await session.execute(update_stmt)
+                        
+                        logger.info(f"✅ Уникальные события поезда (Email) помечены как отправленные в БД.")
+                        # --- КОНЕЦ КРИТИЧЕСКОГО ИЗМЕНЕНИЯ ---
+                        
                     except Exception as email_err:
                         logger.error(f"Не удалось отправить СВОДНЫЙ E-mail о выгрузке: {email_err}", exc_info=True)
                     finally:
                         if file_path and os.path.exists(file_path):
                             os.remove(file_path)
-            
-            # --- ⭐️ КОНЕЦ НОВОЙ ЛОГИКИ ⭐️ ---
-                
-        # Коммит транзакции 
+        
+        # Коммит транзакции в конце with-блока
         await session.commit()
 
     if processed_count == 0:
