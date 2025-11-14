@@ -21,6 +21,13 @@ from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_
 from utils.railway_utils import get_railway_abbreviation
 import config
 from utils.keyboards import create_single_container_excel_keyboard
+# --- ⭐️ НОВЫЙ ИМПОРТ СОСТОЯНИЙ ⭐️ ---
+from handlers.admin.event_email_handler import (
+    MAIN_MENU as EVENT_EMAIL_MENU, 
+    AWAITING_EMAIL_TO_ADD, 
+    AWAITING_DELETE_CHOICE
+)
+# --- 🏁
 
 logger = get_logger(__name__)
 
@@ -94,15 +101,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- ✅ ИСПРАВЛЕНИЕ: ПРОВЕРКА НА АКТИВНЫЙ ДИАЛОГ ---
     if context.user_data:
-        # Ключи из handlers/tracking_handlers.py
-        if 'sub_name' in context.user_data or 'sub_containers' in context.user_data:
-            logger.warning(
-                f"[dislocation] handle_message проигнорировано, "
-                f"т.к. пользователь {user.id if user else 'N/A'} находится в диалоге 'add_subscription'."
-            )
-            # Просто выходим, давая диалогу завершить работу
-            return 
-    # --- ✅ КОНЕЦ ИСПРАВЛЕНИЯ ---
+        
+        # Список имен всех ConversationHandler (должны быть уникальными)
+        active_conv_names = [
+            'distance_conversation',
+            'add_containers_conversation',
+            'remove_containers_conversation',
+            'add_subscription_conversation',
+            'broadcast_conversation', # Если этот диалог тоже может зацепить
+            'train_conversation',
+        ]
+        
+        if any(name in context.user_data for name in active_conv_names):
+             logger.warning(f"[dislocation] handle_message проигнорировано: активен ConversationHandler {', '.join([k for k in context.user_data.keys() if k in active_conv_names])}.")
+             return 
+
+        # Специальная проверка для диалога email-событий (через маркеры)
+        if (EVENT_EMAIL_MENU in context.user_data or 
+            AWAITING_EMAIL_TO_ADD in context.user_data or 
+            AWAITING_DELETE_CHOICE in context.user_data):
+            logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог event_emails.")
+            return
+
+    # --- ✅ КОНЕЦ ИСПРАВЛЕНИЯ (Теперь handle_message не будет пытаться работать, если активен ЛЮБОЙ диалог) ---
 
     if not message or not message.text or not user:
         logger.warning("Получено сообщение без текста или пользователя.")
