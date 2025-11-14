@@ -91,7 +91,8 @@ async def add_email_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.to_thread(send_email, to=email, subject=subject, body=body, attachments=None)
 
     # 4. Просим ввести код
-    context.user_data['email_to_verify'] = email
+    if context.user_data is not None:
+        context.user_data['email_to_verify'] = email
     await update.message.reply_text(
         f"✅ На адрес `{email}` отправлен 6-значный код подтверждения.\n"
         "Пожалуйста, введите этот код в чат. Код действует 10 минут. Для отмены введите /cancel.",
@@ -105,7 +106,7 @@ async def receive_verification_code(update: Update, context: ContextTypes.DEFAUL
     
     code = update.message.text.strip()
     user_id = update.effective_user.id
-    email_to_verify = context.user_data.get('email_to_verify')
+    email_to_verify = context.user_data.get('email_to_verify') if context.user_data else None
 
     if not re.fullmatch(CODE_REGEX, code):
         await update.message.reply_text("⛔️ Код должен состоять из 6 цифр. Попробуйте еще раз или введите /cancel для отмены.")
@@ -127,7 +128,8 @@ async def receive_verification_code(update: Update, context: ContextTypes.DEFAUL
         return AWAIT_VERIFICATION_CODE
     
     # 2. Завершаем диалог и показываем меню
-    context.user_data.clear()
+    if context.user_data is not None:
+        context.user_data.clear()
     menu_data = await build_email_management_menu(user_id, intro_text)
     await update.message.reply_text(menu_data["text"], reply_markup=menu_data["reply_markup"], parse_mode='Markdown')
     return ConversationHandler.END
@@ -137,11 +139,13 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not update.message or not update.effective_user: return ConversationHandler.END
     
     # Очистка неподтвержденного email и кодов
-    email_to_clear = context.user_data.get('email_to_verify')
-    await delete_unverified_email(update.effective_user.id, email_to_clear)
+    email_to_clear = context.user_data.get('email_to_verify') if context.user_data else None
+    if email_to_clear:
+        await delete_unverified_email(update.effective_user.id, email_to_clear)
 
     await update.message.reply_text("Действие отменено.")
-    context.user_data.clear()
+    if context.user_data is not None:
+        context.user_data.clear()
     return ConversationHandler.END
 
 def get_email_conversation_handler() -> ConversationHandler:

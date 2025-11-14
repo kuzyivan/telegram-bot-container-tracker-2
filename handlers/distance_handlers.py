@@ -39,9 +39,9 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return ConversationHandler.END
 
     # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Очищаем user_data и устанавливаем маркер активности 🚨
-    if context.user_data:
+    if context.user_data is not None:
         context.user_data.clear()
-    context.user_data['is_distance_active'] = True
+        context.user_data['is_distance_active'] = True
 
     await update.message.reply_text(
         "Пожалуйста, введите **станцию отправления** (например, 'Хабаровск')."
@@ -80,7 +80,8 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # 🐞 ИСПРАВЛЕНИЕ:
         # Убираем 'if context.user_data:'. Запись создаст user_data, если он None.
-        context.user_data['from_station_name'] = station['name'] 
+        if context.user_data is not None:
+            context.user_data['from_station_name'] = station['name'] 
         
         logger.info(f"[Dist] User {user_id}: Single match found: {station['name']}. Moving to ASK_TO_STATION.")
         await update.message.reply_text(
@@ -93,7 +94,8 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     if len(matches) > 1:
         # 🐞 ИСПРАВЛЕНИЕ:
         # Убираем 'if context.user_data:'. Запись создаст user_data, если он None.
-        context.user_data['ambiguous_stations'] = matches
+        if context.user_data is not None:
+            context.user_data['ambiguous_stations'] = matches
         
         keyboard = build_station_keyboard(matches, "dist_from")
         logger.info(f"[Dist] User {user_id}: Multiple matches found. Moving to RESOLVE_FROM_STATION.")
@@ -123,7 +125,8 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # 🐞 ИСПРАВЛЕНИЕ:
     # Убираем 'if context.user_data:'. Запись создаст/добавит в user_data.
-    context.user_data['from_station_name'] = chosen_name
+    if context.user_data is not None:
+        context.user_data['from_station_name'] = chosen_name
     
     logger.info(f"[Dist] User {user_id}: Resolved 'from_station' to {chosen_name}. Moving to ASK_TO_STATION.")
 
@@ -162,12 +165,14 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if len(matches) == 1:
         station = matches[0]
-        context.user_data['to_station_name'] = station['name']
+        if context.user_data is not None:
+            context.user_data['to_station_name'] = station['name']
         logger.info(f"[Dist] User {user_id}: Single match found: {station['name']}. Moving to run_distance_calculation.")
         return await run_distance_calculation(update, context)
 
     if len(matches) > 1:
-        context.user_data['ambiguous_stations'] = matches
+        if context.user_data is not None:
+            context.user_data['ambiguous_stations'] = matches
         keyboard = build_station_keyboard(matches, "dist_to")
         logger.info(f"[Dist] User {user_id}: Multiple matches found. Moving to RESOLVE_TO_STATION.")
         await update.message.reply_text(
@@ -212,10 +217,10 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
     message = update.message
 
     message_to_reply: Optional[Message] = None
-    if message:
+    if isinstance(message, Message):
         message_to_reply = message
-    elif query and query.message:
-        message_to_reply = query.message
+    elif query and isinstance(query.message, Message):
+        message_to_reply = query.message # Pylance fix: message can be inaccessible
 
     if not message_to_reply: 
         logger.error(f"[Dist] User {user_id}: Could not find message to reply to in run_distance_calculation. Ending.")
@@ -283,7 +288,7 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         logger.exception(f"[Dist] User {user_id}: CRITICAL FAILURE in run_distance_calculation: {e}")
         await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
-    if context.user_data:
+    if context.user_data is not None:
         # 1. Убираем маркер активности
         context.user_data.pop('is_distance_active', None) 
         
@@ -302,10 +307,10 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     message = update.message
     
     message_to_reply: Optional[Message] = None
-    if message:
+    if isinstance(message, Message):
         message_to_reply = message
-    elif query and query.message:
-        message_to_reply = query.message 
+    elif query and isinstance(query.message, Message):
+        message_to_reply = query.message # Pylance fix: message can be inaccessible
 
     if query:
         await query.answer()
@@ -313,7 +318,7 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif message_to_reply: 
         await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
 
-    if context.user_data:
+    if context.user_data is not None:
         # 1. Убираем маркер активности
         context.user_data.pop('is_distance_active', None)
         

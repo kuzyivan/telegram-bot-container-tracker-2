@@ -510,11 +510,11 @@ async def add_containers_start(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         
     subscription_id = int(query.data.split("_")[-1])
-    context.user_data['sub_id_to_edit'] = subscription_id
-    
-    if query.message:
-        context.user_data['menu_message_id'] = query.message.message_id
-    
+    if context.user_data is not None:
+        context.user_data['sub_id_to_edit'] = subscription_id
+        if query.message:
+            context.user_data['menu_message_id'] = query.message.message_id
+
     await query.answer()
     await query.edit_message_text(
         "Отправьте номера контейнеров (один или несколько, через пробел/запятую), "

@@ -187,11 +187,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         train_number = await get_train_for_container(result.container_number)
         train_display = f"Поезд: `{train_number}`\n" if train_number else ""
 
-        remaining_distance = await get_remaining_distance_on_route(
-            start_station=result.from_station,
-            end_station=result.to_station,
-            current_station=result.current_station
-        )
+        remaining_distance = None
+        # Pylance fix: ensure all stations are strings before calling
+        if result.from_station and result.to_station and result.current_station:
+            remaining_distance = await get_remaining_distance_on_route(
+                start_station=result.from_station,
+                end_station=result.to_station,
+                current_station=result.current_station
+            )
+
         km_left_display = None
         forecast_days_display = 0.0
         source_log_tag = "Н/Д"
@@ -264,11 +268,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         excel_columns = EXCEL_HEADERS
 
         for db_row in final_unique_results: 
-            recalculated_distance = await get_remaining_distance_on_route(
-                start_station=db_row.from_station,
-                end_station=db_row.to_station,
-                current_station=db_row.current_station
-            )
+            recalculated_distance = None
+            # Pylance fix: ensure all stations are strings before calling
+            if db_row.from_station and db_row.to_station and db_row.current_station:
+                recalculated_distance = await get_remaining_distance_on_route(
+                    start_station=db_row.from_station,
+                    end_station=db_row.to_station,
+                    current_station=db_row.current_station
+                )
             km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
             source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
@@ -334,22 +341,25 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     user = update.effective_user
     logger.info(f"[dislocation] Пользователь {user.id} запросил Excel для {container_number} через кнопку.")
     tracking_results = await get_tracking_data_for_containers([container_number])
-    if not tracking_results:
-        if query.message and query.message.text:
+    if not tracking_results or not query.message:
+        if query.message:
             await query.edit_message_text("❌ Ошибка: Не удалось найти актуальные данные для Excel.")
-        elif query.message:
-             await context.bot.send_message(user.id, "❌ Ошибка: Не удалось найти актуальные данные для Excel.")
+        else:
+            await context.bot.send_message(user.id, "❌ Ошибка: Не удалось найти актуальные данные для Excel.")
         return
 
     db_row = tracking_results[0]
-    recalculated_distance = await get_remaining_distance_on_route(
-        start_station=db_row.from_station,
-        end_station=db_row.to_station,
-        current_station=db_row.current_station
-    )
+    recalculated_distance = None
+    # Pylance fix: ensure all stations are strings before calling
+    if db_row.from_station and db_row.to_station and db_row.current_station:
+        recalculated_distance = await get_remaining_distance_on_route(
+            start_station=db_row.from_station,
+            end_station=db_row.to_station,
+            current_station=db_row.current_station
+        )
     km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
     wagon_number_raw = db_row.wagon_number
-    wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" # Используем "" для Excel
+    wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else ""
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
     railway_display_name = db_row.operation_road or ""
 
@@ -394,7 +404,7 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
                  caption=f"✅ Отчет по контейнеру {container_number}."
              )
          logger.info(f"Отправлен Excel отчет для {container_number} пользователю {user.id}")
-         if query.message and query.message.text:
+         if query.message:
              await query.edit_message_reply_markup(reply_markup=None)
 
     except Exception as send_err:

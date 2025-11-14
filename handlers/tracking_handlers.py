@@ -43,7 +43,8 @@ async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_T
     if context.user_data: 
         context.user_data.clear() 
     
-    chat_id = update.effective_chat.id
+    chat = update.effective_chat
+    if not chat: return ConversationHandler.END
 
     # Обработка CallbackQuery (для Inline-кнопки "Создать новую подписку")
     if update.callback_query:
@@ -56,7 +57,7 @@ async def add_subscription_start(update: Update, context: ContextTypes.DEFAULT_T
         else:
              # На случай, если message нет
              await context.bot.send_message(
-                 chat_id=chat_id,
+                 chat_id=chat.id,
                  text="Введите название для новой подписки (например, 'Контейнеры для клиента А'):"
              )
     
@@ -82,7 +83,8 @@ async def process_name_and_ask_containers(update: Update, context: ContextTypes.
         await update.message.reply_text("Название не может быть пустым. Попробуйте снова:")
         return ASK_NAME
 
-    context.user_data[NAME] = name
+    if context.user_data is not None:
+        context.user_data[NAME] = name
     if update.effective_user:
         logger.info(f"Пользователь {update.effective_user.id} ввел название подписки: {name}. Переход к ASK_CONTAINERS.")
         
@@ -202,7 +204,7 @@ async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     reply_markup = create_yes_no_inline_keyboard("save_sub", "cancel_sub") 
 
-    if query:
+    if query and isinstance(query.message, Message):
          await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
     elif message: 
         await message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")

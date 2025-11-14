@@ -24,8 +24,8 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     
     if not user or not chat or user.id != ADMIN_CHAT_ID:
-        if update.message:
-            await chat.send_message("⛔ Эта команда доступна только администратору.")
+        if update.message and chat:
+            await chat.send_message("⛔ Эта команда доступна только администратору.") # Pylance fix: chat can be None
         elif update.callback_query:
             await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
         return ConversationHandler.END
@@ -33,9 +33,10 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"[/broadcast] Администратор {user.id} начал диалог рассылки.")
 
     # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем маркер активности
-    if context.user_data:
-        context.user_data.pop('just_finished_conversation', None) # Удаляем маркер завершения, если остался
-    context.user_data['is_broadcast_active'] = True
+    # Pylance fix: user_data can be None
+    if context.user_data is not None:
+        context.user_data.pop('just_finished_conversation', None)
+        context.user_data['is_broadcast_active'] = True 
 
     # Используем Markdown для начального сообщения
     text = "📣 **Введите текст сообщения для рассылки всем пользователям бота.**\n\n" \
@@ -45,11 +46,11 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Редактируем, если это был CallbackQuery, или отправляем новое сообщение
     if update.callback_query:
         await update.callback_query.answer()
-        if update.callback_query.message:
-            await update.callback_query.message.edit_text(text, parse_mode='Markdown')
-        else:
+        if isinstance(update.callback_query.message, Message): # Pylance fix: message can be inaccessible
+            await update.callback_query.message.edit_text(text, parse_mode='Markdown') 
+        elif chat:
              await chat.send_message(text, parse_mode='Markdown')
-    else:
+    elif chat:
         await chat.send_message(text, parse_mode='Markdown')
         
     return BROADCAST_TEXT
@@ -64,10 +65,7 @@ async def broadcast_get_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return BROADCAST_TEXT
 
     text = message.text
-    if context.user_data is None:
-        context.user_data = {}
-        
-    # Приведение типа для Pylance
+    # Приведение типа для Pylance. user_data будет создан PTB, если он None.
     user_data: Dict[str, Any] = cast(Dict[str, Any], context.user_data)
     
     user_data['broadcast_text'] = text
@@ -101,19 +99,21 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer("Начинаю рассылку...")
 
     if query.data == "cancel_broadcast":
-        await query.message.edit_text("❌ Рассылка отменена.")
-        if context.user_data:
+        if isinstance(query.message, Message):
+            await query.message.edit_text("❌ Рассылка отменена.")
+        if context.user_data is not None:
             context.user_data.pop('is_broadcast_active', None)
             context.user_data['just_finished_conversation'] = True
         return ConversationHandler.END
 
     # <<< НАЧАЛО ЛОГИКИ ОТПРАВКИ >>>
-    user_data = context.user_data or {}
+    user_data: Dict[str, Any] = cast(Dict[str, Any], context.user_data or {})
     text = user_data.get('broadcast_text')
     
     if not text:
-        await query.message.edit_text("Не найден текст для рассылки. Попробуйте снова.")
-        if context.user_data:
+        if isinstance(query.message, Message):
+            await query.message.edit_text("Не найден текст для рассылки. Попробуйте снова.")
+        if context.user_data is not None:
             context.user_data.pop('is_broadcast_active', None)
             context.user_data['just_finished_conversation'] = True
         return ConversationHandler.END
@@ -123,7 +123,8 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed_count = 0
     blocked_count = 0
     
-    await query.message.edit_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
+    if isinstance(query.message, Message):
+        await query.message.edit_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
     logger.info(f"[BROADCAST_SEND] Начало рассылки сообщения для {len(user_ids)} пользователей.")
 
     for user_id in set(user_ids):
@@ -157,14 +158,15 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"[BROADCAST_SEND] Рассылка завершена. Успешно: {sent_count}, Ошибки: {failed_count} (Заблокировано: {blocked_count})")
     
-    await query.message.edit_text(
-        f"✅ Рассылка завершена!\n\n"
-        f"Успешно отправлено: {sent_count}\n"
-        f"Не удалось отправить: {failed_count}\n"
-        f"(Из них бот заблокирован: {blocked_count})"
-    )
+    if isinstance(query.message, Message):
+        await query.message.edit_text(
+            f"✅ Рассылка завершена!\n\n"
+            f"Успешно отправлено: {sent_count}\n"
+            f"Не удалось отправить: {failed_count}\n"
+            f"(Из них бот заблокирован: {blocked_count})"
+        )
 
-    if context.user_data:
+    if context.user_data is not None:
         context.user_data.pop('is_broadcast_active', None) # Удаляем маркер активности
         context.user_data['just_finished_conversation'] = True # Устанавливаем маркер завершения
 
@@ -175,7 +177,7 @@ async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await update.message.reply_text("Рассылка отменена.")
 
-    if context.user_data:
+    if context.user_data is not None:
         context.user_data.pop('is_broadcast_active', None) # Удаляем маркер активности
         context.user_data['just_finished_conversation'] = True # Устанавливаем маркер завершения
 
