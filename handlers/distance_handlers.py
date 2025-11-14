@@ -284,11 +284,14 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
     if context.user_data:
-        context.user_data.clear()
+        # 1. Убираем маркер активности
+        context.user_data.pop('is_distance_active', None) 
+        
+        # 2. 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем временный маркер завершения
+        context.user_data['just_finished_conversation'] = True 
+        
     logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
-    # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Останавливаем дальнейшую обработку этого Update
-    # Это предотвратит "эхо" и повторную обработку текста другими хендлерами.
-    return ApplicationHandlerStop
+    return ConversationHandler.END
 
 # --- Обработка отмены ---
 async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -311,10 +314,13 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
 
     if context.user_data:
-        context.user_data.clear()
-    # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Останавливаем дальнейшую обработку этого Update
-    # Это предотвратит "эхо" и повторную обработку текста другими хендлерами.
-    return ApplicationHandlerStop
+        # 1. Убираем маркер активности
+        context.user_data.pop('is_distance_active', None)
+        
+        # 2. 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем временный маркер завершения
+        context.user_data['just_finished_conversation'] = True
+    logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
+    return ConversationHandler.END
 
 # --- Регистрация хендлеров ---
 def distance_conversation_handler():

@@ -108,6 +108,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
          
     # --- ✅ УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: ПРЕДОТВРАЩЕНИЕ НАЛОЖЕНИЯ ДИАЛОГОВ ---
     if context.user_data:
+        # 🚨 КРИТИЧЕСКАЯ ПРОВЕРКА НА МАРКЕР ЗАВЕРШЕНИЯ (ВТОРОЙ УРОВЕНЬ) 🚨
+        if context.user_data.pop('just_finished_conversation', False):
+             logger.warning(f"[dislocation] handle_message проигнорировано: завершение диалога (маркер).")
+             return 
+             
         # 🚨 НОВАЯ ПРОВЕРКА: Проверяем явный маркер distance 🚨
         if context.user_data.get('is_distance_active'):
              logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог /distance (маркер).")
