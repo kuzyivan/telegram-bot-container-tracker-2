@@ -37,11 +37,12 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         logger.warning(f"[Dist] User {user_id}: /distance called without a message. Ending.")
         return ConversationHandler.END
 
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Эта проверка ПРАВИЛЬНАЯ. Если user_data не None (уже существует),
-    # мы его очищаем. Если он None, мы ничего не делаем.
-    if context.user_data: 
-        context.user_data.clear() 
+    # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Очищаем user_data и устанавливаем маркер активности 🚨
+    if context.user_data:
+        context.user_data.clear()
+    else:
+        context.user_data = {}
+    context.user_data['is_distance_active'] = True
 
     await update.message.reply_text(
         "Пожалуйста, введите **станцию отправления** (например, 'Хабаровск')."
@@ -284,7 +285,6 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
     if context.user_data: 
-        context.user_data.clear()
     logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
     return ConversationHandler.END
 

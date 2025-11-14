@@ -108,9 +108,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
          
     # --- ✅ УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: ПРЕДОТВРАЩЕНИЕ НАЛОЖЕНИЯ ДИАЛОГОВ ---
     if context.user_data:
+        # 🚨 НОВАЯ ПРОВЕРКА: Проверяем явный маркер distance 🚨
+        if context.user_data.get('is_distance_active'):
+             logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог /distance (маркер).")
+             return
         
         active_conv_names = [
-            'distance_conversation',
+            # 'distance_conversation' теперь проверяется маркером выше
             'add_containers_conversation',
             'remove_containers_conversation',
             'add_subscription_conversation',

@@ -117,13 +117,19 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     
     # --- ⭐️ УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: УСТУПАЕМ АКТИВНОМУ ДИАЛОГУ ⭐️ ---
     if context.user_data:
+        # 🚨 НОВАЯ ПРОВЕРКА: Проверяем явный маркер distance 🚨
+        if context.user_data.get('is_distance_active'):
+             logger.debug("[Menu] Уступаем активному диалогу /distance (маркер).")
+             return
+
         # Список имен всех ConversationHandler в приложении
         active_dialogs = [
-            'distance_conversation',
+            # 'distance_conversation' теперь проверяется маркером выше
             'add_containers_conversation',
             'remove_containers_conversation',
             'add_subscription_conversation'
         ]
+
         
         # Если имя любого диалога есть в user_data, то он активен
         if any(name in context.user_data for name in active_dialogs):
