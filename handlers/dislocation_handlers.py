@@ -16,18 +16,24 @@ from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
 from queries.containers import get_tracking_data_by_wagons 
 from services.railway_router import get_remaining_distance_on_route
-# ✅ ИЗМЕНЕНИЕ: Импортируем НОВУЮ функцию create_excel_file_from_strings
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
 import config
 from utils.keyboards import create_single_container_excel_keyboard
-# --- ⭐️ НОВЫЙ ИМПОРТ СОСТОЯНИЙ ⭐️ ---
-from handlers.admin.event_email_handler import (
-    MAIN_MENU as EVENT_EMAIL_MENU, 
-    AWAITING_EMAIL_TO_ADD, 
-    AWAITING_DELETE_CHOICE
-)
-# --- 🏁
+
+# --- ✅ НОВЫЕ ИМПОРТЫ ДЛЯ ПРОВЕРКИ СОСТОЯНИЙ ---
+try:
+    from handlers.admin.event_email_handler import (
+        MAIN_MENU as EVENT_EMAIL_MENU, 
+        AWAITING_EMAIL_TO_ADD, 
+        AWAITING_DELETE_CHOICE
+    )
+except ImportError:
+    # Запасной вариант, если файла нет
+    EVENT_EMAIL_MENU = -1
+    AWAITING_EMAIL_TO_ADD = -1
+    AWAITING_DELETE_CHOICE = -1
+# ---
 
 logger = get_logger(__name__)
 
@@ -76,7 +82,6 @@ async def get_train_for_container(container_number: str) -> str | None:
         train = result.scalar_one_or_none()
         return train
 
-# --- ✅ НОВАЯ Вспомогательная функция для форматирования даты в Excel ---
 def _format_dt_for_excel(dt: Optional[datetime]) -> str:
     """Форматирует datetime в строку 'ДД-ММ-ГГГГ ЧЧ:ММ' для Excel, обрабатывает None."""
     if dt is None:
@@ -86,10 +91,8 @@ def _format_dt_for_excel(dt: Optional[datetime]) -> str:
         return dt.strftime('%d-%m-%Y %H:%M')
     except Exception:
         return str(dt) # Запасной вариант
-# --- Конец новой функции ---
 
-
-# --- Основной обработчик сообщений ---
+# --- Основной обработчик сообщений (С ИСПРАВЛЕНИЕМ) ---
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -98,36 +101,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     message = update.message
     user = update.effective_user
-
-    # --- ✅ ИСПРАВЛЕНИЕ: ПРОВЕРКА НА АКТИВНЫЙ ДИАЛОГ ---
+    
+    if not message or not message.text or not user:
+         logger.warning("Получено сообщение без текста или пользователя.")
+         return
+         
+    # --- ✅ УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: ПРЕДОТВРАЩЕНИЕ НАЛОЖЕНИЯ ДИАЛОГОВ ---
     if context.user_data:
         
-        # Список имен всех ConversationHandler (должны быть уникальными)
         active_conv_names = [
             'distance_conversation',
             'add_containers_conversation',
             'remove_containers_conversation',
             'add_subscription_conversation',
-            'broadcast_conversation', # Если этот диалог тоже может зацепить
+            'broadcast_conversation', 
             'train_conversation',
         ]
         
+        # 1. Проверяем наличие ключа, который устанавливает ConversationHandler
         if any(name in context.user_data for name in active_conv_names):
-             logger.warning(f"[dislocation] handle_message проигнорировано: активен ConversationHandler {', '.join([k for k in context.user_data.keys() if k in active_conv_names])}.")
+             logger.warning(f"[dislocation] handle_message проигнорировано: активен ConversationHandler.")
              return 
 
-        # Специальная проверка для диалога email-событий (через маркеры)
+        # 2. Проверка на маркеры других диалогов (Email-события и загрузка админа)
         if (EVENT_EMAIL_MENU in context.user_data or 
             AWAITING_EMAIL_TO_ADD in context.user_data or 
-            AWAITING_DELETE_CHOICE in context.user_data):
-            logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог event_emails.")
+            AWAITING_DELETE_CHOICE in context.user_data or
+            context.user_data.get('train_file_path') is not None): 
+            
+            logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог с маркерами.")
             return
 
-    # --- ✅ КОНЕЦ ИСПРАВЛЕНИЯ (Теперь handle_message не будет пытаться работать, если активен ЛЮБОЙ диалог) ---
-
-    if not message or not message.text or not user:
-        logger.warning("Получено сообщение без текста или пользователя.")
-        return
+    # --- ✅ КОНЕЦ ПРЕДОХРАНИТЕЛЯ ---
 
     await register_user_if_not_exists(user)
 
