@@ -129,6 +129,12 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
              logger.debug("[Menu] Уступаем активному диалогу /distance (маркер).")
              return
 
+        # 🚨 НОВАЯ ПРОВЕРКА: Проверяем явный маркер broadcast
+        if context.user_data.get('is_broadcast_active'):
+             logger.debug("[Menu] Уступаем активному диалогу /broadcast (маркер).")
+             return
+
+
         # Список имен всех ConversationHandler в приложении
         active_dialogs = [
             # 'distance_conversation' теперь проверяется маркером выше

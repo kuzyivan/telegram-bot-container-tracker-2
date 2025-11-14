@@ -32,6 +32,13 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"[/broadcast] Администратор {user.id} начал диалог рассылки.")
 
+    # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем маркер активности
+    if context.user_data:
+        context.user_data.pop('just_finished_conversation', None) # Удаляем маркер завершения, если остался
+    else:
+        context.user_data = {} # Создаем, если не существует
+    context.user_data['is_broadcast_active'] = True
+
     # Используем Markdown для начального сообщения
     text = "📣 **Введите текст сообщения для рассылки всем пользователям бота.**\n\n" \
            "**Внимание!** Для сохранения пользовательских эмодзи форматирование HTML/Markdown будет отключено.\n" \
@@ -97,7 +104,9 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == "cancel_broadcast":
         await query.message.edit_text("❌ Рассылка отменена.")
-        if context.user_data: context.user_data.clear()
+        if context.user_data:
+            context.user_data.pop('is_broadcast_active', None)
+            context.user_data['just_finished_conversation'] = True
         return ConversationHandler.END
 
     # <<< НАЧАЛО ЛОГИКИ ОТПРАВКИ >>>
@@ -106,7 +115,9 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not text:
         await query.message.edit_text("Не найден текст для рассылки. Попробуйте снова.")
-        if context.user_data: context.user_data.clear()
+        if context.user_data:
+            context.user_data.pop('is_broadcast_active', None)
+            context.user_data['just_finished_conversation'] = True
         return ConversationHandler.END
 
     user_ids = await get_all_user_ids()
@@ -154,16 +165,22 @@ async def broadcast_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Не удалось отправить: {failed_count}\n"
         f"(Из них бот заблокирован: {blocked_count})"
     )
-    
-    if context.user_data: context.user_data.clear()
+
+    if context.user_data:
+        context.user_data.pop('is_broadcast_active', None) # Удаляем маркер активности
+        context.user_data['just_finished_conversation'] = True # Устанавливаем маркер завершения
+
     return ConversationHandler.END
 
 async def broadcast_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает отмену диалога рассылки."""
     if update.message:
         await update.message.reply_text("Рассылка отменена.")
-    
-    if context.user_data: context.user_data.clear()
+
+    if context.user_data:
+        context.user_data.pop('is_broadcast_active', None) # Удаляем маркер активности
+        context.user_data['just_finished_conversation'] = True # Устанавливаем маркер завершения
+
     return ConversationHandler.END
 
 # Главный ConversationHandler
