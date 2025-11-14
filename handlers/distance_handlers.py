@@ -40,8 +40,6 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Очищаем user_data и устанавливаем маркер активности 🚨
     if context.user_data:
         context.user_data.clear()
-    else:
-        context.user_data = {}
     context.user_data['is_distance_active'] = True
 
     await update.message.reply_text(
