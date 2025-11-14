@@ -284,7 +284,8 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
         logger.exception(f"[Dist] User {user_id}: CRITICAL FAILURE in run_distance_calculation: {e}")
         await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
-    if context.user_data: 
+    if context.user_data:
+        context.user_data.clear()
     logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
     return ConversationHandler.END
 
