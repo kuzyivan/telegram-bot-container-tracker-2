@@ -178,6 +178,7 @@ def setup_handlers(app):
         },
         fallbacks=[],
         allow_reentry=True,
+        name="train_conversation",
     )
     app.add_handler(conv)
     

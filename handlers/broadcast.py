@@ -177,4 +177,5 @@ broadcast_conversation_handler = ConversationHandler(
         BROADCAST_CONFIRM: [CallbackQueryHandler(broadcast_confirm)],
     },
     fallbacks=[CommandHandler("cancel", broadcast_cancel)],
+    name="broadcast_conversation",
 )
