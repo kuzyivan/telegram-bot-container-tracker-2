@@ -35,8 +35,6 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем маркер активности
     if context.user_data:
         context.user_data.pop('just_finished_conversation', None) # Удаляем маркер завершения, если остался
-    else:
-        context.user_data = {} # Создаем, если не существует
     context.user_data['is_broadcast_active'] = True
 
     # Используем Markdown для начального сообщения
