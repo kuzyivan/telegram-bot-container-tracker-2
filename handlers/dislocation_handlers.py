@@ -18,6 +18,7 @@ from queries.containers import get_tracking_data_by_wagons
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
+from utils.telegram_text_utils import escape_markdown
 import config
 from utils.keyboards import create_single_container_excel_keyboard
 
@@ -228,18 +229,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         idle_time_str = result.last_op_idle_time_str or "н/д"
 
+        # Escape user-generated content for Markdown
+        safe_current_station = escape_markdown(result.current_station or "")
+        safe_operation = escape_markdown(result.operation or "")
+
         response_text = (
             f"📦 **Статус контейнера: {result.container_number}**\n"
             f"═════════════════════\n"
             f"📍 *Маршрут:*\n"
             f"{train_display}" 
-            f"Отпр: `{result.from_station}`\n"
-            f"Назн: `{result.to_station}`\n"
+            f"Отпр: `{escape_markdown(result.from_station or '')}`\n"
+            f"Назн: `{escape_markdown(result.to_station or '')}`\n"
             f"**Дата отправления:** `{start_date_str}`\n" 
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
-            f"**Станция:** {result.current_station} (Дорога: `{railway_abbreviation}`)\n"
-            f"**Операция:** `{result.operation}`\n"
+            f"**Станция:** {safe_current_station} (Дорога: `{railway_abbreviation}`)\n"
+            f"**Операция:** `{safe_operation}`\n"
             f"**Дата/Время:** `{result.operation_date.strftime('%d.%m.%Y %H:%M (UTC)') if result.operation_date else 'н/д'}`\n"
             f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n"
             f"**Накладная:** `{result.waybill}`\n"

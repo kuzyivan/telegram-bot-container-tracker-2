@@ -1,7 +1,7 @@
 # handlers/tracking_handlers.py
 import re
 from datetime import time
-from telegram import Update
+from telegram import Update, Message
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 )
@@ -204,9 +204,9 @@ async def confirm_save(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     reply_markup = create_yes_no_inline_keyboard("save_sub", "cancel_sub") 
 
-    if query and isinstance(query.message, Message):
+    if query and isinstance(query.message, Message): # Pylance fix: check if message is accessible
          await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="Markdown")
-    elif message: 
+    elif isinstance(message, Message): 
         await message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
     return CONFIRM_SAVE

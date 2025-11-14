@@ -21,6 +21,7 @@ except ImportError:
     from handlers.tracking_handlers import normalize_containers
 
 from utils.keyboards import create_yes_no_inline_keyboard
+from utils.telegram_text_utils import escape_markdown
 
 logger = get_logger(__name__)
 
@@ -82,10 +83,11 @@ async def subscription_menu_callback(update: Update, context: ContextTypes.DEFAU
     
     emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
     status_text = 'Активна ✅' if sub.is_active is True else 'Неактивна ⏸️'
+    safe_sub_name = escape_markdown(sub.subscription_name)
     containers_count = len(sub.containers) if sub.containers is not None else 0
     text = (
         f"⚙️ *Управление подпиской:*\n"
-        f"*{sub.subscription_name}* `({sub.id})`\n\n"
+        f"*{safe_sub_name}* `({sub.id})`\n\n"
         f"Статус: {status_text}\n"
         f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
         f"Контейнеров: {containers_count} шт.\n"
@@ -126,8 +128,9 @@ async def show_containers_callback(update: Update, context: ContextTypes.DEFAULT
     if not sub.containers or len(sub.containers) == 0:
         text = "В этой подписке нет контейнеров."
     else:
+        safe_sub_name = escape_markdown(sub.subscription_name)
         container_list = "\n".join(f"`{c}`" for c in sub.containers)
-        text = f"Контейнеры в подписке *{sub.subscription_name}*:\n{container_list}"
+        text = f"Контейнеры в подписке *{safe_sub_name}*:\n{container_list}"
     
     if update.effective_chat:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text, parse_mode='Markdown')
@@ -145,7 +148,8 @@ async def delete_subscription_callback(update: Update, context: ContextTypes.DEF
         await query.edit_message_text("❌ Ошибка: подписка не найдена.")
         return
     
-    text = f"Вы уверены, что хотите удалить подписку *{sub.subscription_name}*?"
+    safe_sub_name = escape_markdown(sub.subscription_name)
+    text = f"Вы уверены, что хотите удалить подписку *{safe_sub_name}*?"
     
     # --- 🐞 ИЗМЕНЕНИЕ: Новые callback_data ---
     reply_markup = create_yes_no_inline_keyboard(
@@ -216,7 +220,8 @@ async def remove_containers_start(update: Update, context: ContextTypes.DEFAULT_
     subscription_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
     
-    context.user_data['sub_id_to_edit'] = subscription_id
+    if context.user_data is not None:
+        context.user_data['sub_id_to_edit'] = subscription_id
     
     sub = await get_subscription_details(subscription_id, user_id)
     
@@ -409,10 +414,11 @@ async def remove_containers_back(update: Update, context: ContextTypes.DEFAULT_T
     email_list = [sub_email.email.email for sub_email in sub.target_emails]
     emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
     status_text = 'Активна ✅' if sub.is_active is True else 'Неактивна ⏸️'
+    safe_sub_name = escape_markdown(sub.subscription_name)
     containers_count = len(sub.containers) if sub.containers is not None else 0
     text = (
         f"⚙️ *Управление подпиской:*\n"
-        f"*{sub.subscription_name}* `({sub.id})`\n\n"
+        f"*{safe_sub_name}* `({sub.id})`\n\n"
         f"Статус: {status_text}\n"
         f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
         f"Контейнеров: {containers_count} шт.\n"
@@ -471,10 +477,11 @@ async def remove_containers_cancel(update: Update, context: ContextTypes.DEFAULT
     email_list = [sub_email.email.email for sub_email in sub.target_emails]
     emails_text = '`' + '`, `'.join(email_list) + '`' if email_list else 'Только в Telegram'
     status_text = 'Активна ✅' if sub.is_active is True else 'Неактивна ⏸️'
+    safe_sub_name = escape_markdown(sub.subscription_name)
     containers_count = len(sub.containers) if sub.containers is not None else 0
     text = (
         f"⚙️ *Управление подпиской:*\n"
-        f"*{sub.subscription_name}* `({sub.id})`\n\n"
+        f"*{safe_sub_name}* `({sub.id})`\n\n"
         f"Статус: {status_text}\n"
         f"Время отчета: {sub.notification_time.strftime('%H:%M')}\n" 
         f"Контейнеров: {containers_count} шт.\n"
