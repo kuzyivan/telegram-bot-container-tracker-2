@@ -7,6 +7,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     CallbackQueryHandler,
+    ApplicationHandlerStop,
 )
 from typing import Optional
 from services.tariff_service import get_tariff_distance, find_stations_by_name
@@ -287,7 +288,7 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
     logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
     # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Останавливаем дальнейшую обработку этого Update
     # Это предотвратит "эхо" и повторную обработку текста другими хендлерами.
-    return ConversationHandler.END
+    return ApplicationHandlerStop
 
 # --- Обработка отмены ---
 async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -313,7 +314,7 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         context.user_data.clear()
     # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Останавливаем дальнейшую обработку этого Update
     # Это предотвратит "эхо" и повторную обработку текста другими хендлерами.
-    return ConversationHandler.END
+    return ApplicationHandlerStop
 
 # --- Регистрация хендлеров ---
 def distance_conversation_handler():
