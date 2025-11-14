@@ -15,6 +15,7 @@ from queries.admin_queries import (
     get_admin_user_for_email
 )
 from utils.send_tracking import create_excel_file # Используем импорт для одного листа
+from utils.telegram_text_utils import escape_markdown
 from utils.notify import notify_admin
 
 logger = get_logger(__name__)
@@ -32,10 +33,14 @@ async def _send_stats_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     for i, row in enumerate(rows):
         user_id, username, count, containers = row
+        # Escape user-generated content to prevent Markdown errors
+        safe_username = escape_markdown(username or "N/A")
+        safe_containers = escape_markdown(containers or "")
+
         if len(containers) > 50:
-             containers = containers[:47] + "..."
+             safe_containers = escape_markdown(containers[:47] + "...")
         
-        lines.append(f"| {i+1} | {username} | {count} | {containers} |")
+        lines.append(f"| {i+1} | {safe_username} | {count} | {safe_containers} |")
         
     response = "\n".join(lines)
     if len(response) > 4000:
