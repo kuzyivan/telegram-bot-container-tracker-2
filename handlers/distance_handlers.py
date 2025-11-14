@@ -327,4 +327,5 @@ def distance_conversation_handler():
             CallbackQueryHandler(cancel_distance, pattern="^distance_cancel$")
         ],
         allow_reentry=True,
+        name="distance_conversation",  # Имя для отслеживания состояния
     )

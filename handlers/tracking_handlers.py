@@ -310,4 +310,5 @@ def tracking_conversation_handler():
              CommandHandler("cancel", cancel_subscription),
              CallbackQueryHandler(cancel_subscription, pattern="^cancel_sub")
         ],
+        name="add_subscription_conversation",
     )
