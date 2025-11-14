@@ -115,30 +115,28 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
     user = update.effective_user
     is_admin = user.id == ADMIN_CHAT_ID
     
-    # --- ✅ ОБНОВЛЕННЫЙ ПРЕДОХРАНИТЕЛЬ (Guard Clause) ---
-    # ConversationHandler'ы (group 0) уже отработали.
-    # Если они "забрали" сообщение, они УЖЕ установили состояние.
-    # Мы проверяем, не активно ли какое-либо состояние,
-    # прежде чем этот обработчик (group 1) начнет что-то делать.
+    # --- ⭐️ УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: УСТУПАЕМ АКТИВНОМУ ДИАЛОГУ ⭐️ ---
     if context.user_data:
-        # Ключи из tracking_handlers
-        if 'sub_name' in context.user_data or 'sub_containers' in context.user_data:
-            logger.debug("[Menu] reply_keyboard_handler уступает диалогу add_subscription.")
-            return # Уступаем диалогу создания подписки
+        # Список имен всех ConversationHandler в приложении
+        active_dialogs = [
+            'distance_conversation',
+            'add_containers_conversation',
+            'remove_containers_conversation',
+            'add_subscription_conversation'
+        ]
         
-        # --- ⭐️ НОВЫЕ ПРОВЕРКИ СОСТОЯНИЙ ⭐️ ---
-        if text.startswith('/'): # Позволяем /cancel работать
-             pass
-        # Проверяем маркеры, которые мы установили в event_email_handler
-        elif (EVENT_EMAIL_MENU in context.user_data or 
-              AWAITING_EMAIL_TO_ADD in context.user_data or 
-              AWAITING_DELETE_CHOICE in context.user_data):
-            
-            logger.debug("[Menu] reply_keyboard_handler уступает диалогу event_emails.")
-            return # Уступаем диалогу управления E-mail
-        # --- 🏁
-        
-        # (Можно добавить другие проверки для других диалогов)
+        # Если имя любого диалога есть в user_data, то он активен
+        if any(name in context.user_data for name in active_dialogs):
+             logger.debug(f"[Menu] Уступаем активному диалогу: {', '.join([k for k in context.user_data.keys() if k in active_dialogs])}")
+             return
+
+        # Специальная проверка для диалога email-событий (через маркеры)
+        if (EVENT_EMAIL_MENU in context.user_data or 
+            AWAITING_EMAIL_TO_ADD in context.user_data or 
+            AWAITING_DELETE_CHOICE in context.user_data):
+            logger.debug("[Menu] Уступаем диалогу event_emails.")
+            return
+    # --- 🏁 КОНЕЦ ПРЕДОХРАНИТЕЛЯ 🏁 ---
     
     logger.info(f"[Menu] Пользователь {user.id} нажал кнопку или ввел текст: {text}")
 
@@ -195,6 +193,12 @@ async def reply_keyboard_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     # --- 4. Если ни одна кнопка не нажата -> это запрос Дислокации ---
     else:
+        # Дополнительно проверяем, что это не команда, которую мы могли пропустить
+        if text.startswith('/'):
+            # Можно добавить логирование о неизвестной команде
+            logger.debug(f"[Menu] Проигнорирована неизвестная команда: {text}")
+            return
+
         logger.debug(f"[Menu] Текст '{text}' не является кнопкой. Передача в handle_message (дислокация).")
         await handle_message(update, context)
 
