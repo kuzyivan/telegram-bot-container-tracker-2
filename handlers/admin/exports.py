@@ -24,7 +24,10 @@ async def _send_stats_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """Форматирует и отправляет отчет о суточной статистике."""
     # ... (логика форматирования отчета статистики остается прежней) ...
     if not rows:
-        await update.callback_query.edit_message_text("За последние 24 часа нет запросов (кроме запросов администратора).")
+        if update.callback_query and update.callback_query.message:
+            await update.callback_query.message.edit_message_text("За последние 24 часа нет запросов (кроме запросов администратора).")
+        elif update.message:
+            await update.message.reply_text("За последние 24 часа нет запросов (кроме запросов администратора).")
         return
         
     lines = ["📊 **Сводка запросов за 24 часа:**\n", 
@@ -46,7 +49,11 @@ async def _send_stats_report(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if len(response) > 4000:
          response = response[:4000] + "\n..."
          
-    await update.callback_query.edit_message_text(response, parse_mode='Markdown')
+    if update.callback_query and update.callback_query.message:
+        await update.callback_query.message.edit_message_text(response, parse_mode='Markdown')
+    elif update.message:
+        await update.message.reply_text(response, parse_mode='Markdown')
+
 
 # --- Функции экспорта ---
 
@@ -54,8 +61,12 @@ async def _send_excel_export(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """Вспомогательная функция для генерации и отправки Excel."""
     file_path = None
     try:
-        await update.callback_query.answer("Начинаю экспорт...")
-        await update.callback_query.edit_message_text(f"⏳ Формирую Excel-файл для {filename_prefix}...")
+        if update.callback_query:
+            await update.callback_query.answer("Начинаю экспорт...")
+            if update.callback_query.message:
+                await update.callback_query.message.edit_message_text(f"⏳ Формирую Excel-файл для {filename_prefix}...")
+        elif update.message:
+            await update.message.reply_text(f"⏳ Формирую Excel-файл для {filename_prefix}...")
 
         # Генерация файла
         file_path = await asyncio.to_thread(
@@ -72,11 +83,15 @@ async def _send_excel_export(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 filename=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 caption=f"✅ Экспорт: {filename_prefix}"
             )
-        await update.callback_query.edit_message_text(f"✅ Экспорт {filename_prefix} завершен и отправлен.")
+        if update.callback_query and update.callback_query.message:
+            await update.callback_query.message.edit_message_text(f"✅ Экспорт {filename_prefix} завершен и отправлен.")
+        elif update.message:
+            await update.message.reply_text(f"✅ Экспорт {filename_prefix} завершен и отправлен.")
         
     except Exception as e:
         logger.error(f"[Export] Ошибка экспорта {filename_prefix}: {e}", exc_info=True)
-        await update.callback_query.edit_message_text(f"❌ Ошибка экспорта {filename_prefix}: {e}")
+        if update.callback_query and update.callback_query.message:
+            await update.callback_query.message.edit_message_text(f"❌ Ошибка экспорта {filename_prefix}: {e}")
     finally:
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
@@ -84,7 +99,7 @@ async def _send_excel_export(update: Update, context: ContextTypes.DEFAULT_TYPE,
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /stats (статистика за 24 часа)."""
     if update.effective_user.id != ADMIN_CHAT_ID:
-        return
+        return # Pylance fix: effective_user is checked here
 
     logger.info("[stats] Получен запрос на суточную статистику.")
     
@@ -103,7 +118,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      response += f"User {row[1]} ({row[0]}): {row[2]} запросов.\n"
              await update.message.reply_text(response)
              
-    except Exception as e:
+    except Exception as e: # Pylance fix: message is checked in _send_stats_report
         logger.error(f"[stats] Ошибка при формировании статистики: {e}", exc_info=True)
         if update.callback_query:
             await update.callback_query.edit_message_text(f"❌ Ошибка: Не удалось получить статистику. {e}")
@@ -112,14 +127,14 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Коллбэк: Экспорт всех записей статистики (user_requests)."""
-    if update.effective_user.id != ADMIN_CHAT_ID or not update.callback_query:
+    if not update.effective_user or update.effective_user.id != ADMIN_CHAT_ID or not update.callback_query: # Pylance fix: effective_user can be None
         return
     
     try:
         rows, headers = await get_all_stats_for_export()
         if rows and headers:
             # ✅ ИСПРАВЛЕНИЕ: Передаем headers
-            await _send_excel_export(update, context, rows, headers, "user_requests_all")
+            await _send_excel_export(update, context, rows, headers, "user_requests_all") # Pylance fix: update.callback_query is checked in _send_excel_export
         else:
              await update.callback_query.edit_message_text("Нет данных для экспорта статистики.")
              
@@ -129,14 +144,14 @@ async def exportstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def tracking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Коллбэк: Экспорт всех активных подписок (subscriptions)."""
-    if update.effective_user.id != ADMIN_CHAT_ID or not update.callback_query:
+    if not update.effective_user or update.effective_user.id != ADMIN_CHAT_ID or not update.callback_query: # Pylance fix: effective_user can be None
         return
     
     try:
         rows, headers = await get_all_tracking_subscriptions()
         if rows and headers:
             # ✅ ИСПРАВЛЕНИЕ: Передаем headers
-            await _send_excel_export(update, context, rows, headers, "subscriptions_all")
+            await _send_excel_export(update, context, rows, headers, "subscriptions_all") # Pylance fix: update.callback_query is checked in _send_excel_export
         else:
              await update.callback_query.edit_message_text("Нет данных для экспорта подписок.")
              
