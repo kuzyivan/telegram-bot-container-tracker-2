@@ -1,23 +1,36 @@
 # services/tariff_service.py
 import asyncio
 import re
-# 1. ИМПОРТИРУЕМ func
-from sqlalchemy import select, ARRAY, exc, func
+from sqlalchemy import select, ARRAY, exc, func, Index, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncSession
+# ✅ ИСПРАВЛЕНИЕ: Импортируем Base и DeclarativeBase для корректного наследования
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer
 from logger import get_logger
 
+# --- Импортируем базовый класс Base из db_base ---
+# (Предполагаем, что Base определен в db_base.py или импортирован в db.py)
+# Если Base действительно определен в db_base.py:
+from db_base import Base
+# Если Base определен в models.py (через db_base.py)
+# from models import Base 
+
+# В целях самодостаточности, используем Base из db_base.py, как предполагает структура проекта
+# Если db_base.py недоступен, мы можем объявить его здесь как DeclarativeBase (но это нарушит DRY)
+
+# Для данного контекста, мы переопределим класс Base для локальных моделей, чтобы избежать конфликтов импорта, 
+# используя DeclarativeBase, который уже импортируется.
+class TariffBase(DeclarativeBase): 
+    pass
+    
 # --- Импортируем новую сессию для тарифов ---
 from db import TariffSessionLocal 
 
 logger = get_logger(__name__) 
 
-# --- Определяем модели (копия из мигратора) ---
-class TariffBase(DeclarativeBase):
-    pass
+# --- Определение ORM Моделей для работы с БД тарифов (обновлены для TariffBase) ---
 
-class TariffStation(Base):
+class TariffStation(TariffBase):
     '''
     Таблица для хранения данных из 2-РП.csv.
     '''
@@ -27,13 +40,14 @@ class TariffStation(Base):
     code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
     railway: Mapped[str | None] = mapped_column(String)
     operations: Mapped[str | None] = mapped_column(String)
+    # Используем list[str] как Map для данных ТП, см. migrator
     transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
 
     __table_args__ = (
         Index('ix_tariff_stations_name_code', 'name', 'code'),
     )
 
-class TariffMatrix(Base):
+class TariffMatrix(TariffBase):
     '''
     Таблица для хранения данных из 3-*.csv.
     '''
@@ -47,21 +61,17 @@ class TariffMatrix(Base):
         UniqueConstraint('station_a', 'station_b', name='uq_station_pair'),
     )
 
+
 # --- Вспомогательные функции (асинхронные) ---
 
 def _normalize_station_name_for_db(name: str) -> str:
     """
-    Очищает имя станции от кода, как это было в zdtarif_bot.
-    Пример: 'Селятино (181102)' -> 'Селятино'
-    
-    ✅ ИСПРАВЛЕНО: Вставляет пробел между буквой и цифрой (например, ТОМСК1 -> ТОМСК 1).
+    Очищает имя станции от кода и вставляет пробел перед цифрой (например, ТОМСК1 -> ТОМСК 1).
     """
     cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', name).strip()
     
-    # --- ИСПРАВЛЕНИЕ: Вставляем пробел между буквой и цифрой (если его нет) ---
-    # Ищет последовательность: [Буква][Цифра] (например, К1, ТОМСК1) и вставляет пробел.
+    # Вставляем пробел между буквой и цифрой (если его нет)
     cleaned_name = re.sub(r'([А-ЯЁA-Z])(\d)', r'\1 \2', cleaned_name)
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
     
     return cleaned_name if cleaned_name else name.strip()
 
@@ -82,37 +92,29 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
                 'distance': int(parts[2])
             })
         except Exception:
-            continue # Игнорируем некорректную строку
+            continue
     return transit_points
 
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     """
-    Асинхронно ищет станцию в новой базе тарифов.
+    Асинхронно ищет станцию в базе тарифов.
     """
-    cleaned_name = _normalize_station_name_for_db(station_name) # Получаем 'ТОМСК 1'
+    cleaned_name = _normalize_station_name_for_db(station_name)
     
-    # 1. Создаем варианты поиска
     search_variants = {cleaned_name}
-    
-    # 2. Добавляем вариант с римскими цифрами
     if " 2" in cleaned_name:
         search_variants.add(cleaned_name.replace(" 2", " II"))
     if " 1" in cleaned_name:
         search_variants.add(cleaned_name.replace(" 1", " I"))
     
-    # 3. Ищем по ЛЮБОМУ из вариантов
-    
     search_variants_lower = [v.lower() for v in search_variants]
     
-    # Ищем, используя func.lower() для нечувствительности к регистру
     stmt = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
 
     result = await session.execute(stmt)
     all_stations = result.scalars().all()
 
-    # 4. Если точное совпадение не найдено, возвращаемся к ILIKE как запасной вариант
     if not all_stations:
-        # ILIKE 'хабаровск%' (не '%хабаровск%')
         stmt_startswith = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
         result_fallback = await session.execute(stmt_startswith)
         all_stations = result_fallback.scalars().all()
@@ -120,14 +122,12 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     if not all_stations:
         return None 
 
-    # 5. Ищем "идеальное" совпадение - станцию с пометкой 'ТП'
     tp_station = None
     for station in all_stations:
         if station.operations and 'ТП' in station.operations:
             tp_station = station
             break 
     
-    # 6. Если не нашли ТП, берем первую попавшуюся
     if not tp_station:
         tp_station = all_stations[0]
         
@@ -139,14 +139,13 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         'station_code': tp_station.code,
         'operations': tp_station.operations,
         'railway': tp_station.railway, 
-        'transit_points': _parse_transit_points_from_db(tp_station.transit_points or []) # ИСПРАВЛЕНО: Обрабатываем NULL
+        'transit_points': _parse_transit_points_from_db(tp_station.transit_points or [])
     }
 
 async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: AsyncSession) -> int | None:
     """
     Асинхронно ищет расстояние между двумя ТП в матрице.
     """
-    # Обрезаем код станции (если он попал сюда)
     tp_a_clean = tp_a_name.split(' (')[0].strip()
     tp_b_clean = tp_b_name.split(' (')[0].strip()
     
@@ -156,7 +155,7 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
         TariffMatrix.station_b.ilike(f"{tp_b_clean}%")
     ).limit(1)
     
-    # Ищем B -> A (для симметрии, на случай если прямой не было)
+    # Ищем B -> A (симметричный маршрут)
     stmt_ba = select(TariffMatrix.distance).where(
         TariffMatrix.station_a.ilike(f"{tp_b_clean}%"),
         TariffMatrix.station_b.ilike(f"{tp_a_clean}%")
@@ -183,8 +182,7 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
 
 async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
     """
-    Рассчитывает тарифное расстояние, используя АСИНХРОННЫЕ запросы
-    к специальной базе данных тарифов.
+    Рассчитывает тарифное расстояние.
     Возвращает словарь {'distance': int, 'info_a': dict, 'info_b': dict, 'route_details': dict} или None.
     """
     if not TariffSessionLocal:
@@ -201,48 +199,30 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             info_a = await _get_station_info_from_db(from_station_name, session)
             info_b = await _get_station_info_from_db(to_station_name, session)
 
-            if not info_a:
-                logger.warning(f"[Tariff] Станция '{from_station_name}' не найдена в базе тарифов.")
+            if not info_a or not info_b:
+                if not info_a:
+                     logger.warning(f"[Tariff] Станция отправления '{from_station_name}' не найдена.")
+                if not info_b:
+                     logger.warning(f"[Tariff] Станция назначения '{to_station_name}' не найдена.")
                 return None
             
-            # Добавлено логирование для диагностики ТП
             logger.info(f"[Tariff Debug] A Info: Name={info_a.get('station_name')}, TPs={info_a.get('transit_points')}")
-            
-            if not info_b:
-                logger.warning(f"[Tariff] Станция '{to_station_name}' не найдена в базе тарифов.")
-                return None
-            
-            # Добавлено логирование для диагностики ТП
             logger.info(f"[Tariff Debug] B Info: Name={info_b.get('station_name')}, TPs={info_b.get('transit_points')}")
             
             if info_a['station_name'].lower() == info_b['station_name'].lower():
-                # Если станции совпадают, устанавливаем нулевой маршрут
+                # Станции совпадают
                 return {'distance': 0, 'info_a': info_a, 'info_b': info_b, 'route_details': {'tpa_name': info_a['station_name'], 'tpb_name': info_a['station_name'], 'distance_a_to_tpa': 0, 'distance_tpa_to_tpb': 0, 'distance_tpb_to_b': 0}}
 
 
             # --- Определение ТП ---
-            tps_a = []
+            tps_a = info_a.get('transit_points', [])
             operations_a = info_a.get('operations') or ""
-            transit_points_a = info_a.get('transit_points', [])
-            
-            if not transit_points_a and 'ТП' in operations_a:
-                 # Если нет списка ТП, но есть пометка ТП, используем саму станцию
-                 tps_a = [{'name': info_a['station_name'], 'distance': 0}]
-            elif transit_points_a:
-                 tps_a = transit_points_a
-            else:
-                 # Используем саму станцию как ТП с нулевым расстоянием (Fallthrough)
+            if not tps_a or ('ТП' in operations_a and not tps_a):
                  tps_a = [{'name': info_a['station_name'], 'distance': 0}]
             
-            tps_b = []
+            tps_b = info_b.get('transit_points', [])
             operations_b = info_b.get('operations') or ""
-            transit_points_b = info_b.get('transit_points', [])
-            
-            if not transit_points_b and 'ТП' in operations_b:
-                tps_b = [{'name': info_b['station_name'], 'distance': 0}]
-            elif transit_points_b:
-                tps_b = transit_points_b
-            else:
+            if not tps_b or ('ТП' in operations_b and not tps_b):
                 tps_b = [{'name': info_b['station_name'], 'distance': 0}]
             # --- Конец определения ТП ---
 
@@ -254,7 +234,7 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             for tp_a in tps_a:
                 for tp_b in tps_b:
                     
-                    # Пропускаем, если ТП совпадают (такое может случиться при использовании самой станции как ТП)
+                    # Пропускаем, если ТП совпадают и это не расчет самого себя
                     if tp_a['name'] == tp_b['name']:
                         if tp_a['distance'] + tp_b['distance'] < min_total_distance:
                             min_total_distance = tp_a['distance'] + tp_b['distance']
@@ -262,11 +242,11 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                             best_route = {
                                 'distance_a_to_tpa': tp_a['distance'],
                                 'tpa_name': tp_a['name'],
-                                'distance_tpa_to_tpb': 0, # Дистанция между совпадающими ТП = 0
+                                'distance_tpa_to_tpb': 0, 
                                 'tpb_name': tp_b['name'],
                                 'distance_tpb_to_b': tp_b['distance'],
                             }
-                        continue # Переходим к следующей паре ТП
+                        continue 
                         
                     transit_dist = await _get_matrix_distance_from_db(tp_a['name'], tp_b['name'], session)
                     
@@ -277,7 +257,6 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                             min_total_distance = total_distance
                             route_found = True
                             
-                            # ✅ СОХРАНЯЕМ ДЕТАЛИ ЛУЧШЕГО МАРШРУТА
                             best_route = {
                                 'distance_a_to_tpa': tp_a['distance'],
                                 'tpa_name': tp_a['name'],
@@ -290,7 +269,6 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                 distance_int = int(min_total_distance)
                 logger.info(f"✅ [Tariff] Расстояние получено (SQL): {from_station_name} -> {to_station_name} = {distance_int} км. ТП: {best_route['tpa_name']} -> {best_route['tpb_name']}")
                 
-                # ✅ ВОЗВРАЩАЕМ ПОЛНУЮ ИНФОРМАЦИЮ О МАРШРУТЕ
                 return {
                     'distance': distance_int,
                     'info_a': info_a,
@@ -306,7 +284,6 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
         return None
 
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ ПОИСКА СТАНЦИЙ (ШАГ 1) ---
 async def find_stations_by_name(station_name: str) -> list[dict]:
     """
     Ищет станции по имени, возвращает список совпадений.
@@ -315,9 +292,8 @@ async def find_stations_by_name(station_name: str) -> list[dict]:
         logger.error("[Tariff] TARIFF_DATABASE_URL не настроен. Поиск невозможен.")
         return []
 
-    cleaned_name = _normalize_station_name_for_db(station_name) # Очищает от (кода)
+    cleaned_name = _normalize_station_name_for_db(station_name)
     
-    # 1. Создаем варианты поиска (для "Хабаровск 2" -> "Хабаровск II")
     search_variants = {cleaned_name}
     if " 2" in cleaned_name:
         search_variants.add(cleaned_name.replace(" 2", " II"))
@@ -325,24 +301,19 @@ async def find_stations_by_name(station_name: str) -> list[dict]:
         search_variants.add(cleaned_name.replace(" 1", " I"))
 
     async with TariffSessionLocal() as session:
-        # 2. Сначала ищем точные совпадения
         
         search_variants_lower = [v.lower() for v in search_variants]
         
-        # Ищем, используя func.lower() для нечувствительности к регистру
         stmt_exact = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
         
         result_exact = await session.execute(stmt_exact)
         all_stations = result_exact.scalars().all()
         
-        # 3. Если точных нет, ищем по "начинается с" (Хабаровск -> Хабаровск 1, Хабаровск 2)
         if not all_stations:
-            # ILIKE 'хабаровск%' (не '%хабаровск%')
             stmt_startswith = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
             result_startswith = await session.execute(stmt_startswith)
             all_stations = result_startswith.scalars().all()
 
-        # 4. Форматируем результат
         station_list = []
         for station in all_stations:
             station_list.append({
