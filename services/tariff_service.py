@@ -40,8 +40,16 @@ def _normalize_station_name_for_db(name: str) -> str:
     """
     Очищает имя станции от кода, как это было в zdtarif_bot.
     Пример: 'Селятино (181102)' -> 'Селятино'
+    
+    ✅ ИСПРАВЛЕНО: Вставляет пробел между буквой и цифрой (например, ТОМСК1 -> ТОМСК 1).
     """
     cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', name).strip()
+    
+    # --- ИСПРАВЛЕНИЕ: Вставляем пробел между буквой и цифрой (если его нет) ---
+    # Ищет последовательность: [Буква][Цифра] (например, К1, ТОМСК1) и вставляет пробел.
+    cleaned_name = re.sub(r'([А-ЯЁA-Z])(\d)', r'\1 \2', cleaned_name)
+    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+    
     return cleaned_name if cleaned_name else name.strip()
 
 def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
@@ -68,7 +76,7 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     """
     Асинхронно ищет станцию в новой базе тарифов.
     """
-    cleaned_name = _normalize_station_name_for_db(station_name) # Получаем 'ХАБАРОВСК 2'
+    cleaned_name = _normalize_station_name_for_db(station_name) # Получаем 'ТОМСК 1'
     
     # 1. Создаем варианты поиска
     search_variants = {cleaned_name}
@@ -81,8 +89,7 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
     
     # 3. Ищем по ЛЮБОМУ из вариантов
     
-    # --- ✅ НАЧАЛО ИСПРАВЛЕНИЯ (Регистр + Цифры) ---
-    # Преобразуем варианты в нижний регистр
+    # --- ✅ ИСПРАВЛЕНИЕ: Регистр + Цифры ---
     search_variants_lower = [v.lower() for v in search_variants]
     
     # Ищем, используя func.lower() для нечувствительности к регистру
@@ -264,7 +271,7 @@ async def find_stations_by_name(station_name: str) -> list[dict]:
     async with TariffSessionLocal() as session:
         # 2. Сначала ищем точные совпадения
         
-        # --- ✅ НАЧАЛО ИСПРАВЛЕНИЯ (Регистр + Цифры) ---
+        # --- ✅ ИСПРАВЛЕНИЕ: Регистр + Цифры ---
         # Преобразуем варианты в нижний регистр
         search_variants_lower = [v.lower() for v in search_variants]
         
