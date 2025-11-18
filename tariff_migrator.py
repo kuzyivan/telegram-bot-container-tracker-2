@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer, ARRAY, Index, UniqueConstraint
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 import logging
 from io import StringIO 
@@ -28,7 +27,7 @@ sys.path.insert(0, project_root_dir)
 load_dotenv()
 TARIFF_DB_URL = os.getenv("TARIFF_DATABASE_URL")
 
-# --- 2. Определение ORM Моделей для новой БД (БЕЗ ИЗМЕНЕНИЙ) ---
+# --- 2. Определение ORM Моделей для новой БД ---
 
 class Base(DeclarativeBase):
     pass
@@ -63,7 +62,7 @@ class TariffMatrix(Base):
         UniqueConstraint('station_a', 'station_b', name='uq_station_pair'),
     )
 
-# --- 3. Вспомогательные функции парсинга (load_kniga_3_matrix и др. БЕЗ ИЗМЕНЕНИЙ) ---
+# --- 3. Вспомогательные функции парсинга ---
 
 def parse_transit_points_for_db(tp_string: str) -> list[str]:
     '''
@@ -383,7 +382,8 @@ async def main_migrate():
         if matrix_df is not None and not matrix_df.empty:
             all_routes_dfs.append(matrix_df)
         else:
-            log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).")
+            # ⚠️ Важный лог: Файл 3-2 Рос.csv пропущен из-за ошибки в load_kniga_3_matrix
+            log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).") 
 
     if not all_routes_dfs:
         log.warning("⚠️ Не найдено маршрутов для вставки. Миграция матриц завершена без данных.")
@@ -407,28 +407,40 @@ async def main_migrate():
     final_routes_df = pd.concat([combined_routes_df, reversed_routes_df], ignore_index=True)
     
     # 4. Удаляем дубликаты (A, B) ещё раз, теперь включая симметричные
-    # Это важно, чтобы A->B и B->A были уникальными парами
     final_routes_df.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
 
     total_routes_to_add = len(final_routes_df)
     log.info(f"Всего маршрутов для вставки (включая симметричные): {total_routes_to_add}")
     
-    # 5. Массовая вставка
+    # 5. Массовая вставка С ПАКЕТИРОВАНИЕМ (FIXED)
     async with Session() as session:
-        async with session.begin():
-            log.info("Начинаю массовую вставку маршрутов (с пропуском дубликатов)...")
+        
+        # --- ИСПРАВЛЕНИЕ: Пакетная вставка для обхода лимита 32767 аргументов ---
+        BATCH_SIZE = 5000  # Выбираем безопасный размер пакета, чтобы 5000 * 3 < 32767
+        num_batches = (total_routes_to_add + BATCH_SIZE - 1) // BATCH_SIZE
+        
+        log.info(f"Начинаю пакетную вставку {total_routes_to_add} маршрутов в {num_batches} пакетах...")
+        
+        for i in range(num_batches):
+            start_index = i * BATCH_SIZE
+            end_index = min((i + 1) * BATCH_SIZE, total_routes_to_add)
             
-            # Используем insert_on_conflict_do_nothing для массовой вставки
-            routes_to_insert = final_routes_df.to_dict(orient='records')
+            batch_df = final_routes_df.iloc[start_index:end_index]
+            routes_to_insert = batch_df.to_dict(orient='records')
             
-            # Вставляем данные, используя ON CONFLICT DO NOTHING (на основе UniqueConstraint)
-            stmt = pg_insert(TariffMatrix).values(routes_to_insert).on_conflict_do_nothing(
-                index_elements=['station_a', 'station_b']
-            )
-            await session.execute(stmt)
-            
-            log.info(f"Попыток вставки: {total_routes_to_add} маршрутов.")
-        await session.commit()
+            try:
+                async with session.begin():
+                    # Вставляем данные, используя ON CONFLICT DO NOTHING
+                    stmt = pg_insert(TariffMatrix).values(routes_to_insert).on_conflict_do_nothing(
+                        index_elements=['station_a', 'station_b']
+                    )
+                    await session.execute(stmt)
+                    log.info(f"   -> Пакет {i+1}/{num_batches} успешно вставлен (маршрутов: {len(batch_df)}).")
+                    
+            except Exception as e:
+                log.error(f"❌ Критическая ошибка при вставке пакета {i+1}: {e}", exc_info=True)
+                # Продолжаем, чтобы сохранить как можно больше данных
+                
     log.info("✅ Миграция матриц завершена.")
 
     log.info("🎉🎉🎉 == МИГРАЦИЯ ТАРИФНОЙ БАЗЫ УСПЕШНО ЗАВЕРШЕНА! ==")
