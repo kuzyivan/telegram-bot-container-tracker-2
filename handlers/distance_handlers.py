@@ -38,7 +38,6 @@ async def distance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         logger.warning(f"[Dist] User {user_id}: /distance called without a message. Ending.")
         return ConversationHandler.END
 
-    # 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Очищаем user_data и устанавливаем маркер активности 🚨
     if context.user_data is not None:
         context.user_data.clear()
         context.user_data['is_distance_active'] = True
@@ -57,9 +56,10 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.info(f"[Dist] User {user_id}: Now in ASK_FROM_STATION.")
 
     if not update.message or not update.message.text:
-        logger.warning(f"[Dist] User {user_id}: Exiting ASK_FROM_STATION (no message or text).")
-        return ConversationHandler.END
-        
+        if update.callback_query:
+             await update.callback_query.answer("Пожалуйста, введите название текстом.")
+        return ASK_FROM_STATION 
+
     from_station_raw = update.message.text.strip()
     logger.info(f"[Dist] User {user_id}: Received 'from_station': {from_station_raw}. Calling find_stations_by_name.")
 
@@ -78,8 +78,6 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     if len(matches) == 1:
         station = matches[0]
         
-        # 🐞 ИСПРАВЛЕНИЕ:
-        # Убираем 'if context.user_data:'. Запись создаст user_data, если он None.
         if context.user_data is not None:
             context.user_data['from_station_name'] = station['name'] 
         
@@ -92,8 +90,7 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
         return ASK_TO_STATION
 
     if len(matches) > 1:
-        # 🐞 ИСПРАВЛЕНИЕ:
-        # Убираем 'if context.user_data:'. Запись создаст user_data, если он None.
+        
         if context.user_data is not None:
             context.user_data['ambiguous_stations'] = matches
         
@@ -115,7 +112,6 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.info(f"[Dist] User {user_id}: Now in RESOLVE_FROM_STATION.")
     
     if not query or not query.data or not query.message: 
-        logger.warning(f"[Dist] User {user_id}: Exiting RESOLVE_FROM_STATION (no query, data, or message).")
         if query: await query.answer() 
         return ConversationHandler.END
         
@@ -123,9 +119,7 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
 
     chosen_name = query.data.replace("dist_from_", "") 
     
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Убираем 'if context.user_data:'. Запись создаст/добавит в user_data.
-    if context.user_data is not None:
+    if context.user_data: # Проверка Pylance
         context.user_data['from_station_name'] = chosen_name
     
     logger.info(f"[Dist] User {user_id}: Resolved 'from_station' to {chosen_name}. Moving to ASK_TO_STATION.")
@@ -142,10 +136,9 @@ async def process_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id if update.effective_user else "Unknown"
     logger.info(f"[Dist] User {user_id}: Now in ASK_TO_STATION.")
     
-    # Эта проверка ТЕПЕРЬ БУДЕТ РАБОТАТЬ, т.к. 'from_station_name' был успешно записан на шаге 2.
     if (not update.message or not update.message.text or 
         not context.user_data or 'from_station_name' not in context.user_data):
-        logger.warning(f"[Dist] User {user_id}: Exiting ASK_TO_STATION (invalid state: no message, text, user_data, or from_station_name).")
+        logger.warning(f"[Dist] User {user_id}: Exiting ASK_TO_STATION (invalid state).")
         return ConversationHandler.END
 
     to_station_raw = update.message.text.strip()
@@ -191,7 +184,6 @@ async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logger.info(f"[Dist] User {user_id}: Now in RESOLVE_TO_STATION.")
     
     if not query or not query.data: 
-        logger.warning(f"[Dist] User {user_id}: Exiting RESOLVE_TO_STATION (no query or data).")
         if query: await query.answer()
         return ConversationHandler.END
         
@@ -199,8 +191,6 @@ async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     chosen_name = query.data.replace("dist_to_", "") 
     
-    # 🐞 ИСПРАВЛЕНИЕ:
-    # Убираем 'if context.user_data:'.
     if context.user_data: # Проверка Pylance
         context.user_data['to_station_name'] = chosen_name
     
@@ -208,7 +198,7 @@ async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     return await run_distance_calculation(update, context)
 
-# --- Шаг 5: Выполняем расчет ---
+# --- Шаг 5: Выполняем расчет (ОБНОВЛЕНО ДЛЯ ДЕТАЛИЗАЦИИ ТП) ---
 async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = update.effective_user.id if update.effective_user else "Unknown"
     logger.info(f"[Dist] User {user_id}: Now in run_distance_calculation.")
@@ -220,7 +210,7 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
     if isinstance(message, Message):
         message_to_reply = message
     elif query and isinstance(query.message, Message):
-        message_to_reply = query.message # Pylance fix: message can be inaccessible
+        message_to_reply = query.message
 
     if not message_to_reply: 
         logger.error(f"[Dist] User {user_id}: Could not find message to reply to in run_distance_calculation. Ending.")
@@ -258,41 +248,63 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             distance = result['distance']
             info_a = result['info_a']
             info_b = result['info_b']
-            logger.info(f"[Dist] User {user_id}: Calculation SUCCESS. Distance: {distance} km.")
-
+            route = result['route_details'] # ✅ ИЗВЛЕКАЕМ ДЕТАЛИ МАРШРУТА
+            
+            # 🛠️ ФОРМАТИРОВАНИЕ ДЛЯ ВЫВОДА С ДЕТАЛЯМИ ТП
+            
+            # Избегаем HTML escape для кодов станций в скобках, так как они могут содержать символы типа '-'
+            from_station_display = f"{html.escape(info_a['station_name'])} (`{html.escape(info_a['code'])}, {html.escape(info_a.get('railway', 'Н/Д'))}`)"
+            to_station_display = f"{html.escape(info_b['station_name'])} (`{html.escape(info_b['code'])}, {html.escape(info_b.get('railway', 'Н/Д'))}`)"
+            
+            # Определяем, был ли маршрут прямым (TP A == TP B)
+            is_direct = route['tpa_name'] == route['tpb_name']
+            
             response = (
-                f"✅ <b>Расчет успешно выполнен!</b>\n\n"
-                f"🚉 <b>Отправление:</b>\n"
-                f"<b>{html.escape(info_a['station_name'])}</b> <i>({html.escape(info_a.get('railway', 'Н/Д'))})</i>\n\n"
-                f"🏁 <b>Назначение:</b>\n"
-                f"<b>{html.escape(info_b['station_name'])}</b> <i>({html.escape(info_b.get('railway', 'Н/Д'))})</i>\n\n"
-                f"————————————————\n"
-                f"🛤️ <b>Тарифное расстояние: {distance} км</b>"
+                f"✅ **Маршрут рассчитан:**\n\n"
+                f"**Отправление:**\n"
+                f"{from_station_display}\n\n"
+                f"**Назначение:**\n"
+                f"{to_station_display}\n\n"
+                f"**————————————————**\n"
+                f"**Детализация маршрута:**\n"
             )
             
+            # Вывод деталей маршрута
+            if is_direct:
+                 response += f"1. {html.escape(route['tpa_name'])} → {html.escape(route['tpb_name'])}: {distance} км\n"
+            else:
+                response += (
+                    # Шаг 1: Отправление -> ТП A
+                    f"1. {html.escape(info_a['station_name'])} → **{html.escape(route['tpa_name'])}** (ТП): {route['distance_a_to_tpa']} км\n"
+                    # Шаг 2: ТП A -> ТП B (Только если они не совпадают)
+                    f"2. **{html.escape(route['tpa_name'])}** → **{html.escape(route['tpb_name'])}** (ТП): {route['distance_tpa_to_tpb']} км\n"
+                    # Шаг 3: ТП B -> Назначение
+                    f"3. **{html.escape(route['tpb_name'])}** → {html.escape(info_b['station_name'])}: {route['distance_tpb_to_b']} км\n"
+                )
+            
+            response += f"**————————————————**\n"
+            response += f"**ИТОГОВОЕ ТАРИФНОЕ РАССТОЯНИЕ: {distance} км**"
+            
             if query:
+                # Удаляем "выполняю расчет..."
                 await query.delete_message()
             
-            await message_to_reply.reply_text(response, parse_mode='HTML') 
+            await message_to_reply.reply_text(response, parse_mode='Markdown')
 
         else:
             logger.warning(f"[Dist] User {user_id}: Calculation FAILED (route not found in matrix) for {from_station_name} -> {to_station_name}.")
             response = (
-                f"❌ <b>Не удалось найти маршрут.</b>\n"
-                f"Не найден путь в матрицах между:\n"
-                f"<code>{html.escape(from_station_name)}</code> ➡️ <code>{html.escape(to_station_name)}</code>"
+                f"❌ **Не удалось найти маршрут.**\n"
+                f"Проверьте правильность написания станций и убедитесь, что маршрут присутствует в тарифной базе."
             )
-            await message_to_reply.reply_text(response, parse_mode='HTML') 
+            await message_to_reply.reply_text(response, parse_mode='Markdown') 
 
     except Exception as e:
         logger.exception(f"[Dist] User {user_id}: CRITICAL FAILURE in run_distance_calculation: {e}")
         await message_to_reply.reply_text(f"❌ Произошла внутренняя ошибка: {e}", parse_mode='HTML') 
 
     if context.user_data is not None:
-        # 1. Убираем маркер активности
         context.user_data.pop('is_distance_active', None) 
-        
-        # 2. 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем временный маркер завершения
         context.user_data['just_finished_conversation'] = True 
         
     logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
@@ -310,7 +322,7 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if isinstance(message, Message):
         message_to_reply = message
     elif query and isinstance(query.message, Message):
-        message_to_reply = query.message # Pylance fix: message can be inaccessible
+        message_to_reply = query.message
 
     if query:
         await query.answer()
@@ -319,10 +331,7 @@ async def cancel_distance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await message_to_reply.reply_text("Расчет расстояния отменён.", reply_markup=ReplyKeyboardRemove())
 
     if context.user_data is not None:
-        # 1. Убираем маркер активности
         context.user_data.pop('is_distance_active', None)
-        
-        # 2. 🚨 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Устанавливаем временный маркер завершения
         context.user_data['just_finished_conversation'] = True
     logger.info(f"[Dist] User {user_id}: Distance conversation ended.")
     return ConversationHandler.END
@@ -342,5 +351,5 @@ def distance_conversation_handler():
             CallbackQueryHandler(cancel_distance, pattern="^distance_cancel$")
         ],
         allow_reentry=True,
-        name="distance_conversation",  # Имя для отслеживания состояния
+        name="distance_conversation",
     )

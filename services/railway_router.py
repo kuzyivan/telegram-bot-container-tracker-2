@@ -1,14 +1,13 @@
 # services/railway_router.py
 from logger import get_logger
-# ❗️--- ИСПРАВЬТЕ ИМПОРТ ЗДЕСЬ, если имя класса другое ---❗️
 from services.osm_service import OsmService 
 from services.distance_calculator import haversine_distance
 from config import RAILWAY_WINDING_FACTOR
-from services.tariff_service import get_tariff_distance
+# ✅ ИСПРАВЛЕНО: Корректный импорт асинхронной функции расчета тарифов
+from services.tariff_service import get_tariff_distance 
 
 logger = get_logger(__name__)
 
-# ❗️--- ИСПРАВЬТЕ СОЗДАНИЕ ЭКЗЕМПЛЯРА ЗДЕСЬ, если имя класса другое ---❗️
 osm_service = OsmService() 
 
 async def get_remaining_distance_on_route(start_station: str, end_station: str, current_station: str) -> int | None:
@@ -31,22 +30,22 @@ async def get_remaining_distance_on_route(start_station: str, end_station: str, 
 
     logger.info(f"Начинаю расчет расстояния от '{current_station}' до '{end_station}'...")
     
-    # --- Попытка расчета по тарифному справочнику (Аналог логики /distance) ---
+    # --- Попытка расчета по тарифному справочнику ---
     try:
-        # 1. tariff_data будет СЛОВАРЕМ (dict) или None
+        # tariff_data - это теперь словарь, который содержит 'distance' и 'route_details'
         tariff_data = await get_tariff_distance(current_station, end_station)
         
-        # --- ⭐️ НАЧАЛО ИСПРАВЛЕНИЯ ⭐️ ---
-        # 2. Проверяем, что вернулся СЛОВАРЬ
         if tariff_data is not None and isinstance(tariff_data, dict):
             
-            # 3. Извлекаем числовое значение 'distance'
             distance_value = tariff_data.get('distance')
+            route = tariff_data.get('route_details') # Получаем детали маршрута
             
-            # 4. Логгируем только число
-            logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {distance_value} км.")
+            if route:
+                # ✅ ОБНОВЛЕННОЕ ЛОГИРОВАНИЕ С ТП
+                logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {distance_value} км. ТП: {route['tpa_name']} -> {route['tpb_name']}")
+            else:
+                logger.info(f"✅ Расчет выполнен по ТАРИФНОМУ СПРАВОЧНИКУ. Расстояние: {distance_value} км. (ТП не требовались)")
             
-            # 5. Возвращаем только число (int | None)
             return distance_value
         
         elif tariff_data is None:
@@ -57,12 +56,10 @@ async def get_remaining_distance_on_route(start_station: str, end_station: str, 
              # На всякий случай, если вернулось что-то странное
              logger.error(f"Тарифный сервис вернул неожиданный тип данных: {type(tariff_data)}")
              pass
-        # --- ⭐️ КОНЕЦ ИСПРАВЛЕНИЯ ⭐️ ---
             
     except Exception as e:
-        # Этот блок 'except' теперь корректно привязан к 'try'
         logger.error(f"⚠️ Ошибка при вызове тарифного сервиса: {e}", exc_info=True)
 
-    # --- Запасной вариант: Отключен после внедрения тарифа ---
+    # --- Запасной вариант ---
     logger.info(f"Запасной расчет по OSM для '{current_station}' -> '{end_station}' отключен. Используется только тарифный сервис.")
     return None
