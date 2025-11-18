@@ -1,301 +1,461 @@
-# services/tariff_service.py
+# tariff_migrator.py
 import asyncio
+import os
 import re
-# 1. ИМПОРТИРУЕМ func
-from sqlalchemy import select, ARRAY, exc, func
-from sqlalchemy.ext.asyncio import AsyncSession
+import pandas as pd
+import numpy as np
+import sys
+import glob
+from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer
-from logger import get_logger
+from sqlalchemy import String, Integer, ARRAY, Index, UniqueConstraint
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+import logging
+from io import StringIO 
 
-# --- Импортируем новую сессию для тарифов ---
-from db import TariffSessionLocal 
+# --- 1. Настройка логгирования и .env ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
 
-logger = get_logger(__name__) 
+# Добавляем корень проекта в sys.path, чтобы найти zdtarif_bot/data
+current_file_path = os.path.abspath(__file__)
+project_root_dir = os.path.dirname(current_file_path)
+sys.path.insert(0, project_root_dir)
 
-# --- Определяем модели (копия из мигратора) ---
-class TariffBase(DeclarativeBase):
+# Загружаем переменные окружения (особенно TARIFF_DATABASE_URL)
+load_dotenv()
+TARIFF_DB_URL = os.getenv("TARIFF_DATABASE_URL")
+
+# --- 2. Определение ORM Моделей для новой БД ---
+
+class Base(DeclarativeBase):
     pass
 
-class TariffStation(TariffBase):
+class TariffStation(Base):
+    '''
+    Таблица для хранения данных из 2-РП.csv.
+    '''
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String, index=True)
-    code: Mapped[str] = mapped_column(String(6), index=True, unique=True)
-    operations: Mapped[str | None] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String, index=True) 
+    code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
     railway: Mapped[str | None] = mapped_column(String)
-    
-    transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    operations: Mapped[str | None] = mapped_column(String)
+    transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
 
-class TariffMatrix(TariffBase):
+    __table_args__ = (
+        Index('ix_tariff_stations_name_code', 'name', 'code'),
+    )
+
+class TariffMatrix(Base):
+    '''
+    Таблица для хранения данных из 3-*.csv.
+    '''
     __tablename__ = 'tariff_matrix'
     id: Mapped[int] = mapped_column(primary_key=True)
     station_a: Mapped[str] = mapped_column(String, index=True)
     station_b: Mapped[str] = mapped_column(String, index=True)
     distance: Mapped[int] = mapped_column(Integer)
 
-# --- Вспомогательные функции (асинхронные) ---
+    __table_args__ = (
+        UniqueConstraint('station_a', 'station_b', name='uq_station_pair'),
+    )
 
-def _normalize_station_name_for_db(name: str) -> str:
-    """
-    Очищает имя станции от кода, как это было в zdtarif_bot.
-    Пример: 'Селятино (181102)' -> 'Селятино'
-    
-    ✅ ИСПРАВЛЕНО: Вставляет пробел между буквой и цифрой (например, ТОМСК1 -> ТОМСК 1).
-    """
-    cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', name).strip()
-    
-    # --- ИСПРАВЛЕНИЕ: Вставляем пробел между буквой и цифрой (если его нет) ---
-    # Ищет последовательность: [Буква][Цифра] (например, К1, ТОМСК1) и вставляет пробел.
-    cleaned_name = re.sub(r'([А-ЯЁA-Z])(\d)', r'\1 \2', cleaned_name)
-    # --- КОНЕЦ ИСПРАВЛЕНИЯ ---
-    
-    return cleaned_name if cleaned_name else name.strip()
+# --- 3. Вспомогательные функции парсинга ---
 
-def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
-    """
-    Преобразует строки "КОД:ИМЯ:ДИСТАНЦИЯ" обратно в словари.
-    """
-    transit_points = []
-    if not tp_strings:
+def parse_transit_points_for_db(tp_string: str) -> list[str]:
+    '''
+    Парсит строку транзитных пунктов из 2-РП.csv и возвращает список строк.
+    '''
+    if not isinstance(tp_string, str) or not tp_string:
         return []
+    
+    pattern = re.compile(r'(\d{6})\s(.*?)\s-\s(\d+)км')
+    matches = pattern.findall(tp_string)
+    
+    transit_points_str = []
+    for match in matches:
+        transit_points_str.append(f"{match[0]}:{match[1].strip()}:{int(match[2])}")
         
-    for tp_str in tp_strings:
-        try:
-            parts = tp_str.split(':')
-            transit_points.append({
-                'code': parts[0],
-                'name': parts[1],
-                'distance': int(parts[2])
-            })
-        except Exception:
-            continue # Игнорируем некорректную строку
-    return transit_points
+    return transit_points_str
 
-async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
-    """
-    Асинхронно ищет станцию в новой базе тарифов.
-    """
-    cleaned_name = _normalize_station_name_for_db(station_name) # Получаем 'ТОМСК 1'
-    
-    # 1. Создаем варианты поиска
-    search_variants = {cleaned_name}
-    
-    # 2. Добавляем вариант с римскими цифрами
-    if " 2" in cleaned_name:
-        search_variants.add(cleaned_name.replace(" 2", " II"))
-    if " 1" in cleaned_name:
-        search_variants.add(cleaned_name.replace(" 1", " I"))
-    
-    # 3. Ищем по ЛЮБОМУ из вариантов
-    
-    # --- ✅ ИСПРАВЛЕНИЕ: Регистр + Цифры ---
-    search_variants_lower = [v.lower() for v in search_variants]
-    
-    # Ищем, используя func.lower() для нечувствительности к регистру
-    stmt = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
-    # --- ⛔️ КОНЕЦ ИСПРАВЛЕНИЯ ---
-
-    result = await session.execute(stmt)
-    all_stations = result.scalars().all()
-
-    # 4. Если точное совпадение не найдено, возвращаемся к ILIKE как запасной вариант
-    if not all_stations:
-        # Ищем "хабаровск%" (начинается с), а не "%хабаровск%" (содержит)
-        stmt_fallback = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
-        result_fallback = await session.execute(stmt_fallback)
-        all_stations = result_fallback.scalars().all()
-
-    if not all_stations:
-        return None 
-
-    # 5. Ищем "идеальное" совпадение - станцию с пометкой 'ТП'
-    tp_station = None
-    for station in all_stations:
-        if station.operations and 'ТП' in station.operations:
-            tp_station = station
-            break 
-    
-    # 6. Если не нашли ТП, берем первую попавшуюся
-    if not tp_station:
-        tp_station = all_stations[0]
-        
-    if tp_station.name.lower() != cleaned_name.lower():
-        logger.warning(f"[Tariff] Станция '{cleaned_name}' не найдена. Используется {tp_station.name}")
-
-    return {
-        'station_name': tp_station.name,
-        'station_code': tp_station.code,
-        'operations': tp_station.operations,
-        'railway': tp_station.railway, 
-        'transit_points': _parse_transit_points_from_db(tp_station.transit_points)
-    }
-
-async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: AsyncSession) -> int | None:
-    """
-    Асинхронно ищет расстояние между двумя ТП в матрице.
-    """
-    tp_a_clean = tp_a_name.split(' (')[0]
-    tp_b_clean = tp_b_name.split(' (')[0]
-    
-    stmt_ab = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a.ilike(f"{tp_a_clean}%"),
-        TariffMatrix.station_b.ilike(f"{tp_b_clean}%")
-    ).limit(1)
-    
-    stmt_ba = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a.ilike(f"{tp_b_clean}%"),
-        TariffMatrix.station_b.ilike(f"{tp_a_clean}%")
-    ).limit(1)
-
+def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
+    '''
+    Загружает 2-РП.csv из zdtarif_bot/data
+    '''
     try:
-        result_ab = await session.execute(stmt_ab)
-        distance = result_ab.scalar_one_or_none()
-        if distance is not None:
-            return distance
+        df = pd.read_csv(
+            filepath,
+            skiprows=6, # Пропускаем заголовки
+            names=[
+                'num', 'station_name', 'operations', 'railway', 
+                'transit_points_raw', 'station_code'
+            ],
+            encoding='cp1251',
+            dtype={'station_code': str} 
+        )
+        df['station_name'] = df['station_name'].str.strip()
+        df['station_code'] = df['station_code'].str.strip()
+        df['railway'] = df['railway'].str.strip()
+        df['operations'] = df['operations'].str.strip()
 
-        result_ba = await session.execute(stmt_ba)
-        distance_ba = result_ba.scalar_one_or_none()
-        if distance_ba is not None:
-            return distance_ba
-            
-    except exc.OperationalError as e:
-        logger.error(f"Ошибка подключения к БД тарифов: {e}")
-        return None
+        df.dropna(subset=['station_name', 'station_code'], inplace=True)
         
-    return None
-
-# --- Основная функция (полностью асинхронная) ---
-
-async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
-    """
-    Рассчитывает тарифное расстояние, используя АСИНХРОННЫЕ запросы
-    к специальной базе данных тарифов.
-    Возвращает словарь {'distance': int, 'info_a': dict, 'info_b': dict} или None.
-    """
-    if not TariffSessionLocal:
-        logger.error("[Tariff] TARIFF_DATABASE_URL не настроен. Расчет невозможен.")
+        # --- 🐞 ИСПРАВЛЕНИЕ: Удаляем дубликаты по КОДУ, а не по ИМЕНИ 🐞 ---
+        df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
+        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
+        
+        log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций (по коду).")
+        return df
+    except FileNotFoundError:
+        log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
         return None
-
-    if not from_station_name or not to_station_name:
-        logger.info(f"[Tariff] Недостаточно данных для расчета: {from_station_name} -> {to_station_name}")
-        return None
-
-    try:
-        async with TariffSessionLocal() as session:
-            
-            info_a = await _get_station_info_from_db(from_station_name, session)
-            info_b = await _get_station_info_from_db(to_station_name, session)
-
-            if not info_a:
-                logger.warning(f"[Tariff] Станция '{from_station_name}' не найдена в базе тарифов.")
-                return None
-            if not info_b:
-                logger.warning(f"[Tariff] Станция '{to_station_name}' не найдена в базе тарифов.")
-                return None
-            
-            if info_a['station_name'].lower() == info_b['station_name'].lower():
-                return {'distance': 0, 'info_a': info_a, 'info_b': info_b}
-            
-            tps_a = []
-            operations_a = info_a.get('operations') or ""
-            transit_points_a = info_a.get('transit_points', [])
-            
-            if 'ТП' in operations_a:
-                tps_a = [{'name': info_a['station_name'], 'distance': 0}]
-            elif transit_points_a:
-                tps_a = transit_points_a
-            else:
-                tps_a = [{'name': info_a['station_name'], 'distance': 0}]
-            
-            tps_b = []
-            operations_b = info_b.get('operations') or ""
-            transit_points_b = info_b.get('transit_points', [])
-            
-            if 'ТП' in operations_b:
-                tps_b = [{'name': info_b['station_name'], 'distance': 0}]
-            elif transit_points_b:
-                tps_b = transit_points_b
-            else:
-                tps_b = [{'name': info_b['station_name'], 'distance': 0}]
-
-            min_total_distance = float('inf')
-            route_found = False
-
-            for tp_a in tps_a:
-                for tp_b in tps_b:
-                    
-                    transit_dist = await _get_matrix_distance_from_db(tp_a['name'], tp_b['name'], session)
-                    
-                    if transit_dist is not None:
-                        total_distance = tp_a['distance'] + transit_dist + tp_b['distance']
-                        if total_distance < min_total_distance:
-                            min_total_distance = total_distance
-                            route_found = True
-
-            if route_found:
-                distance_int = int(min_total_distance)
-                logger.info(f"✅ [Tariff] Расстояние получено (SQL): {from_station_name} -> {to_station_name} = {distance_int} км.")
-                return {
-                    'distance': distance_int,
-                    'info_a': info_a,
-                    'info_b': info_b
-                }
-            else:
-                logger.info(f"[Tariff] Маршрут (ТП) не найден в матрице для {from_station_name} -> {to_station_name}.")
-                return None
-
     except Exception as e:
-        logger.error(f"❌ [Tariff] Ошибка при SQL-расчете расстояния: {e}", exc_info=True)
+        log.error(f"❌ Ошибка при загрузке {filepath}: {e}", exc_info=True)
         return None
 
+def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
+    '''
+    Загружает матрицу (3-*.csv) и преобразует ее в "длинный" формат,
+    корректно считывая многострочные заголовки и объединяя многострочные названия станций.
+    '''
+    try:
+        # 1. Читаем весь файл в строки
+        with open(filepath, 'r', encoding='cp1251') as f:
+            lines = f.readlines()
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ ПОИСКА СТАНЦИЙ (ШАГ 1) ---
-async def find_stations_by_name(station_name: str) -> list[dict]:
-    """
-    Ищет станции по имени, возвращает список совпадений.
-    """
-    if not TariffSessionLocal:
-        logger.error("[Tariff] TARIFF_DATABASE_URL не настроен. Поиск невозможен.")
-        return []
+        # 2. Находим, где начинаются заголовки (station_b) и где основная таблица
+        header_start_line = -1
+        data_start_line = -1
+        
+        for i, line in enumerate(lines):
+            # "Конечный пункт маршрута"
+            if "Конечный пункт маршрута" in line and header_start_line == -1:
+                header_start_line = i + 1 
+            
+            # "№ п/п"
+            if "№ п/п" in line and "Начальный пункт маршрута" in line:
+                data_start_line = i
+                break
+        
+        if header_start_line == -1 or data_start_line == -1:
+            log.error(f"❌ Не удалось найти 'Конечный пункт' или '№ п/п' в {filepath}.")
+            return None
 
-    cleaned_name = _normalize_station_name_for_db(station_name) # Очищает от (кода)
+        # 3. Собираем карту заголовков (station_b)
+        header_lines = lines[header_start_line:data_start_line]
+        header_cols = {}
+        
+        for line in header_lines:
+            cleaned_line = line.rstrip(',\n')
+            cols = cleaned_line.split(',')
+            
+            for col_idx in range(2, len(cols)): 
+                if col_idx not in header_cols:
+                    header_cols[col_idx] = []
+                
+                cell_value = cols[col_idx].strip()
+                if cell_value:
+                    header_cols[col_idx].append(cell_value)
+        
+        header_map = {}
+        col_count = 1
+        for col_idx in sorted(header_cols.keys()):
+            full_name = " ".join(header_cols[col_idx])
+            full_name = re.sub(r'\s+', ' ', full_name).strip()
+            if full_name:
+                header_map[str(col_count)] = full_name
+                col_count += 1
+                
+        if not header_map:
+             log.error(f"❌ Не удалось собрать карту заголовков (station_b) из {filepath}.")
+             return None
+        
+        log.info(f"Собрана карта из {len(header_map)} заголовков (station_b).")
+
+        # 4. Читаем основную таблицу (начиная с "№ п/п")
+        data_csv_lines = lines[data_start_line:]
+        
+        # Удаляем мусорные строки (продолжения заголовка)
+        if len(data_csv_lines) > 3:
+             # Индексы 1 и 2 в data_csv_lines (т.е. строки 643 и 644 в оригинале)
+             del data_csv_lines[1:3] 
+        
+        data_io = StringIO("".join(data_csv_lines))
+
+        df = pd.read_csv(
+            data_io, 
+            header=0, 
+            encoding='cp1251'
+        )
+
+        # 5. Переименовываем первые две колонки
+        df.rename(columns={
+            df.columns[0]: 'num_pp',
+            df.columns[1]: 'station_a'
+        }, inplace=True)
+
+        # --- НОВЫЙ ШАГ 5: Объединение строк с перенесенным названием станции ---
+        
+        log.info("Начинаю объединение многострочных названий станций...")
+        
+        # Заполняем все пустые ячейки (которые не NaN, а просто пустые строки) None
+        df = df.replace({np.nan: None})
+        
+        rows_to_drop = []
+        # Итерируем с конца, чтобы объединять "вверх"
+        for i in range(len(df) - 1, 0, -1):
+            # Проверяем, пуста ли колонка 'num_pp' (это признак переноса)
+            if df.iloc[i]['num_pp'] is None:
+                # Берем текущее название станции (перенос)
+                current_station_part = str(df.iloc[i]['station_a']).strip()
+                
+                # Берем название станции из предыдущей строки (где должен быть номер)
+                prev_station_name = str(df.iloc[i-1]['station_a']).strip()
+                
+                # Объединяем: полное имя + пробел + часть переноса
+                new_station_name = f"{prev_station_name} {current_station_part}".strip()
+                
+                # Записываем объединенное название в строку с номером (i-1)
+                df.iloc[i-1, df.columns.get_loc('station_a')] = new_station_name
+                
+                # Отмечаем строку переноса (i) для удаления
+                rows_to_drop.append(i)
+
+        # Удаляем строки переноса
+        df.drop(df.index[rows_to_drop], inplace=True)
+        log.info(f"Объединено и удалено {len(rows_to_drop)} строк-переносов.")
+        
+        # Очищаем колонку с номерами (для порядка, теперь она не нужна)
+        df.dropna(subset=['station_a'], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        
+        # --- КОНЕЦ НОВОГО ШАГА 5 ---
+
+        # 6. "Плавим" (melt) DataFrame
+        col_station_b_numeric = [col for col in df.columns if col not in ['num_pp', 'station_a']]
+        
+        df_long = df.melt(
+            id_vars=['station_a'], 
+            value_vars=col_station_b_numeric, 
+            var_name='station_b_num', 
+            value_name='distance'
+        )
+        
+        # 7. Очистка
+        df_long['station_a'] = df_long['station_a'].astype(str).str.strip()
+        df_long['station_b_num'] = df_long['station_b_num'].astype(str).str.strip()
+        
+        # 8. Очищаем от нечисловых значений и преобразуем в int
+        df_long = df_long[pd.to_numeric(df_long['distance'], errors='coerce').notna()]
+        df_long['distance'] = df_long['distance'].astype(int)
+        
+        # 9. Удаляем маршруты с 0 км
+        df_long = df_long[df_long['distance'] > 0]
+        
+        # 10. *** ГЛАВНЫЙ ФИКС: Заменяем '1', '2' на имена ***
+        df_long['station_b'] = df_long['station_b_num'].map(header_map)
+        
+        # 11. Проверяем, что все заменилось
+        if df_long['station_b'].isnull().any():
+            missing_keys = df_long[df_long['station_b'].isnull()]['station_b_num'].unique()
+            log.warning(f"⚠️ В {filepath} не найдены имена для station_b ключей: {missing_keys[:10]}...")
+            df_long.dropna(subset=['station_b'], inplace=True)
+
+        # 12. Удаляем дубликаты и ненужный столбец
+        df_long = df_long[['station_a', 'station_b', 'distance']]
+        df_long.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
+        
+        log.info(f"✅ Матрица {os.path.basename(filepath)} загружена, {len(df_long)} УНИКАЛЬНЫХ маршрутов.")
+        return df_long
+        
+    except FileNotFoundError:
+        log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
+        return None
+    except Exception as e:
+        log.error(f"❌ Ошибка при обработке матрицы {filepath}: {e}", exc_info=True)
+        return None
+
+# --- 4. Основная функция миграции (ИСПРАВЛЕННАЯ ЛОГИКА) ---
+
+async def main_migrate():
+    '''
+    Главная функция. Подключается, создает таблицы, загружает данные.
+    '''
+    if not TARIFF_DB_URL:
+        log.error("❌ TARIFF_DATABASE_URL не найдена в .env файле. Миграция отменена.")
+        return
+        
+    log.info(f"Подключение к новой базе данных тарифов: {TARIFF_DB_URL.split('@')[-1]}")
     
-    # 1. Создаем варианты поиска (для "Хабаровск 2" -> "Хабаровск II")
-    search_variants = {cleaned_name}
-    if " 2" in cleaned_name:
-        search_variants.add(cleaned_name.replace(" 2", " II"))
-    if " 1" in cleaned_name:
-        search_variants.add(cleaned_name.replace(" 1", " I"))
+    # 1. Создаем движок и таблицы
+    engine = create_async_engine(TARIFF_DB_URL)
+    async with engine.begin() as conn:
+        log.info("Очистка существующих таблиц (если есть)...")
+        await conn.run_sync(Base.metadata.drop_all)
+        log.info("Создание новых таблиц (tariff_stations, tariff_matrix)...")
+        await conn.run_sync(Base.metadata.create_all)
+    
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+    
+    # Ищем папку с данными
+    data_dir_path = os.path.join(project_root_dir, 'zdtarif_bot', 'data')
+    if not os.path.exists(data_dir_path):
+        data_dir_path = os.path.join(project_root_dir, 'data')
+        if not os.path.exists(data_dir_path):
+             log.error(f"❌ Не могу найти папку 'data' или 'zdtarif_bot/data' в {project_root_dir}")
+             return
+    
+    log.info(f"Использую папку с данными: {data_dir_path}")
 
-    async with TariffSessionLocal() as session:
-        # 2. Сначала ищем точные совпадения
-        
-        # --- ✅ ИСПРАВЛЕНИЕ: Регистр + Цифры ---
-        # Преобразуем варианты в нижний регистр
-        search_variants_lower = [v.lower() for v in search_variants]
-        
-        # Ищем, используя func.lower() для нечувствительности к регистру
-        stmt_exact = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
-        # --- ⛔️ КОНЕЦ ИСПРАВЛЕНИЯ ---
-        
-        result_exact = await session.execute(stmt_exact)
-        all_stations = result_exact.scalars().all()
-        
-        # 3. Если точных нет, ищем по "начинается с" (Хабаровск -> Хабаровск 1, Хабаровск 2)
-        if not all_stations:
-            # ILIKE 'хабаровск%' (не '%хабаровск%')
-            stmt_startswith = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned_name}%"))
-            result_startswith = await session.execute(stmt_startswith)
-            all_stations = result_startswith.scalars().all()
+    # 2. Миграция станций (только 2-РП*.csv)
+    log.info("--- 1/2: Начинаю миграцию Станций (только 2-РП*.csv) ---")
+    
+    station_files = glob.glob(os.path.join(data_dir_path, '2-РП*.csv'))
+    log.info(f"Найдены файлы станций (2-РП): {[os.path.basename(f) for f in station_files]}")
+    
+    all_stations_dfs = []
+    for filepath in station_files:
+        df = load_kniga_2_rp(filepath)
+        if df is not None:
+            all_stations_dfs.append(df)
 
-        # 4. Форматируем результат
-        station_list = []
-        for station in all_stations:
-            station_list.append({
-                'name': station.name,
-                'code': station.code,
-                'railway': station.railway
-            })
+    if not all_stations_dfs:
+        log.error("❌ Ни один файл станций (2-РП*.csv) не загружен. Миграция станций провалена.")
+        return
         
-        return station_list
+    # Объединяем все DF и удаляем дубликаты
+    stations_df = pd.concat(all_stations_dfs, ignore_index=True)
+    stations_df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
+    
+    log.info(f"Всего найдено {len(stations_df)} УНИКАЛЬНЫХ станций во всех файлах.")
+    
+    stations_df = stations_df.where(pd.notnull(stations_df), None)
+
+    async with Session() as session:
+        async with session.begin():
+            stations_to_add = []
+            for _, row in stations_df.iterrows():
+                stations_to_add.append(
+                    TariffStation(
+                        name=row['station_name'],
+                        code=row['station_code'],
+                        railway=row['railway'],
+                        operations=row['operations'],
+                        transit_points=parse_transit_points_for_db(row['transit_points_raw'])
+                    )
+                )
+            log.info(f"Добавляю {len(stations_to_add)} станций в базу...")
+            session.add_all(stations_to_add)
+        await session.commit()
+    log.info("✅ Миграция станций завершена.")
+
+
+    # --- 3. Миграция Матриц: СБОР, СИММЕТРИЯ И МАССОВАЯ ВСТАВКА (ИСПРАВЛЕНО) ---
+    log.info("--- 2/2: Начинаю миграцию Матриц (все 3-*.csv) ---")
+    
+    all_matrix_files = glob.glob(os.path.join(data_dir_path, '3-*.csv'))
+    
+    files_to_exclude = [
+        '3-Вводные положения.csv',
+        '3-Общие положения.csv'
+    ]
+    
+    matrix_files_to_process = []
+    for f_path in all_matrix_files:
+        f_name = os.path.basename(f_path)
+        if f_name not in files_to_exclude:
+            matrix_files_to_process.append(f_path)
+        else:
+            log.warning(f"Файл {f_name} исключен из обработки, т.к. не является матрицей.")
+            
+    log.info(f"Найдены файлы матриц для обработки: {[os.path.basename(f) for f in matrix_files_to_process]}")
+
+
+    all_routes_dfs = []
+    
+    # 1. Сбор всех маршрутов в один список
+    for filepath in matrix_files_to_process: 
+        log.info(f"--- Сборка маршрутов из: {os.path.basename(filepath)} ---")
+        matrix_df = load_kniga_3_matrix(filepath)
+        if matrix_df is not None and not matrix_df.empty:
+            all_routes_dfs.append(matrix_df)
+        else:
+            # ⚠️ Важный лог: Файл 3-2 Рос.csv пропущен из-за ошибки в load_kniga_3_matrix
+            log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).") 
+
+    if not all_routes_dfs:
+        log.warning("⚠️ Не найдено маршрутов для вставки. Миграция матриц завершена без данных.")
+        await engine.dispose()
+        return
+
+    # Объединяем все маршруты из всех файлов
+    combined_routes_df = pd.concat(all_routes_dfs, ignore_index=True)
+    
+    # 2. Удаляем дубликаты (A, B) перед созданием симметричных пар
+    combined_routes_df.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
+    log.info(f"Всего УНИКАЛЬНЫХ маршрутов (A->B) собрано: {len(combined_routes_df)}")
+
+    # 3. Создание симметричных пар (B -> A)
+    # Копируем DF, меняем колонки и добавляем
+    reversed_routes_df = combined_routes_df.rename(columns={'station_a': 'station_b_temp', 
+                                                            'station_b': 'station_a'}).copy()
+    reversed_routes_df.rename(columns={'station_b_temp': 'station_b'}, inplace=True)
+
+    # Объединяем прямые и обратные маршруты
+    final_routes_df = pd.concat([combined_routes_df, reversed_routes_df], ignore_index=True)
+    
+    # 4. Удаляем дубликаты (A, B) ещё раз, теперь включая симметричные
+    final_routes_df.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
+
+    total_routes_to_add = len(final_routes_df)
+    log.info(f"Всего маршрутов для вставки (включая симметричные): {total_routes_to_add}")
+    
+    # 5. Массовая вставка С ПАКЕТИРОВАНИЕМ (FIXED)
+    async with Session() as session:
+        
+        # --- ИСПРАВЛЕНИЕ: Пакетная вставка для обхода лимита 32767 аргументов ---
+        BATCH_SIZE = 5000  # Выбираем безопасный размер пакета, чтобы 5000 * 3 < 32767
+        num_batches = (total_routes_to_add + BATCH_SIZE - 1) // BATCH_SIZE
+        
+        log.info(f"Начинаю пакетную вставку {total_routes_to_add} маршрутов в {num_batches} пакетах...")
+        
+        for i in range(num_batches):
+            start_index = i * BATCH_SIZE
+            end_index = min((i + 1) * BATCH_SIZE, total_routes_to_add)
+            
+            batch_df = final_routes_df.iloc[start_index:end_index]
+            routes_to_insert = batch_df.to_dict(orient='records')
+            
+            try:
+                async with session.begin():
+                    # Вставляем данные, используя ON CONFLICT DO NOTHING
+                    stmt = pg_insert(TariffMatrix).values(routes_to_insert).on_conflict_do_nothing(
+                        index_elements=['station_a', 'station_b']
+                    )
+                    await session.execute(stmt)
+                    log.info(f"   -> Пакет {i+1}/{num_batches} успешно вставлен (маршрутов: {len(batch_df)}).")
+                    
+            except Exception as e:
+                log.error(f"❌ Критическая ошибка при вставке пакета {i+1}: {e}", exc_info=True)
+                # Продолжаем, чтобы сохранить как можно больше данных
+                
+    log.info("✅ Миграция матриц завершена.")
+
+    log.info("🎉🎉🎉 == МИГРАЦИЯ ТАРИФНОЙ БАЗЫ УСПЕШНО ЗАВЕРШЕНА! ==")
+    
+    await engine.dispose()
+
+
+if __name__ == "__main__":
+    env_path = os.path.join(project_root_dir, '.env')
+    if os.path.exists(env_path):
+        log.info(f"Загружаю .env из {env_path}")
+        load_dotenv(dotenv_path=env_path)
+    else:
+        log.warning(f"Файл .env не найден в {project_root_dir}, использую переменные окружения системы.")
+        
+    TARIFF_DB_URL = os.getenv("TARIFF_DATABASE_URL")
+    
+    asyncio.run(main_migrate())
