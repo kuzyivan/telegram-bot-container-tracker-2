@@ -23,8 +23,12 @@ ASK_FROM_STATION, RESOLVE_FROM_STATION, ASK_TO_STATION, RESOLVE_TO_STATION = ran
 def build_station_keyboard(stations: list[dict], callback_prefix: str) -> InlineKeyboardMarkup:
     keyboard = []
     for station in stations[:10]: # Ограничиваем 10 вариантами
+        # Используем безопасный доступ к полям
+        railway_display = station.get('railway', 'Н/Д')
+        code_display = station.get('code', '')
+        
         callback_data = f"{callback_prefix}_{station['name']}"
-        display_text = f"{station['name']} ({station.get('railway', 'Н/Д')})"
+        display_text = f"{station['name']} ({railway_display})"
         keyboard.append([InlineKeyboardButton(display_text, callback_data=callback_data)])
     keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="distance_cancel")])
     return InlineKeyboardMarkup(keyboard)
@@ -82,8 +86,14 @@ async def process_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
             context.user_data['from_station_name'] = station['name'] 
         
         logger.info(f"[Dist] User {user_id}: Single match found: {station['name']}. Moving to ASK_TO_STATION.")
+        
+        # Безопасный вывод
+        code_display = html.escape(station.get('code', 'н/д'))
+        railway_display = html.escape(station.get('railway', 'н/д'))
+        
         await update.message.reply_text(
-            f"✅ Станция отправления: <b>{html.escape(station['name'])}</b>\n"
+            f"✅ Станция отправления: <b>{html.escape(station['name'])}</b> "
+            f"(`{code_display}, {railway_display}`)\n"
             f"Теперь введите <b>станцию назначения</b>.",
             parse_mode='HTML'
         )
@@ -112,20 +122,26 @@ async def resolve_from_station(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.info(f"[Dist] User {user_id}: Now in RESOLVE_FROM_STATION.")
     
     if not query or not query.data or not query.message: 
-        if query: await query.answer() 
+        if query: await query.answer()
         return ConversationHandler.END
         
     await query.answer() 
 
     chosen_name = query.data.replace("dist_from_", "") 
     
-    if context.user_data: # Проверка Pylance
+    if context.user_data:
         context.user_data['from_station_name'] = chosen_name
     
     logger.info(f"[Dist] User {user_id}: Resolved 'from_station' to {chosen_name}. Moving to ASK_TO_STATION.")
+    
+    # Пытаемся найти полные данные для вывода (хотя бы из кэша matches)
+    station_info = next((s for s in context.user_data.get('ambiguous_stations', []) if s.get('name') == chosen_name), {})
+    code_display = html.escape(station_info.get('code', 'н/д'))
+    railway_display = html.escape(station_info.get('railway', 'н/д'))
 
     await query.edit_message_text( 
-        f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b>\n"
+        f"✅ Станция отправления: <b>{html.escape(chosen_name)}</b> "
+        f"(`{code_display}, {railway_display}`)\n"
         f"Теперь введите <b>станцию назначения</b>.",
         parse_mode='HTML'
     )
@@ -191,7 +207,7 @@ async def resolve_to_station(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     chosen_name = query.data.replace("dist_to_", "") 
     
-    if context.user_data: # Проверка Pylance
+    if context.user_data:
         context.user_data['to_station_name'] = chosen_name
     
     logger.info(f"[Dist] User {user_id}: Resolved 'to_station' to {chosen_name}. Moving to run_distance_calculation.")
@@ -250,11 +266,9 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             info_b = result['info_b']
             route = result['route_details'] # ✅ ИЗВЛЕКАЕМ ДЕТАЛИ МАРШРУТА
             
-            # 🛠️ ФОРМАТИРОВАНИЕ ДЛЯ ВЫВОДА С ДЕТАЛЯМИ ТП
-            
-            # Избегаем HTML escape для кодов станций в скобках, так как они могут содержать символы типа '-'
-            from_station_display = f"{html.escape(info_a['station_name'])} (`{html.escape(info_a['code'])}, {html.escape(info_a.get('railway', 'Н/Д'))}`)"
-            to_station_display = f"{html.escape(info_b['station_name'])} (`{html.escape(info_b['code'])}, {html.escape(info_b.get('railway', 'Н/Д'))}`)"
+            # --- БЕЗОПАСНЫЙ ДОСТУП К ДАННЫМ СТАНЦИЙ ДЛЯ ВЫВОДА ---
+            from_station_display = f"{html.escape(info_a.get('station_name', from_station_name))} (`{html.escape(info_a.get('code', 'н/д'))}, {html.escape(info_a.get('railway', 'Н/Д'))}`)"
+            to_station_display = f"{html.escape(info_b.get('station_name', to_station_name))} (`{html.escape(info_b.get('code', 'н/д'))}, {html.escape(info_b.get('railway', 'Н/Д'))}`)"
             
             # Определяем, был ли маршрут прямым (TP A == TP B)
             is_direct = route['tpa_name'] == route['tpb_name']
@@ -275,11 +289,11 @@ async def run_distance_calculation(update: Update, context: ContextTypes.DEFAULT
             else:
                 response += (
                     # Шаг 1: Отправление -> ТП A
-                    f"1. {html.escape(info_a['station_name'])} → **{html.escape(route['tpa_name'])}** (ТП): {route['distance_a_to_tpa']} км\n"
-                    # Шаг 2: ТП A -> ТП B (Только если они не совпадают)
+                    f"1. {html.escape(info_a.get('station_name', from_station_name))} → **{html.escape(route['tpa_name'])}** (ТП): {route['distance_a_to_tpa']} км\n"
+                    # Шаг 2: ТП A -> ТП B
                     f"2. **{html.escape(route['tpa_name'])}** → **{html.escape(route['tpb_name'])}** (ТП): {route['distance_tpa_to_tpb']} км\n"
                     # Шаг 3: ТП B -> Назначение
-                    f"3. **{html.escape(route['tpb_name'])}** → {html.escape(info_b['station_name'])}: {route['distance_tpb_to_b']} км\n"
+                    f"3. **{html.escape(route['tpb_name'])}** → {html.escape(info_b.get('station_name', to_station_name))}: {route['distance_tpb_to_b']} км\n"
                 )
             
             response += f"**————————————————**\n"
