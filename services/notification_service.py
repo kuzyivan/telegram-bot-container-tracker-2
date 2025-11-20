@@ -9,7 +9,6 @@ from telegram import Bot
 from typing import List, Any, Dict, Tuple 
 
 from db import SessionLocal
-# --- ✅ Добавлен импорт Train ---
 from models import Subscription, Tracking, SubscriptionEmail, TrainEventLog, Train
 from model.terminal_container import TerminalContainer 
 from logger import get_logger
@@ -31,7 +30,6 @@ class NotificationService:
         sent_count = 0
         total_active_subscriptions = 0
 
-        # --- ✅ Добавлена колонка 'Станция перегруза' ---
         EXCEL_HEADERS = [
              'Номер контейнера', 'Станция отправления', 'Станция назначения',
              'Станция операции', 'Операция', 'Дата и время операции',
@@ -80,28 +78,40 @@ class NotificationService:
                     if tracking_info:
                         container_data_list.append(tracking_info)
                         
-                        # --- ✅ Получение станции перегруза через Join ---
+                        # --- Получение станции перегруза ---
                         overload_station = ""
                         try:
-                            # Ищем станцию перегруза: Container -> TerminalContainer -> Train -> overload_station_name
                             stmt = select(Train.overload_station_name)\
                                    .join(TerminalContainer, TerminalContainer.train == Train.terminal_train_number)\
                                    .where(TerminalContainer.container_number == ctn)
-                            
                             train_res = await session.execute(stmt)
                             overload_val = train_res.scalar_one_or_none()
                             if overload_val:
                                 overload_station = overload_val
                         except Exception as e:
                              logger.error(f"Ошибка при получении перегруза для {ctn}: {e}")
-                        # ------------------------------------------------
+                        
+                        # --- ✅ ИСПРАВЛЕНИЕ: Расчет прогноза "на лету" ---
+                        forecast_display = ""
+                        # Если в базе есть расстояние, считаем прогноз (600 км/сутки + 1 день на операции)
+                        if tracking_info.km_left is not None and tracking_info.km_left > 0:
+                            try:
+                                days = tracking_info.km_left / 600 + 1
+                                forecast_display = round(days, 1)
+                            except Exception:
+                                forecast_display = ""
+                        elif tracking_info.forecast_days:
+                             # Если вдруг в базе есть значение, берем его (fallback)
+                             forecast_display = tracking_info.forecast_days
+                        # -------------------------------------------------
 
                         excel_rows.append([
                              tracking_info.container_number, tracking_info.from_station, tracking_info.to_station,
                              tracking_info.current_station, tracking_info.operation, tracking_info.operation_date,
-                             tracking_info.waybill, tracking_info.km_left, tracking_info.forecast_days,
+                             tracking_info.waybill, tracking_info.km_left, 
+                             forecast_display, # <--- Подставляем рассчитанное значение
                              tracking_info.wagon_number, tracking_info.operation_road,
-                             overload_station # <--- Новая колонка
+                             overload_station
                         ])
                 
                 # 3. Форматирование и отправка сообщения в Telegram
@@ -138,22 +148,14 @@ class NotificationService:
                         
                         email_recipients = [se.email.email for se in sub.target_emails if se.email.is_verified]
                         
-                        if sub.target_emails:
-                            all_related_emails = [f"{se.email.email} (Verified: {se.email.is_verified})" for se in sub.target_emails]
-                            logger.info(f"DEBUG [Email Check] Подписка {sub.id}. Связанные Email: {', '.join(all_related_emails)}. Получатели: {', '.join(email_recipients) if email_recipients else 'NONE'}")
-                        
                         file_path = None
                         try:
                             if email_recipients:
-                                logger.info(f"DEBUG [Excel Gen] Начинаю генерацию Excel для подписки {sub.id}.") 
-                                
                                 file_path = await asyncio.to_thread(
                                     create_excel_file,
                                     excel_rows,
                                     EXCEL_HEADERS
                                 )
-                                
-                                logger.info(f"DEBUG [Email Send] Начинаю отправку Email с вложением: {os.path.basename(file_path)}.") 
                                 
                                 await asyncio.to_thread(
                                     send_email,
