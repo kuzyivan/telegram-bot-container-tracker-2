@@ -270,12 +270,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         final_report_data = []
 
-        # --- ✅ Добавлена колонка 'Станция перегруза' ---
+        # --- ✅ Добавлена колонка 'Прогноз прибытия (дней)' ---
         EXCEL_HEADERS = [
             'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
             'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
-            'Номер накладной', 'Расстояние оставшееся', 'Вагон',
-            'Тип вагона', 'Дорога операции', 'Станция перегруза'
+            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)', 
+            'Вагон', 'Тип вагона', 'Дорога операции', 'Станция перегруза'
         ]
         excel_columns = EXCEL_HEADERS
 
@@ -290,6 +290,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
             source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
+            
+            # --- ✅ Расчет прогноза ---
+            forecast_display = ""
+            if km_left is not None and km_left > 0:
+                try:
+                    days = km_left / 600 + 1
+                    forecast_display = round(days, 1)
+                except Exception:
+                    forecast_display = ""
+            elif db_row.forecast_days:
+                 forecast_display = db_row.forecast_days
+            # -------------------------
             
             wagon_number_raw = db_row.wagon_number
             wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" 
@@ -316,10 +328,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  db_row.last_op_idle_time_str or "",
                  db_row.waybill or "", 
                  km_left,
+                 forecast_display, # <--- Вставлено значение прогноза
                  wagon_number_cleaned, 
                  wagon_type_for_excel, 
                  railway_display_name,
-                 overload_station_name # <--- Новая колонка
+                 overload_station_name
              ]
             final_report_data.append(excel_row)
 
@@ -377,6 +390,19 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
             current_station=db_row.current_station
         )
     km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
+    
+    # --- ✅ Расчет прогноза ---
+    forecast_display = ""
+    if km_left is not None and km_left > 0:
+        try:
+            days = km_left / 600 + 1
+            forecast_display = round(days, 1)
+        except Exception:
+            forecast_display = ""
+    elif db_row.forecast_days:
+         forecast_display = db_row.forecast_days
+    # -------------------------
+
     wagon_number_raw = db_row.wagon_number
     wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else ""
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
@@ -391,12 +417,12 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
              overload_station_name = train_details.overload_station_name
     # ----------------------------------------
 
-    # --- ✅ Добавлена колонка 'Станция перегруза' ---
+    # --- ✅ Добавлена колонка 'Прогноз прибытия (дней)' ---
     EXCEL_HEADERS = [
         'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
         'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
-        'Номер накладной', 'Расстояние оставшееся', 'Вагон',
-        'Тип вагона', 'Дорога операции', 'Станция перегруза'
+        'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)', 
+        'Вагон', 'Тип вагона', 'Дорога операции', 'Станция перегруза'
     ]
 
     final_report_data = [[
@@ -410,10 +436,11 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
          db_row.last_op_idle_time_str or "",
          db_row.waybill or "", 
          km_left,
+         forecast_display, # <--- Вставлено значение прогноза
          wagon_number_cleaned, 
          wagon_type_for_excel, 
          railway_display_name,
-         overload_station_name # <--- Новая колонка
+         overload_station_name 
      ]]
 
     file_path = None
