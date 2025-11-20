@@ -9,7 +9,8 @@ from telegram import Bot
 from typing import List, Any, Dict, Tuple 
 
 from db import SessionLocal
-from models import Subscription, Tracking, SubscriptionEmail, TrainEventLog
+# --- ✅ Добавлен импорт Train ---
+from models import Subscription, Tracking, SubscriptionEmail, TrainEventLog, Train
 from model.terminal_container import TerminalContainer 
 from logger import get_logger
 from utils.send_tracking import create_excel_file
@@ -30,11 +31,12 @@ class NotificationService:
         sent_count = 0
         total_active_subscriptions = 0
 
+        # --- ✅ Добавлена колонка 'Станция перегруза' ---
         EXCEL_HEADERS = [
              'Номер контейнера', 'Станция отправления', 'Станция назначения',
              'Станция операции', 'Операция', 'Дата и время операции',
              'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)',
-             'Номер вагона', 'Дорога операции'
+             'Номер вагона', 'Дорога операции', 'Станция перегруза'
         ]
 
         logger.info(f"[Notification] Запрос активных подписок на время {target_time.strftime('%H:%M')}...")
@@ -78,11 +80,28 @@ class NotificationService:
                     if tracking_info:
                         container_data_list.append(tracking_info)
                         
+                        # --- ✅ Получение станции перегруза через Join ---
+                        overload_station = ""
+                        try:
+                            # Ищем станцию перегруза: Container -> TerminalContainer -> Train -> overload_station_name
+                            stmt = select(Train.overload_station_name)\
+                                   .join(TerminalContainer, TerminalContainer.train == Train.terminal_train_number)\
+                                   .where(TerminalContainer.container_number == ctn)
+                            
+                            train_res = await session.execute(stmt)
+                            overload_val = train_res.scalar_one_or_none()
+                            if overload_val:
+                                overload_station = overload_val
+                        except Exception as e:
+                             logger.error(f"Ошибка при получении перегруза для {ctn}: {e}")
+                        # ------------------------------------------------
+
                         excel_rows.append([
                              tracking_info.container_number, tracking_info.from_station, tracking_info.to_station,
                              tracking_info.current_station, tracking_info.operation, tracking_info.operation_date,
                              tracking_info.waybill, tracking_info.km_left, tracking_info.forecast_days,
-                             tracking_info.wagon_number, tracking_info.operation_road
+                             tracking_info.wagon_number, tracking_info.operation_road,
+                             overload_station # <--- Новая колонка
                         ])
                 
                 # 3. Форматирование и отправка сообщения в Telegram
@@ -159,9 +178,6 @@ class NotificationService:
         
         return sent_count, total_active_subscriptions
 
-# =========================================================================
-# === ✅ ОБНОВЛЕННАЯ ЛОГИКА АГРЕГАЦИИ (ИСПРАВЛЕНИЕ СПАМА) ===
-# =========================================================================
     async def send_aggregated_train_event_notifications(self) -> int:
         """
         Отправляет агрегированные уведомления о НЕЗА_ОТПРАВЛЕННЫХ событиях по поездам.
@@ -180,7 +196,7 @@ class NotificationService:
         aggregated_events: Dict[Tuple[str, str, str, datetime.date], Dict[str, Any]] = {}
         
         for event in events:
-            # --- ✅ ИЗМЕНЕНИЕ: Агрегируем по ДАТЕ, а не по МИНУТЕ ---
+            # Агрегируем по ДАТЕ, а не по МИНУТЕ
             # (Мы используем .date(), чтобы получить '2025-11-09')
             event_date_key = event.event_time.date() 
             key = (event.train_number, event.event_description, event.station, event_date_key)

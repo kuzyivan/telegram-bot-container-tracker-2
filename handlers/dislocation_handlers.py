@@ -15,9 +15,7 @@ from model.terminal_container import TerminalContainer
 from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
 from queries.containers import get_tracking_data_by_wagons 
-# --- ✅ НОВЫЙ ИМПОРТ ---
 from queries.train_queries import get_train_details 
-# ---------------------
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
@@ -188,14 +186,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         train_number = await get_train_for_container(result.container_number)
         train_display = f"Поезд: `{train_number}`\n" if train_number else ""
         
-        # --- ✅ ДОБАВЛЕНИЕ СТАНЦИИ ПЕРЕГРУЗА ---
+        # --- Получение станции перегруза ---
         overload_display = ""
         if train_number:
             train_details = await get_train_details(train_number)
             if train_details and train_details.overload_station_name:
                 safe_overload_name = escape_markdown(train_details.overload_station_name)
                 overload_display = f"**Станция перегруза:** `{safe_overload_name}`\n"
-        # ---------------------------------------
+        # -----------------------------------
 
         remaining_distance = None
         if result.from_station and result.to_station and result.current_station:
@@ -248,7 +246,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Отпр: `{escape_markdown(result.from_station or '')}`\n"
             f"Назн: `{escape_markdown(result.to_station or '')}`\n"
             f"**Дата отправления:** `{start_date_str}`\n" 
-            f"{overload_display}" 
+            f"{overload_display}"
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
             f"**Станция:** {safe_current_station} (Дорога: `{railway_abbreviation}`)\n"
@@ -272,11 +270,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         final_report_data = []
 
+        # --- ✅ Добавлена колонка 'Станция перегруза' ---
         EXCEL_HEADERS = [
             'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
             'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
             'Номер накладной', 'Расстояние оставшееся', 'Вагон',
-            'Тип вагона', 'Дорога операции'
+            'Тип вагона', 'Дорога операции', 'Станция перегруза'
         ]
         excel_columns = EXCEL_HEADERS
 
@@ -291,10 +290,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             km_left = recalculated_distance if recalculated_distance is not None else db_row.km_left
             source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
+            
             wagon_number_raw = db_row.wagon_number
             wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" 
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
             railway_display_name = db_row.operation_road or ""
+
+            # --- Получение информации о перегрузе ---
+            overload_station_name = ""
+            train_number = await get_train_for_container(db_row.container_number)
+            if train_number:
+                train_details = await get_train_details(train_number)
+                if train_details and train_details.overload_station_name:
+                     overload_station_name = train_details.overload_station_name
+            # ----------------------------------------
 
             excel_row = [
                  db_row.container_number,
@@ -310,6 +319,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  wagon_number_cleaned, 
                  wagon_type_for_excel, 
                  railway_display_name,
+                 overload_station_name # <--- Новая колонка
              ]
             final_report_data.append(excel_row)
 
@@ -372,11 +382,21 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
     wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
     railway_display_name = db_row.operation_road or ""
 
+    # --- Получение информации о перегрузе ---
+    overload_station_name = ""
+    train_number = await get_train_for_container(db_row.container_number)
+    if train_number:
+        train_details = await get_train_details(train_number)
+        if train_details and train_details.overload_station_name:
+             overload_station_name = train_details.overload_station_name
+    # ----------------------------------------
+
+    # --- ✅ Добавлена колонка 'Станция перегруза' ---
     EXCEL_HEADERS = [
         'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
         'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
         'Номер накладной', 'Расстояние оставшееся', 'Вагон',
-        'Тип вагона', 'Дорога операции'
+        'Тип вагона', 'Дорога операции', 'Станция перегруза'
     ]
 
     final_report_data = [[
@@ -393,6 +413,7 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
          wagon_number_cleaned, 
          wagon_type_for_excel, 
          railway_display_name,
+         overload_station_name # <--- Новая колонка
      ]]
 
     file_path = None
