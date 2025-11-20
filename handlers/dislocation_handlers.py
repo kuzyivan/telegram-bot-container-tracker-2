@@ -15,6 +15,9 @@ from model.terminal_container import TerminalContainer
 from queries.user_queries import add_user_request, register_user_if_not_exists
 from queries.notification_queries import get_tracking_data_for_containers
 from queries.containers import get_tracking_data_by_wagons 
+# --- ✅ НОВЫЙ ИМПОРТ ---
+from queries.train_queries import get_train_details 
+# ---------------------
 from services.railway_router import get_remaining_distance_on_route
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from utils.railway_utils import get_railway_abbreviation
@@ -22,7 +25,7 @@ from utils.telegram_text_utils import escape_markdown
 import config
 from utils.keyboards import create_single_container_excel_keyboard
 
-# --- ✅ НОВЫЕ ИМПОРТЫ ДЛЯ ПРОВЕРКИ СОСТОЯНИЙ ---
+# --- Импорты для проверки состояний ---
 try:
     from handlers.admin.event_email_handler import (
         MAIN_MENU as EVENT_EMAIL_MENU, 
@@ -34,7 +37,6 @@ except ImportError:
     EVENT_EMAIL_MENU = -1
     AWAITING_EMAIL_TO_ADD = -1
     AWAITING_DELETE_CHOICE = -1
-# ---
 
 logger = get_logger(__name__)
 
@@ -88,12 +90,12 @@ def _format_dt_for_excel(dt: Optional[datetime]) -> str:
     if dt is None:
         return "" # Возвращаем пустую строку
     try:
-        # ✅ ИЗМЕНЕНО: Используем дефис '-'
+        # Используем дефис '-'
         return dt.strftime('%d-%m-%Y %H:%M')
     except Exception:
         return str(dt) # Запасной вариант
 
-# --- Основной обработчик сообщений (С ИСПРАВЛЕНИЕМ) ---
+# --- Основной обработчик сообщений ---
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -107,20 +109,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
          logger.warning("Получено сообщение без текста или пользователя.")
          return
          
-    # --- ✅ УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: ПРЕДОТВРАЩЕНИЕ НАЛОЖЕНИЯ ДИАЛОГОВ ---
+    # --- УНИВЕРСАЛЬНЫЙ ПРЕДОХРАНИТЕЛЬ: ПРЕДОТВРАЩЕНИЕ НАЛОЖЕНИЯ ДИАЛОГОВ ---
     if context.user_data:
-        # 🚨 КРИТИЧЕСКАЯ ПРОВЕРКА НА МАРКЕР ЗАВЕРШЕНИЯ (ВТОРОЙ УРОВЕНЬ) 🚨
+        # Проверка на маркер завершения (второй уровень)
         if context.user_data.pop('just_finished_conversation', False):
              logger.warning(f"[dislocation] handle_message проигнорировано: завершение диалога (маркер).")
              return 
              
-        # 🚨 НОВАЯ ПРОВЕРКА: Проверяем явный маркер distance 🚨
+        # Проверка на маркер distance
         if context.user_data.get('is_distance_active'):
              logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог /distance (маркер).")
              return
         
         active_conv_names = [
-            # 'distance_conversation' теперь проверяется маркером выше
             'add_containers_conversation',
             'remove_containers_conversation',
             'add_subscription_conversation',
@@ -133,7 +134,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
              logger.warning(f"[dislocation] handle_message проигнорировано: активен ConversationHandler.")
              return 
 
-        # 2. Проверка на маркеры других диалогов (Email-события и загрузка админа)
+        # 2. Проверка на маркеры других диалогов
         if (EVENT_EMAIL_MENU in context.user_data or 
             AWAITING_EMAIL_TO_ADD in context.user_data or 
             AWAITING_DELETE_CHOICE in context.user_data or
@@ -141,8 +142,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             logger.warning(f"[dislocation] handle_message проигнорировано: активен диалог с маркерами.")
             return
-
-    # --- ✅ КОНЕЦ ПРЕДОХРАНИТЕЛЯ ---
+    # --- КОНЕЦ ПРЕДОХРАНИТЕЛЯ ---
 
     await register_user_if_not_exists(user)
 
@@ -187,9 +187,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         train_number = await get_train_for_container(result.container_number)
         train_display = f"Поезд: `{train_number}`\n" if train_number else ""
+        
+        # --- ✅ ДОБАВЛЕНИЕ СТАНЦИИ ПЕРЕГРУЗА ---
+        overload_display = ""
+        if train_number:
+            train_details = await get_train_details(train_number)
+            if train_details and train_details.overload_station_name:
+                safe_overload_name = escape_markdown(train_details.overload_station_name)
+                overload_display = f"**Станция перегруза:** `{safe_overload_name}`\n"
+        # ---------------------------------------
 
         remaining_distance = None
-        # Pylance fix: ensure all stations are strings before calling
         if result.from_station and result.to_station and result.current_station:
             remaining_distance = await get_remaining_distance_on_route(
                 start_station=result.from_station,
@@ -229,7 +237,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         idle_time_str = result.last_op_idle_time_str or "н/д"
 
-        # Escape user-generated content for Markdown
         safe_current_station = escape_markdown(result.current_station or "")
         safe_operation = escape_markdown(result.operation or "")
 
@@ -241,6 +248,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Отпр: `{escape_markdown(result.from_station or '')}`\n"
             f"Назн: `{escape_markdown(result.to_station or '')}`\n"
             f"**Дата отправления:** `{start_date_str}`\n" 
+            f"{overload_display}" 
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
             f"**Станция:** {safe_current_station} (Дорога: `{railway_abbreviation}`)\n"
@@ -274,7 +282,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for db_row in final_unique_results: 
             recalculated_distance = None
-            # Pylance fix: ensure all stations are strings before calling
             if db_row.from_station and db_row.to_station and db_row.current_station:
                 recalculated_distance = await get_remaining_distance_on_route(
                     start_station=db_row.from_station,
@@ -285,19 +292,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             source_tag = "РАСЧЕТ" if recalculated_distance is not None else "БД"
             logger.info(f"[dislocation] Контейнер {db_row.container_number}: Расстояние ({km_left} км) взято из источника: {source_tag}")
             wagon_number_raw = db_row.wagon_number
-            wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" # Используем "" для Excel
+            wagon_number_cleaned = str(wagon_number_raw).removesuffix('.0') if wagon_number_raw else "" 
             wagon_type_for_excel = get_wagon_type_by_number(wagon_number_raw)
             railway_display_name = db_row.operation_road or ""
 
-            # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
             excel_row = [
                  db_row.container_number,
-                 _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
+                 _format_dt_for_excel(db_row.trip_start_datetime),
                  db_row.from_station or "", 
                  db_row.to_station or "",
                  db_row.current_station or "", 
                  db_row.operation or "", 
-                 _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
+                 _format_dt_for_excel(db_row.operation_date),
                  db_row.last_op_idle_time_str or "",
                  db_row.waybill or "", 
                  km_left,
@@ -309,9 +315,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         file_path = None
         try:
-             # ✅ ИЗМЕНЕНИЕ: Вызываем НОВУЮ функцию
              file_path = await asyncio.to_thread(
-                 create_excel_file_from_strings, # <--- ИЗМЕНЕНО
+                 create_excel_file_from_strings, 
                  final_report_data,
                  excel_columns
              )
@@ -355,7 +360,6 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
 
     db_row = tracking_results[0]
     recalculated_distance = None
-    # Pylance fix: ensure all stations are strings before calling
     if db_row.from_station and db_row.to_station and db_row.current_station:
         recalculated_distance = await get_remaining_distance_on_route(
             start_station=db_row.from_station,
@@ -375,15 +379,14 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
         'Тип вагона', 'Дорога операции'
     ]
 
-    # --- ✅ ИСПРАВЛЕНИЕ: Форматируем даты в строки перед записью в Excel ---
     final_report_data = [[
          db_row.container_number,
-         _format_dt_for_excel(db_row.trip_start_datetime), # <--- ИЗМЕНЕНО
+         _format_dt_for_excel(db_row.trip_start_datetime),
          db_row.from_station or "", 
          db_row.to_station or "",
          db_row.current_station or "", 
          db_row.operation or "", 
-         _format_dt_for_excel(db_row.operation_date), # <--- ИЗМЕНЕНО
+         _format_dt_for_excel(db_row.operation_date),
          db_row.last_op_idle_time_str or "",
          db_row.waybill or "", 
          km_left,
@@ -394,9 +397,8 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
 
     file_path = None
     try:
-         # ✅ ИЗМЕНЕНИЕ: Вызываем НОВУЮ функцию
          file_path = await asyncio.to_thread(
-             create_excel_file_from_strings, # <--- ИЗМЕНЕНО
+             create_excel_file_from_strings,
              final_report_data,
              EXCEL_HEADERS
          )
