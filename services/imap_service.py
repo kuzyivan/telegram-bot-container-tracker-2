@@ -2,7 +2,7 @@
 
 import os
 import re
-import datetime
+import time  # <--- ДОБАВЛЕНО для пауз между попытками
 from typing import Optional, Union, Iterator
 from contextlib import contextmanager
 
@@ -34,33 +34,59 @@ class ImapService:
             yield None
             return
 
-        mailbox = MailBox(IMAP_SERVER)
+        mailbox = None
         is_connected = False
-        try:
-            assert EMAIL and PASSWORD
+        
+        # --- НАСТРОЙКИ RETRY ---
+        max_retries = 3
+        retry_delay = 5  # секунд
+        # -----------------------
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                assert EMAIL and PASSWORD
+                
+                logger.info(f"[ImapService] Попытка подключения {attempt}/{max_retries} к {IMAP_SERVER}...")
+                
+                # Устанавливаем явный тайм-аут 60 секунд (по умолчанию может быть меньше)
+                mailbox = MailBox(IMAP_SERVER, timeout=60)
+                
+                mailbox.login(EMAIL, PASSWORD) 
+                is_connected = True
+                logger.info(f"🟢 [ImapService] Успешный login.")
+                
+                mailbox.folder.set("INBOX")  
+                logger.info(f"🟢 [ImapService] Успешно выбрана папка 'INBOX'.")
+                
+                # Если успешно подключились — прерываем цикл попыток
+                break
             
-            logger.info(f"[ImapService] Попытка подключения к {IMAP_SERVER} для {EMAIL}...")
-            
-            mailbox.login(EMAIL, PASSWORD) 
-            is_connected = True
-            logger.info(f"🟢 [ImapService] Успешный login.")
-            
-            mailbox.folder.set("INBOX")  
-            logger.info(f"🟢 [ImapService] Успешно выбрана папка 'INBOX'.")
-            
-            yield mailbox
-            
-        except Exception as e:
-            logger.error(f"❌ [ImapService] Ошибка подключения к IMAP или выбора папки 'INBOX': {e}", exc_info=True)
-            yield None
-        finally:
-            if is_connected:
+            except Exception as e:
+                logger.warning(f"⚠️ [ImapService] Ошибка подключения (попытка {attempt}): {e}")
+                if attempt < max_retries:
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"❌ [ImapService] Не удалось подключиться после {max_retries} попыток: {e}", exc_info=True)
+                    yield None
+                    return
+
+        # Если вышли из цикла и подключены
+        if is_connected and mailbox:
+            try:
+                yield mailbox
+            except Exception as e:
+                logger.error(f"❌ [ImapService] Ошибка во время работы с ящиком: {e}", exc_info=True)
+                yield None
+            finally:
                 try:
                     mailbox.logout()
                     logger.info(f"🟢 [ImapService] Logout выполнен.")
                 except Exception as e:
                      logger.warning(f"⚠️ [ImapService] Ошибка при попытке logout: {e}. Считаем, что соединение закрыто.")
                      pass
+        else:
+            # Этот блок выполнится, если цикл завершился без успеха (хотя yield None выше уже сработал)
+            pass
 
 
     def download_latest_attachment(self, subject_filter: str, sender_filter: str, filename_pattern: str) -> Optional[str]:
@@ -92,7 +118,8 @@ class ImapService:
                     
                     # Фильтруем по регулярному выражению в теме
                     if not re.search(subject_filter, msg.subject, re.IGNORECASE):
-                        logger.info(f"⚠️ [ImapService] Письмо '{msg.subject}' пропущено: не соответствует REGEX шаблону темы.")
+                        # Снижаем уровень лога до debug, чтобы не спамить
+                        # logger.debug(f"⚠️ [ImapService] Письмо '{msg.subject}' пропущено: не соответствует шаблону.")
                         continue
                         
                     logger.info(f"🟢 [ImapService] Найдено письмо: '{msg.subject}' от {msg.date.strftime('%a, %d %b %Y %H:%M:%S %z')}")
@@ -100,8 +127,6 @@ class ImapService:
                     # 4. Поиск вложений
                     for att in msg.attachments:
                         
-                        # --- ✅ ИСПРАВЛЕНИЕ: re.match -> re.search ---
-                        # re.match ищет только в начале строки, re.search ищет в любом месте.
                         if re.search(filename_pattern, att.filename, re.IGNORECASE):
                             
                             # 5. Сохранение файла
