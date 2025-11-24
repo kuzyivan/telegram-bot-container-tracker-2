@@ -237,6 +237,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         safe_current_station = escape_markdown(result.current_station or "")
         safe_operation = escape_markdown(result.operation or "")
+        
+        # --- ✅ ИЗМЕНЕНИЕ: Добавляем индекс поезда ---
+        safe_train_index = escape_markdown(result.train_index_full or "н/д")
+        # --------------------------------------------
 
         response_text = (
             f"📦 **Статус контейнера: {result.container_number}**\n"
@@ -250,6 +254,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"═════════════════════\n"
             f"🚂 *Текущая дислокация:*\n"
             f"**Станция:** {safe_current_station} (Дорога: `{railway_abbreviation}`)\n"
+            f"**Индекс поезда:** `{safe_train_index}`\n"
             f"**Операция:** `{safe_operation}`\n"
             f"**Дата/Время:** `{result.operation_date.strftime('%d.%m.%Y %H:%M (UTC)') if result.operation_date else 'н/д'}`\n"
             f"**Вагон:** `{wagon_number_cleaned}` (Тип: `{wagon_type_display}`)\n"
@@ -270,11 +275,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         final_report_data = []
 
-        # --- ✅ Добавлена колонка 'Прогноз прибытия (дней)' ---
+        # --- ✅ Добавлена колонка 'Индекс поезда' ---
         EXCEL_HEADERS = [
             'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
             'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
-            'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)', 
+            'Номер накладной', 'Индекс поезда', 'Расстояние оставшееся', 'Прогноз прибытия (дней)', 
             'Вагон', 'Тип вагона', 'Дорога операции', 'Станция перегруза'
         ]
         excel_columns = EXCEL_HEADERS
@@ -327,8 +332,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  _format_dt_for_excel(db_row.operation_date),
                  db_row.last_op_idle_time_str or "",
                  db_row.waybill or "", 
+                 db_row.train_index_full or "", # <--- Вставлен Индекс поезда
                  km_left,
-                 forecast_display, # <--- Вставлено значение прогноза
+                 forecast_display,
                  wagon_number_cleaned, 
                  wagon_type_for_excel, 
                  railway_display_name,
@@ -417,11 +423,11 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
              overload_station_name = train_details.overload_station_name
     # ----------------------------------------
 
-    # --- ✅ Добавлена колонка 'Прогноз прибытия (дней)' ---
+    # --- ✅ Добавлена колонка 'Индекс поезда' ---
     EXCEL_HEADERS = [
         'Номер контейнера', 'Дата отправления', 'Станция отправления', 'Станция назначения',
         'Станция операции', 'Операция', 'Дата и время операции', 'Простой (сут:ч:м)',
-        'Номер накладной', 'Расстояние оставшееся', 'Прогноз прибытия (дней)', 
+        'Номер накладной', 'Индекс поезда', 'Расстояние оставшееся', 'Прогноз прибытия (дней)', 
         'Вагон', 'Тип вагона', 'Дорога операции', 'Станция перегруза'
     ]
 
@@ -435,8 +441,9 @@ async def handle_single_container_excel_callback(update: Update, context: Contex
          _format_dt_for_excel(db_row.operation_date),
          db_row.last_op_idle_time_str or "",
          db_row.waybill or "", 
+         db_row.train_index_full or "", # <--- Вставлен Индекс поезда
          km_left,
-         forecast_display, # <--- Вставлено значение прогноза
+         forecast_display, 
          wagon_number_cleaned, 
          wagon_type_for_excel, 
          railway_display_name,
