@@ -1,58 +1,27 @@
 # web/main.py
 import sys
 import os
-import asyncio
-from fastapi import FastAPI, Request, Depends, Form
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+import uvicorn
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # --- Хак для импорта из родительской папки ---
+# Это нужно, чтобы Python видел папку 'web' и корень проекта как модули
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from db import SessionLocal
-from models import Tracking
+# Импортируем наши новые роутеры
+from web.routers import public
 
 app = FastAPI(title="Logistrail Tracker")
 
-# Подключаем шаблоны
-templates = Jinja2Templates(directory="templates")
+# 1. Подключаем статические файлы (CSS, картинки, JS)
+# Они будут доступны по адресу /static/filename
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
-# Зависимость для БД
-async def get_db():
-    async with SessionLocal() as session:
-        yield session
+# 2. Подключаем роутеры (разделы сайта)
+app.include_router(public.router)
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "data": None,
-        "query": ""
-    })
-
-@app.get("/search", response_class=HTMLResponse)
-async def search_container(
-    request: Request, 
-    q: str = "", 
-    db: AsyncSession = Depends(get_db)
-):
-    query_str = q.strip().upper()
-    tracking_info = None
-
-    if query_str:
-        result = await db.execute(
-            select(Tracking)
-            .where(Tracking.container_number == query_str)
-            .order_by(Tracking.operation_date.desc())
-            .limit(1)
-        )
-        tracking_info = result.scalar_one_or_none()
-
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "data": tracking_info,
-        "query": query_str
-    })
+# Запуск сервера (для отладки через python web/main.py)
+if __name__ == "__main__":
+    # reload=True позволяет менять код без перезагрузки сервера
+    uvicorn.run("web.main:app", host="0.0.0.0", port=8000, reload=True)
