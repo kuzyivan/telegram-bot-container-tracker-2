@@ -51,9 +51,10 @@ def normalize_search_input(text: str) -> list[str]:
 
 async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking]):
     """
-    Добавляет к объектам Tracking дополнительные данные:
-    - Прогресс (процент выполнения пути)
-    - Информацию о поезде (Терминал) и станции перегруза
+    Добавляет к объектам Tracking:
+    - Прогресс (%)
+    - Инфо о поезде и перегрузе
+    - Расчетный прогноз (если нет в БД)
     """
     enriched_data = []
     
@@ -67,17 +68,14 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
             traveled = total_dist - km_left
             progress_percent = int((traveled / total_dist) * 100)
         
-        # Ограничиваем от 0 до 100
         progress_percent = max(0, min(100, progress_percent))
 
-        # 2. Поиск информации о поезде (TerminalContainer -> Train)
+        # 2. Инфо о поезде
         terminal_train_info = {
             "number": None,
             "overload_station": None
         }
         
-        # Ищем связь в terminal_containers по номеру контейнера
-        # (Сортируем по дате, берем самую свежую привязку)
         tc_res = await db.execute(
             select(TerminalContainer.train)
             .where(TerminalContainer.container_number == item.container_number)
@@ -88,26 +86,38 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
         
         if train_code:
             terminal_train_info["number"] = train_code
-            # Если нашли поезд, ищем его детали (станцию перегруза) в таблице trains
             t_res = await db.execute(
                 select(Train.overload_station_name)
                 .where(Train.terminal_train_number == train_code)
             )
             terminal_train_info["overload_station"] = t_res.scalar_one_or_none()
 
-        # Определяем статус прибытия
+        # 3. Статус прибытия
         is_arrived = False
         if item.km_left == 0:
             is_arrived = True
         elif item.current_station and item.to_station and item.current_station.upper() == item.to_station.upper():
             is_arrived = True
 
-        # Собираем словарь для шаблона
+        # 4. ✅ РАСЧЕТ ПРОГНОЗА (ДНИ)
+        # Если в базе нет прогноза, считаем: (км / 600) + 1 день на операции
+        forecast_display = "—"
+        if item.forecast_days:
+            forecast_display = f"{item.forecast_days:.1f}"
+        elif km_left > 0:
+            try:
+                # Средняя скорость 600 км/сутки + 1 сутки на тех. операции
+                calc_days = (km_left / 600) + 1
+                forecast_display = f"{calc_days:.1f}"
+            except:
+                pass
+
         enriched_data.append({
             "obj": item,
             "progress": progress_percent,
             "train_info": terminal_train_info,
-            "is_arrived": is_arrived
+            "is_arrived": is_arrived,
+            "forecast_days_display": forecast_display  # <--- Добавили готовое значение
         })
         
     return enriched_data

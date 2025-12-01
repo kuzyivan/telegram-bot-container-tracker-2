@@ -69,32 +69,46 @@
                     <thead class="bg-slate-50 text-slate-500 uppercase font-bold text-xs">
                         <tr>
                             <th class="px-6 py-3">Контейнер</th>
-                            <th class="px-6 py-3">Вагон</th>
-                            <th class="px-6 py-3">Операция</th>
-                            <th class="px-6 py-3">Дата (UTC)</th>
+                            <th class="px-6 py-3">Операция / Дорога</th> <th class="px-6 py-3">Дата (UTC)</th>
                             <th class="px-6 py-3">Осталось</th>
-                        </tr>
+                            <th class="px-6 py-3">Прогноз</th> </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         {% for item in group.containers %}
                         {% set obj = item.obj %}
                         <tr class="hover:bg-slate-50 transition">
-                            <td class="px-6 py-3 font-mono font-bold text-blue-600">{{ obj.container_number }}</td>
-                            <td class="px-6 py-3">{{ obj.wagon_number or '—' }}</td>
+                            <td class="px-6 py-3 font-mono font-bold text-blue-600">
+                                {{ obj.container_number }}
+                                <div class="text-xs text-slate-400 font-normal">Ваг: {{ obj.wagon_number or '—' }}</div>
+                            </td>
                             <td class="px-6 py-3">
-                                <div class="max-w-[200px] truncate" title="{{ obj.operation }}">
+                                <div class="max-w-[220px] truncate" title="{{ obj.operation }}">
                                     {{ obj.operation }}
-                                    <div class="text-xs text-slate-400">{{ obj.current_station }}</div>
+                                    <div class="text-xs text-slate-500 mt-0.5">
+                                        {{ obj.current_station }} 
+                                        {% if obj.operation_road %}
+                                        <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-semibold">{{ obj.operation_road }}</span>
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </td>
-                            <td class="px-6 py-3 whitespace-nowrap">{{ obj.operation_date.strftime('%d.%m %H:%M') if obj.operation_date else '—' }}</td>
+                            <td class="px-6 py-3 whitespace-nowrap text-slate-600">
+                                {{ obj.operation_date.strftime('%d.%m %H:%M') if obj.operation_date else '—' }}
+                            </td>
                             <td class="px-6 py-3">
                                 <div class="flex items-center gap-2">
-                                    <div class="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                    <div class="w-12 h-1.5 bg-slate-200 rounded-full overflow-hidden hidden sm:block">
                                         <div class="h-full bg-blue-500 rounded-full" style="width: {{ item.progress }}%"></div>
                                     </div>
-                                    <span class="text-xs font-bold text-slate-700">{{ obj.km_left or '0' }} км</span>
+                                    <span class="text-xs font-bold text-slate-700 whitespace-nowrap">{{ obj.km_left or '0' }} км</span>
                                 </div>
+                            </td>
+                            <td class="px-6 py-3 font-medium text-slate-800 whitespace-nowrap">
+                                {% if item.forecast_days_display != "—" %}
+                                    {{ item.forecast_days_display }} дн.
+                                {% else %}
+                                    <span class="text-slate-400">—</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -176,10 +190,12 @@
                     <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-3 text-sm">
                         <div>
                             <span class="text-slate-500 block text-xs uppercase mb-1">Станция операции</span>
-                            <span class="font-bold text-slate-900 text-base">{{ obj.current_station }}</span>
-                            {% if obj.operation_road %}
-                            <span class="text-slate-400 text-xs ml-1">({{ obj.operation_road }})</span>
-                            {% endif %}
+                            <span class="font-bold text-slate-900 text-base">
+                                {{ obj.current_station }}
+                                {% if obj.operation_road %}
+                                <span class="text-slate-500 font-normal ml-1">(Дорога: {{ obj.operation_road }})</span>
+                                {% endif %}
+                            </span>
                         </div>
 
                         <div>
@@ -227,8 +243,8 @@
                     <div>
                         <span class="block text-xs text-slate-400 uppercase font-bold">Прогноз</span>
                         <span class="block font-bold text-slate-900 text-lg">
-                            {% if obj.forecast_days %}
-                                {{ "%.1f"|format(obj.forecast_days) }} <span class="text-sm font-normal text-slate-500">дн.</span>
+                            {% if item.forecast_days_display != "—" %}
+                                {{ item.forecast_days_display }} <span class="text-sm font-normal text-slate-500">дн.</span>
                             {% else %}
                                 —
                             {% endif %}
