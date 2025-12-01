@@ -3,53 +3,54 @@
 {% block title %}Поиск груза — Logistrail{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4">
+<div class="max-w-7xl mx-auto px-4">
     
-    <div class="text-center mb-6 fade-in">
-        <h1 class="text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">Поиск контейнера</h1>
-        <p class="text-lg text-slate-500">Отслеживание контейнеров и вагонов в реальном времени.</p>
-    </div>
+    <div class="max-w-4xl mx-auto">
+        
+        <div class="text-center mb-6 fade-in">
+            <h1 class="text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">Поиск контейнера</h1>
+            <p class="text-lg text-slate-500">Отслеживание контейнеров и вагонов в реальном времени.</p>
+        </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6 transition-all focus-within:ring-4 focus-within:ring-blue-100">
-        <form hx-post="/search" hx-target="#search-results" hx-indicator="#loading-spinner">
-            
-            <label for="q" class="block text-sm font-medium text-slate-700 mb-2">
-                Введите номера (через пробел, запятую или с новой строки):
-            </label>
-            
-            <div class="relative">
-                <textarea 
-                    id="q" 
-                    name="q" 
-                    rows="3" 
-                    class="block w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-lg uppercase transition duration-200 resize-y placeholder:text-slate-400 placeholder:normal-case"
-                    placeholder="Например: TCNU1234567, 12345678..." required></textarea>
+        <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6 transition-all focus-within:ring-4 focus-within:ring-blue-100">
+            <form hx-post="/search" hx-target="#search-results" hx-indicator="#loading-spinner">
                 
-                <div class="absolute bottom-3 right-3">
-                    <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-200 shadow-md hover:shadow-lg flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-                        <span>Найти</span>
-                    </button>
+                <label for="q" class="block text-sm font-medium text-slate-700 mb-2">
+                    Введите номера (через пробел, запятую или с новой строки):
+                </label>
+                
+                <div class="relative">
+                    <textarea 
+                        id="q" 
+                        name="q" 
+                        rows="3" 
+                        class="block w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-lg uppercase transition duration-200 resize-y placeholder:text-slate-400 placeholder:normal-case"
+                        placeholder="Например: TCNU1234567, 12345678..." required></textarea>
+                    
+                    <div class="absolute bottom-3 right-3">
+                        <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition duration-200 shadow-md hover:shadow-lg flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            <span>Найти</span>
+                        </button>
+                    </div>
                 </div>
+                <p class="mt-2 text-xs text-slate-400">Поддерживается массовый поиск. Вставьте список из Excel.</p>
+            </form>
+        </div>
+
+        <div id="loading-spinner" class="htmx-indicator flex justify-center py-4">
+            <div class="flex flex-col items-center gap-3">
+                <svg class="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-slate-500 font-medium animate-pulse">Поиск данных...</span>
             </div>
-            <p class="mt-2 text-xs text-slate-400">Поддерживается массовый поиск. Вставьте список из Excel.</p>
-        </form>
-    </div>
-
-    <div id="loading-spinner" class="htmx-indicator flex justify-center py-4">
-        <div class="flex flex-col items-center gap-3">
-            <svg class="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span class="text-slate-500 font-medium animate-pulse">Поиск данных...</span>
-        </div>
-    </div>
-
-    <div id="search-results" class="min-h-[10px] mb-6">
         </div>
 
-    <div id="active-trains-block" 
+        <div id="search-results" class="min-h-[10px] mb-6"></div>
+
+    </div> <div id="active-trains-block" 
          hx-get="/active_trains" 
          hx-trigger="load" 
          hx-swap="innerHTML"
