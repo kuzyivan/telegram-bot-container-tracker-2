@@ -1,0 +1,168 @@
+{% if results %}
+<div class="flex justify-end mb-6 animate-fade-in">
+    <form action="/search/export" method="post" target="_blank">
+        <input type="hidden" name="q" value="{{ query_string }}">
+        <button type="submit" class="flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl hover:bg-green-700 transition shadow-sm font-medium">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            Скачать Excel
+        </button>
+    </form>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 text-center animate-shake">
+    {{ error }}
+</div>
+{% endif %}
+
+{% if not results and not error and query_string %}
+<div class="text-center py-10 text-slate-500">
+    Ничего не найдено. Проверьте номера.
+</div>
+{% endif %}
+
+<div class="space-y-6">
+    {% for item in results %}
+    {% set obj = item.obj %}
+    {% set train = item.train_info %}
+    
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition duration-300 animate-slide-up">
+        
+        <div class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900 font-mono tracking-wide">{{ obj.container_number }}</h2>
+                    <p class="text-xs text-slate-500 font-medium">Обновлено: {{ obj.operation_date.strftime('%d.%m.%Y %H:%M') if obj.operation_date else '—' }} UTC</p>
+                </div>
+            </div>
+            
+            {% if item.is_arrived %}
+                <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-200 uppercase tracking-wider">Прибыл</span>
+            {% else %}
+                <span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-200 uppercase tracking-wider">В пути</span>
+            {% endif %}
+        </div>
+
+        <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <div class="space-y-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-lg">📍</span>
+                    <h3 class="font-bold text-slate-800">Маршрут</h3>
+                </div>
+                
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-3 text-sm">
+                    {% if train.number %}
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-slate-500">Поезд (Терминал):</span>
+                        <span class="font-mono font-bold text-blue-600">{{ train.number }}</span>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Отправление:</span>
+                        <span class="font-medium text-right max-w-[60%]">{{ obj.from_station or '—' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Назначение:</span>
+                        <span class="font-medium text-right max-w-[60%]">{{ obj.to_station or '—' }}</span>
+                    </div>
+                    
+                    {% if obj.trip_start_datetime %}
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Дата выхода:</span>
+                        <span class="font-medium">{{ obj.trip_start_datetime.strftime('%d.%m.%Y') }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if train.overload_station %}
+                    <div class="flex justify-between pt-2 border-t border-slate-200">
+                        <span class="text-slate-500">Перегруз:</span>
+                        <span class="font-bold text-orange-600">{{ train.overload_station }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-lg">🚂</span>
+                    <h3 class="font-bold text-slate-800">Текущая дислокация</h3>
+                </div>
+
+                <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 space-y-3 text-sm">
+                    <div>
+                        <span class="text-slate-500 block text-xs uppercase mb-1">Станция операции</span>
+                        <span class="font-bold text-slate-900 text-base">{{ obj.current_station }}</span>
+                        {% if obj.operation_road %}
+                        <span class="text-slate-400 text-xs ml-1">({{ obj.operation_road }})</span>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <span class="text-slate-500 block text-xs uppercase mb-1">Операция</span>
+                        <div class="flex items-start gap-2">
+                            <div class="mt-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                            <span class="font-medium text-slate-800 leading-snug">{{ obj.operation }}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                        {% if obj.train_index_full %}
+                        <div class="col-span-2">
+                            <span class="text-slate-400 text-xs">Индекс поезда:</span>
+                            <span class="block font-mono text-xs text-slate-700 truncate" title="{{ obj.train_index_full }}">{{ obj.train_index_full }}</span>
+                        </div>
+                        {% endif %}
+                        
+                        <div>
+                            <span class="text-slate-400 text-xs">Вагон:</span>
+                            <span class="block font-medium">{{ obj.wagon_number or '—' }}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-400 text-xs">Накладная:</span>
+                            <span class="block font-medium">{{ obj.waybill or '—' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-50 px-6 py-4 border-t border-slate-100">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-lg">🛣️</span>
+                <h3 class="font-bold text-slate-800 text-sm">Прогноз и Прогресс</h3>
+            </div>
+
+            <div class="relative w-full h-4 bg-slate-200 rounded-full overflow-hidden mb-4">
+                <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-1000 ease-out rounded-full" style="width: {{ item.progress }}%"></div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase font-bold">Пройдено</span>
+                    <span class="block font-medium text-slate-700">{{ item.progress }}%</span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase font-bold">Осталось</span>
+                    <span class="block font-bold text-blue-600 text-lg">{{ obj.km_left or '0' }} <span class="text-sm font-normal text-slate-500">км</span></span>
+                </div>
+                <div>
+                    <span class="block text-xs text-slate-400 uppercase font-bold">Прогноз</span>
+                    <span class="block font-bold text-slate-900 text-lg">
+                        {% if obj.forecast_days %}
+                            {{ "%.1f"|format(obj.forecast_days) }} <span class="text-sm font-normal text-slate-500">дн.</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
