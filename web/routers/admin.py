@@ -1,31 +1,44 @@
+# web/routers/admin.py
 import sys
 import os
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from fastapi import APIRouter, Request, Depends, Query
+from typing import Optional
+
+from fastapi import APIRouter, Request, Depends, Query, Form, status
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, update
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# --- Хак для импортов из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import User, Subscription, UserRequest, Train
+from models import User, UserRequest, Train, Company, UserRole
 from model.terminal_container import TerminalContainer
+from web.auth import admin_required, get_current_user # Проверка прав
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+# Настройка шаблонов
 current_file = Path(__file__).resolve()
 templates_dir = current_file.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
 
+# Dependency для получения сессии БД
 async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# --- Вспомогательная функция для KPI ---
+# =========================================================================
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (KPI, СТАТИСТИКА) ===
+# =========================================================================
+
 async def get_kpi_data(session: AsyncSession, period: str):
+    """Рассчитывает KPI для карточек дашборда."""
     now = datetime.now()
     start_date = None
     period_label = ""
@@ -46,25 +59,26 @@ async def get_kpi_data(session: AsyncSession, period: str):
     # 1. Запросы
     req_query = select(func.count(UserRequest.id))
     if start_date:
+        # Для "сегодня" фильтруем точное совпадение даты, для остальных - диапазон
         if period == "today":
             req_query = req_query.where(func.date(UserRequest.timestamp) == start_date)
         else:
             req_query = req_query.where(func.date(UserRequest.timestamp) >= start_date)
     kpi_requests = await session.scalar(req_query) or 0
 
-    # 2. Пользователи
+    # 2. Новые пользователи
     user_query = select(func.count(User.id))
     if start_date:
         user_query = user_query.where(func.date(User.created_at) >= start_date)
     kpi_users = await session.scalar(user_query) or 0
 
-    # 3. Контейнеры
+    # 3. Принято контейнеров (по дате приема на терминал)
     cont_query = select(func.count(TerminalContainer.id))
     if start_date:
         cont_query = cont_query.where(TerminalContainer.accept_date >= start_date)
     kpi_containers = await session.scalar(cont_query) or 0
 
-    # 4. Поезда
+    # 4. Отправлено поездов
     train_query = select(func.count(Train.id))
     if start_date:
         train_query = train_query.where(func.date(Train.created_at) >= start_date)
@@ -78,10 +92,8 @@ async def get_kpi_data(session: AsyncSession, period: str):
         "period_label": period_label
     }
 
-# --- Вспомогательная функция для Клиентов (НОВАЯ) ---
 async def get_clients_stats(session: AsyncSession, period: str):
-    """Считает статистику по клиентам за период."""
-    
+    """Считает топ клиентов по объемам контейнеров."""
     now = datetime.now()
     start_date = None
 
@@ -91,8 +103,7 @@ async def get_clients_stats(session: AsyncSession, period: str):
         start_date = (now - timedelta(days=7)).date()
     elif period == "month":
         start_date = (now - timedelta(days=30)).date()
-    # all - start_date остается None
-
+    
     stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label("count"))
         .where(TerminalContainer.train.isnot(None))
@@ -101,7 +112,6 @@ async def get_clients_stats(session: AsyncSession, period: str):
     )
 
     if start_date:
-        # Фильтруем по дате приема контейнера
         stmt = stmt.where(TerminalContainer.accept_date >= start_date)
 
     stmt = (
@@ -119,18 +129,25 @@ async def get_clients_stats(session: AsyncSession, period: str):
         "chart_clients_values": json.dumps([row.count for row in clients_data])
     }
 
-# --- Роуты ---
+# =========================================================================
+# === РОУТЫ: ДАШБОРД И СТАТИСТИКА ===
+# =========================================================================
 
 @router.get("/dashboard")
-async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
+async def dashboard(
+    request: Request, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_required) # Защита: только админ
+):
+    """Главная страница дашборда."""
     
-    # 1. KPI (по умолчанию "today")
+    # 1. KPI
     kpi_data = await get_kpi_data(db, "today")
 
-    # 2. Клиенты (по умолчанию "month" или "all")
+    # 2. Клиенты
     clients_data = await get_clients_stats(db, "month")
 
-    # 3. График Активности (всегда 14 дней)
+    # 3. График Активности (за последние 14 дней)
     fourteen_days_ago = datetime.now() - timedelta(days=14)
     activity_stmt = (
         select(
@@ -143,10 +160,12 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     )
     activity_res = await db.execute(activity_stmt)
     activity_data = activity_res.all()
+    
+    # Форматируем даты для Chart.js
     chart_activity_labels = [row.date.strftime("%d.%m") for row in activity_data]
     chart_activity_values = [row.count for row in activity_data]
 
-    # 4. Таблица
+    # 4. Лента последних запросов
     feed_stmt = (
         select(UserRequest, User)
         .join(User, UserRequest.user_telegram_id == User.telegram_id, isouter=True)
@@ -165,19 +184,21 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
+        "user": current_user, # Передаем юзера в шаблон (для меню)
         **kpi_data,
-        **clients_data, # Данные клиентов
+        **clients_data,
         "chart_activity_labels": json.dumps(chart_activity_labels),
         "chart_activity_values": json.dumps(chart_activity_values),
         "feed_data": feed_data
     })
 
-# Обновление KPI (HTMX)
+# --- HTMX Endpoint: Обновление KPI ---
 @router.get("/dashboard/kpi")
 async def dashboard_kpi_update(
     request: Request, 
     period: str = Query("today"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
 ):
     kpi_data = await get_kpi_data(db, period)
     return templates.TemplateResponse("partials/kpi_cards.html", {
@@ -185,26 +206,119 @@ async def dashboard_kpi_update(
         **kpi_data
     })
 
-# --- НОВЫЙ ЭНДПОИНТ: Обновление Клиентов (HTMX) ---
+# --- HTMX Endpoint: Обновление графика клиентов ---
 @router.get("/dashboard/clients")
 async def dashboard_clients_update(
     request: Request,
     period: str = Query("month"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
 ):
-    """Обновляет только график клиентов."""
     clients_data = await get_clients_stats(db, period)
     return templates.TemplateResponse("partials/clients_chart.html", {
         "request": request,
         **clients_data
     })
 
+# --- Страница: Расписание поездов ---
 @router.get("/schedule")
-async def train_schedule(request: Request, db: AsyncSession = Depends(get_db)):
+async def train_schedule(
+    request: Request, 
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
     today = datetime.now().date()
     next_month = today + timedelta(days=30)
+    
     stmt = select(Train).where(Train.departure_date >= today).order_by(Train.departure_date)
     result = await db.execute(stmt)
+    
     return templates.TemplateResponse("schedule.html", {
-        "request": request, "trains": result.scalars().all(), "period_start": today, "period_end": next_month
+        "request": request, 
+        "trains": result.scalars().all(), 
+        "period_start": today, 
+        "period_end": next_month,
+        "user": user
     })
+
+# =========================================================================
+# === РОУТЫ: УПРАВЛЕНИЕ КОМПАНИЯМИ И ПОЛЬЗОВАТЕЛЯМИ (NEW) ===
+# =========================================================================
+
+@router.get("/companies")
+async def admin_companies(
+    request: Request, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_required)
+):
+    """Страница управления компаниями и назначением ролей."""
+    
+    # 1. Загружаем список всех компаний (с юзерами для подсчета)
+    companies_res = await db.execute(
+        select(Company)
+        .order_by(Company.created_at.desc())
+        .options(selectinload(Company.users))
+    )
+    companies = companies_res.scalars().all()
+
+    # 2. Загружаем список всех пользователей (с привязанной компанией)
+    users_res = await db.execute(
+        select(User)
+        .order_by(User.id.desc())
+        .options(selectinload(User.company))
+    )
+    users = users_res.scalars().all()
+
+    return templates.TemplateResponse("admin_companies.html", {
+        "request": request,
+        "user": current_user,
+        "companies": companies,
+        "users": users,
+        "UserRole": UserRole # Чтобы использовать Enum в шаблоне
+    })
+
+@router.post("/companies/create")
+async def create_company(
+    request: Request,
+    name: str = Form(...),
+    inn: str = Form(None),
+    import_key: str = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Обработчик формы создания компании."""
+    new_company = Company(
+        name=name,
+        inn=inn,
+        import_mapping_key=import_key
+    )
+    db.add(new_company)
+    await db.commit()
+    
+    # Редирект обратно на страницу компаний
+    return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
+
+@router.post("/users/{user_id}/update")
+async def update_user_role(
+    request: Request,
+    user_id: int,
+    role: str = Form(...),
+    company_id: int = Form(None), # Может быть 0 или None из формы
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Обновление роли и привязки к компании для конкретного пользователя."""
+    
+    # Валидация company_id (HTML select может прислать '0' как 'нет компании')
+    company_val = company_id if company_id and company_id > 0 else None
+    
+    # Обновляем поля
+    stmt = (
+        update(User)
+        .where(User.id == user_id)
+        .values(role=role, company_id=company_val)
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+    return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)

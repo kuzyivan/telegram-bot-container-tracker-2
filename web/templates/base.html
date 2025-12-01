@@ -37,10 +37,17 @@
                 </a>
             </div>
 
-            <nav class="hidden md:flex gap-6">
-                <a href="/" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Поиск</a>
-                <a href="/dashboard" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Дашборд</a>
-            </nav>
+                <nav class="hidden md:flex gap-6 items-center">
+                    <a href="/" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Поиск</a>
+                    <a href="/admin/dashboard" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Дашборд</a>
+                    
+                    <a href="/admin/companies" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition flex items-center gap-1">
+                        <span>Компании</span>
+                        <span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 rounded-md font-bold">NEW</span>
+                    </a>
+
+                    <a href="/logout" class="text-sm font-medium text-red-500 hover:text-red-700 transition ml-4">Выход</a>
+                </nav>
 
             <div class="flex items-center gap-4">
                 <a href="https://t.me/AtermTrackBot" target="_blank" class="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">
