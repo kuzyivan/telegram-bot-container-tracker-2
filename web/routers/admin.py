@@ -1,64 +1,97 @@
 import sys
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, Query
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# --- Хак для импорта из родительской папки ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-# Импортируем модели для аналитики
 from models import User, Subscription, UserRequest, Train
 from model.terminal_container import TerminalContainer
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-# --- НАСТРОЙКА ШАБЛОНОВ (Абсолютный путь) ---
 current_file = Path(__file__).resolve()
 templates_dir = current_file.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
-# --------------------------------------------
 
 async def get_db():
     async with SessionLocal() as session:
         yield session
 
+# --- Вспомогательная функция для подсчета KPI ---
+async def get_kpi_data(session: AsyncSession, period: str):
+    """Считает метрики в зависимости от выбранного периода."""
+    
+    now = datetime.now()
+    start_date = None
+    period_label = ""
+
+    # Определение временных рамок
+    if period == "today":
+        start_date = now.date()
+        period_label = "Сегодня"
+    elif period == "week":
+        start_date = (now - timedelta(days=7)).date()
+        period_label = "7 дней"
+    elif period == "month":
+        start_date = (now - timedelta(days=30)).date()
+        period_label = "30 дней"
+    elif period == "all":
+        start_date = None # За все время
+        period_label = "Все время"
+    
+    # 1. Запросы (UserRequest)
+    req_query = select(func.count(UserRequest.id))
+    if start_date:
+        if period == "today":
+            req_query = req_query.where(func.date(UserRequest.timestamp) == start_date)
+        else:
+            req_query = req_query.where(func.date(UserRequest.timestamp) >= start_date)
+    kpi_requests = await session.scalar(req_query) or 0
+
+    # 2. Новые пользователи (User)
+    user_query = select(func.count(User.id))
+    if start_date:
+        user_query = user_query.where(func.date(User.created_at) >= start_date)
+    kpi_users = await session.scalar(user_query) or 0
+
+    # 3. Контейнеры (TerminalContainer) - считаем по дате приема (accept_date)
+    cont_query = select(func.count(TerminalContainer.id))
+    if start_date:
+        cont_query = cont_query.where(TerminalContainer.accept_date >= start_date)
+    kpi_containers = await session.scalar(cont_query) or 0
+
+    # 4. Поезда (Train) - считаем по дате создания или отправления
+    # (Используем created_at как универсальный вариант, если departure_date нет)
+    train_query = select(func.count(Train.id))
+    if start_date:
+        train_query = train_query.where(func.date(Train.created_at) >= start_date)
+    kpi_trains = await session.scalar(train_query) or 0
+
+    return {
+        "kpi_requests": kpi_requests,
+        "kpi_users": kpi_users,
+        "kpi_containers": kpi_containers,
+        "kpi_trains": kpi_trains,
+        "period_label": period_label
+    }
+
+# --- Основной дашборд ---
 @router.get("/dashboard")
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
-    """
-    Главный дашборд статистики.
-    Собирает KPI, данные для графиков и лог последних запросов.
-    """
     
-    # --- БЛОК 1: KPI Карточки ---
-    
-    # 1. Всего пользователей
-    total_users = await db.scalar(select(func.count(User.id))) or 0
-    
-    # 2. Активные подписки
-    active_subs = await db.scalar(
-        select(func.count(Subscription.id))
-        .where(Subscription.is_active == True)
-    ) or 0
-    
-    # 3. Запросов за сегодня
-    # Используем func.date() для приведения timestamp к дате
-    requests_today = await db.scalar(
-        select(func.count(UserRequest.id))
-        .where(func.date(UserRequest.timestamp) == datetime.now().date())
-    ) or 0
+    # По умолчанию показываем данные "За сегодня" (или "За все время", как решишь)
+    # Давай по умолчанию "Сегодня", как было
+    kpi_data = await get_kpi_data(db, "today")
 
-    # 4. Общее количество отправленных поездов (из таблицы Train)
-    trains_count = await db.scalar(select(func.count(Train.id))) or 0
-
-    # --- БЛОК 2: График "Активность запросов" (за последние 14 дней) ---
+    # --- Графики (оставляем логику 14 дней для графика активности) ---
     fourteen_days_ago = datetime.now() - timedelta(days=14)
-    
     activity_stmt = (
         select(
             func.date(UserRequest.timestamp).label("date"), 
@@ -70,13 +103,10 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     )
     activity_res = await db.execute(activity_stmt)
     activity_data = activity_res.all()
-    
-    # Подготовка данных для Chart.js (JSON)
-    # strftime нужен, чтобы дата стала строкой
     chart_activity_labels = [row.date.strftime("%d.%m") for row in activity_data]
     chart_activity_values = [row.count for row in activity_data]
 
-    # --- БЛОК 3: График "Топ Клиентов" ---
+    # --- Топ клиентов ---
     clients_stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label("count"))
         .where(TerminalContainer.train.isnot(None))
@@ -88,11 +118,10 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
     )
     clients_res = await db.execute(clients_stmt)
     clients_data = clients_res.all()
-    
     chart_clients_labels = [row.client for row in clients_data]
     chart_clients_values = [row.count for row in clients_data]
 
-    # --- БЛОК 4: Таблица "Живой фид" (Последние 10 запросов) ---
+    # --- Таблица фида ---
     feed_stmt = (
         select(UserRequest, User)
         .join(User, UserRequest.user_telegram_id == User.telegram_id, isouter=True)
@@ -100,53 +129,45 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
         .limit(10)
     )
     feed_res = await db.execute(feed_stmt)
-    
     feed_data = []
     for req, usr in feed_res:
-        username_display = "Неизвестный"
-        if usr:
-            username_display = usr.username or f"ID: {usr.telegram_id}"
-            
+        username = usr.username or f"ID: {usr.telegram_id}" if usr else "Неизвестный"
         feed_data.append({
-            "username": username_display,
+            "username": username,
             "query": req.query_text,
             "time": req.timestamp.strftime("%H:%M %d.%m")
         })
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        # KPI
-        "kpi_users": total_users,
-        "kpi_subs": active_subs,
-        "kpi_requests_today": requests_today,
-        "kpi_trains": trains_count,
-        # Charts (передаем как JSON строки)
+        **kpi_data, # Распаковываем словарь KPI
         "chart_activity_labels": json.dumps(chart_activity_labels),
         "chart_activity_values": json.dumps(chart_activity_values),
         "chart_clients_labels": json.dumps(chart_clients_labels),
         "chart_clients_values": json.dumps(chart_clients_values),
-        # Table
         "feed_data": feed_data
+    })
+
+# --- НОВЫЙ ЭНДПОИНТ: Обновление только KPI (HTMX) ---
+@router.get("/dashboard/kpi")
+async def dashboard_kpi_update(
+    request: Request, 
+    period: str = Query("today"), # today, week, month, all
+    db: AsyncSession = Depends(get_db)
+):
+    """Возвращает HTML-фрагмент с обновленными карточками."""
+    kpi_data = await get_kpi_data(db, period)
+    return templates.TemplateResponse("partials/kpi_cards.html", {
+        "request": request,
+        **kpi_data
     })
 
 @router.get("/schedule")
 async def train_schedule(request: Request, db: AsyncSession = Depends(get_db)):
-    """Страница графика отправки поездов на будущий месяц."""
-    
     today = datetime.now().date()
     next_month = today + timedelta(days=30)
-
-    stmt = (
-        select(Train)
-        .where(Train.departure_date >= today)
-        .order_by(Train.departure_date)
-    )
+    stmt = select(Train).where(Train.departure_date >= today).order_by(Train.departure_date)
     result = await db.execute(stmt)
-    trains = result.scalars().all()
-
     return templates.TemplateResponse("schedule.html", {
-        "request": request,
-        "trains": trains,
-        "period_start": today,
-        "period_end": next_month
+        "request": request, "trains": result.scalars().all(), "period_start": today, "period_end": next_month
     })
