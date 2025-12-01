@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import desc
 
 # --- Хак для импорта модулей из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -219,6 +220,29 @@ async def search_handler(
         "groups": grouped_structure,
         "query_string": q,
         "has_results": bool(grouped_structure)
+    })
+
+# --- НОВЫЙ ЭНДПОИНТ: Список активных поездов ---
+@router.get("/active_trains")
+async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Возвращает список поездов, у которых есть недавняя активность.
+    """
+    # Выбираем поезда, у которых есть дата последней операции
+    # Сортируем: сначала те, у кого операция была недавно (сверху)
+    stmt = (
+        select(Train)
+        .where(Train.last_operation_date.isnot(None))
+        .order_by(Train.last_operation_date.desc())
+        .limit(15) # Показываем 15 последних активных
+    )
+    
+    result = await db.execute(stmt)
+    trains = result.scalars().all()
+    
+    return templates.TemplateResponse("partials/active_trains.html", {
+        "request": request,
+        "trains": trains
     })
 
 @router.post("/search/export")
