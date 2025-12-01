@@ -3,11 +3,11 @@ import os
 import re
 import asyncio
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta # <--- Добавили timedelta
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_, desc
+from sqlalchemy import select, or_, desc, and_, not_, func # <--- Добавили операторы
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # --- Хак для импорта модулей из корня проекта ---
@@ -49,10 +49,7 @@ def normalize_search_input(text: str) -> list[str]:
 
 async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking]):
     """
-    Добавляет к объектам Tracking дополнительные данные:
-    - Прогресс (%)
-    - Инфо о поезде и перегрузе
-    - Расчетный прогноз
+    Добавляет к объектам Tracking: Прогресс, Инфо о поезде, Прогноз.
     """
     enriched_data = []
     
@@ -203,23 +200,41 @@ async def search_handler(
         "has_results": bool(grouped_structure)
     })
 
-# --- ЭНДПОИНТ ДЛЯ АКТИВНЫХ ПОЕЗДОВ (С ФИЛЬТРАМИ) ---
+# --- ЭНДПОИНТ ДЛЯ АКТИВНЫХ ПОЕЗДОВ (С НОВЫМИ ФИЛЬТРАМИ) ---
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Возвращает список активных поездов.
     Фильтры:
-    - Исключаем операции (39) Завоз и (49) Вывоз
-    - Сортировка по номеру поезда
-    - Лимит 10
+    1. Исключаем операции (39) Завоз и (49) Вывоз.
+    2. Исключаем поезда, которые уже доехали (Назначение == Текущая) 
+       И выгрузились ('выгрузка') более 5 дней назад.
+    Сортировка: по номеру поезда.
+    Лимит: 10.
     """
+    
+    # Дата 5 дней назад
+    five_days_ago = datetime.now() - timedelta(days=5)
+
     stmt = (
         select(Train)
         .where(Train.last_operation_date.isnot(None))
-        # ✅ ИСКЛЮЧАЕМ ОПЕРАЦИИ 39 и 49 (используем поиск подстроки)
+        # 1. Фильтр по типам операций (как было)
         .where(Train.last_operation.not_ilike("%(39)%"))
         .where(Train.last_operation.not_ilike("%(49)%"))
-        # -----------------------------------------------------
+        # 2. ✅ НОВЫЙ ФИЛЬТР: Исключаем старые завершенные рейсы
+        .where(
+            not_(
+                and_(
+                    # Станция назначения совпадает с текущей
+                    func.lower(Train.destination_station) == func.lower(Train.last_known_station),
+                    # Была операция выгрузки
+                    Train.last_operation.ilike("%выгрузка%"),
+                    # Это случилось давно (> 5 дней)
+                    Train.last_operation_date < five_days_ago
+                )
+            )
+        )
         .order_by(desc(Train.terminal_train_number)) 
         .limit(10)
     )
