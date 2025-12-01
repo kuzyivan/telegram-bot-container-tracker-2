@@ -1,77 +1,144 @@
 # models.py
 """
-Определяет основные ORM-модели SQLAlchemy для бота,
-кроме TerminalContainer, которая находится в model/terminal_container.py.
+Определяет основные ORM-модели SQLAlchemy для бота.
 """
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import (
-    String, Float, Integer, BigInteger, DateTime, Time, ARRAY, ForeignKey, Text, Boolean, Date
-)
-from sqlalchemy.sql import func
+import enum
+from typing import Optional, List
 from datetime import datetime, date, time
-from typing import Optional # <-- ✅ ДОБАВЛЕН ЭТОТ ИМПОРТ
 
-# Импортируем Base из нового файла
+from sqlalchemy import (
+    String, Integer, BigInteger, DateTime, Time, ARRAY, 
+    ForeignKey, Text, Boolean, Date, Float, Enum as PgEnum
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
+# Импортируем Base из общего файла
 from db_base import Base
 
-# --- Модели Пользователей и Связанные сущности ---
+# --- 1. Новые структуры для ЛК (Enums) ---
+
+class UserRole(str, enum.Enum):
+    """Роли пользователей в системе."""
+    ADMIN = "admin"       # Супер-админ (Технический)
+    OWNER = "owner"       # Владелец компании (Клиент)
+    MANAGER = "manager"   # Сотрудник компании
+    VIEWER = "viewer"     # Только просмотр
+
+# --- 2. Новые модели для ЛК (Company, CompanyContainer) ---
+
+class Company(Base):
+    """
+    Модель компании-клиента.
+    Позволяет группировать пользователей и их контейнеры.
+    """
+    __tablename__ = "companies"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String, index=True, nullable=False) # Название (ООО Ромашка)
+    inn: Mapped[str | None] = mapped_column(String, index=True)           # ИНН
+    
+    # Ключ для автоматической привязки из Excel-файлов терминала ("CLIENT_A")
+    import_mapping_key: Mapped[str | None] = mapped_column(String, index=True) 
+    
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Связи
+    users: Mapped[List["User"]] = relationship(back_populates="company")
+    containers: Mapped[List["CompanyContainer"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<Company(id={self.id}, name='{self.name}')>"
+
+
+class CompanyContainer(Base):
+    """
+    Архив/Реестр контейнеров компании.
+    Связывает конкретный номер контейнера с компанией. 
+    Заполняется автоматически при импорте или вручную.
+    """
+    __tablename__ = "company_containers"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    container_number: Mapped[str] = mapped_column(String(11), index=True, nullable=False)
+    
+    # Метаданные (когда добавили в архив)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    # Связи
+    company: Mapped["Company"] = relationship(back_populates="containers")
+
+    def __repr__(self) -> str:
+        return f"<CompanyContainer(id={self.id}, container='{self.container_number}', company_id={self.company_id})>"
+
+
+# --- 3. Обновленная модель User ---
+
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True) # Добавляем первичный ключ id
-    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    
+    # telegram_id теперь NULLABLE (для web-only пользователей)
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True, nullable=True)
+    
     username: Mapped[str | None] = mapped_column(String)
     first_name: Mapped[str | None] = mapped_column(String)
     last_name: Mapped[str | None] = mapped_column(String)
+    
+    # --- Новые поля для Auth и RBAC ---
+    email_login: Mapped[str | None] = mapped_column(String, unique=True, index=True) # Для входа по почте
+    password_hash: Mapped[str | None] = mapped_column(String) # Хеш пароля
+    
+    role: Mapped[UserRole] = mapped_column(PgEnum(UserRole), default=UserRole.VIEWER, nullable=False)
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
+    # ----------------------------------
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
     # Связи
-    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    emails: Mapped[list["UserEmail"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    requests: Mapped[list["UserRequest"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    subscriptions: Mapped[List["Subscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    emails: Mapped[List["UserEmail"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    requests: Mapped[List["UserRequest"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    
+    company: Mapped[Optional["Company"]] = relationship(back_populates="users")
+
+
+# --- Существующие модели (остаются без изменений, только imports проверены) ---
 
 class UserEmail(Base):
     __tablename__ = "user_emails"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
+    user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE")) # Важно: ссылка на telegram_id
+    # Note: Если telegram_id станет None, старая связь сломается. 
+    # TODO: В будущем лучше мигрировать ForeignKey на users.id, но пока оставим для совместимости с ботом.
     
     email: Mapped[str] = mapped_column(String, index=True) 
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False) 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    # Связь обратно к User
     user: Mapped["User"] = relationship(back_populates="emails")
 
-# --- НОВАЯ МОДЕЛЬ ДЛЯ ХРАНЕНИЯ КОДА ПОДТВЕРЖДЕНИЯ ---
 class VerificationCode(Base):
-    """Временная модель для хранения кода подтверждения email."""
     __tablename__ = "email_verification_codes"
-    
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_telegram_id: Mapped[int] = mapped_column(BigInteger, index=True)
     email: Mapped[str] = mapped_column(String, index=True)
     code: Mapped[str] = mapped_column(String(6))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-# ----------------------------------------------------
-
 
 class UserRequest(Base):
      __tablename__ = "user_requests"
-
      id: Mapped[int] = mapped_column(primary_key=True)
      user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
      query_text: Mapped[str] = mapped_column(Text)
      timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-     # Связь обратно к User
      user: Mapped["User"] = relationship(back_populates="requests")
 
-# --- Модели Подписок ---
 class Subscription(Base):
     __tablename__ = "subscriptions"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
     subscription_name: Mapped[str] = mapped_column(String, index=True)
@@ -79,219 +146,114 @@ class Subscription(Base):
     notification_time: Mapped[time] = mapped_column(Time)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    # Связь обратно к User
     user: Mapped["User"] = relationship(back_populates="subscriptions")
-    # Связь к списку email адресов для рассылки по этой подписке
-    target_emails: Mapped[list["SubscriptionEmail"]] = relationship(back_populates="subscription", cascade="all, delete-orphan")
+    target_emails: Mapped[List["SubscriptionEmail"]] = relationship(back_populates="subscription", cascade="all, delete-orphan")
 
 class SubscriptionEmail(Base):
-    """Связывает подписку с email адресами пользователя для рассылки."""
     __tablename__ = "subscription_emails"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     subscription_id: Mapped[int] = mapped_column(ForeignKey("subscriptions.id", ondelete="CASCADE"))
-    email_id: Mapped[int] = mapped_column(ForeignKey("user_emails.id", ondelete="CASCADE")) # Ссылка на конкретный email пользователя
-
-    # Связи для удобного доступа
+    email_id: Mapped[int] = mapped_column(ForeignKey("user_emails.id", ondelete="CASCADE"))
     subscription: Mapped["Subscription"] = relationship(back_populates="target_emails")
-    email: Mapped["UserEmail"] = relationship() # Односторонняя связь к UserEmail
+    email: Mapped["UserEmail"] = relationship()
 
-
-# =========================================================================
-# === 4. ОБНОВЛЕННАЯ МОДЕЛЬ TRACKING (45+ полей) ===
-# =========================================================================
 class Tracking(Base):
-    """
-    Модель для хранения данных дислокации.
-    Поддерживает как старый (10-12 полей), так и новый (45 полей) формат РЖД.
-    """
     __tablename__ = "tracking"
-
-    # --- Системные и основные поля ---
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     container_number: Mapped[str] = mapped_column(String(11), index=True, nullable=False)
-    
-    # --- Данные о рейсе (из нового файла) ---
     trip_start_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
     trip_end_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
-
-    # --- Данные Отправления ---
     from_state: Mapped[str | None] = mapped_column(String)
     from_road: Mapped[str | None] = mapped_column(String)
     from_station: Mapped[str | None] = mapped_column(String)
-    
-    # --- Данные Назначения ---
     to_country: Mapped[str | None] = mapped_column(String)
     to_road: Mapped[str | None] = mapped_column(String)
     to_station: Mapped[str | None] = mapped_column(String)
-
-    # --- Данные о Грузоотправителе ---
     sender_tgnl: Mapped[str | None] = mapped_column(String)
     sender_name_short: Mapped[str | None] = mapped_column(String)
     sender_okpo: Mapped[str | None] = mapped_column(String(10))
     sender_name: Mapped[str | None] = mapped_column(String)
-
-    # --- Данные о Грузополучателе ---
     receiver_tgnl: Mapped[str | None] = mapped_column(String)
     receiver_name_short: Mapped[str | None] = mapped_column(String)
     receiver_okpo: Mapped[str | None] = mapped_column(String(10))
     receiver_name: Mapped[str | None] = mapped_column(String)
-
-    # --- Данные о Грузе ---
     container_type: Mapped[str | None] = mapped_column(String)
     cargo_name: Mapped[str | None] = mapped_column(String)
     cargo_gng_code: Mapped[str | None] = mapped_column(String(12))
     cargo_weight_kg: Mapped[int | None] = mapped_column(Integer)
     is_loaded_trip: Mapped[bool | None] = mapped_column(Boolean)
-
-    # --- Данные о Текущей Дислокации ---
     current_station: Mapped[str | None] = mapped_column(String)
     operation: Mapped[str | None] = mapped_column(String)
     operation_road: Mapped[str | None] = mapped_column(String)
     operation_mnemonic: Mapped[str | None] = mapped_column(String(10))
-    operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), index=True) # Важно для сортировки
+    operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), index=True)
     container_state: Mapped[str | None] = mapped_column(String)
-
-    # --- Данные о Поезде и Вагоне ---
     train_index_full: Mapped[str | None] = mapped_column(String)
-    train_number: Mapped[str | None] = mapped_column(String, index=True) # <--- Это номер поезда РЖД (напр. "3005")
+    train_number: Mapped[str | None] = mapped_column(String, index=True)
     wagon_number: Mapped[str | None] = mapped_column(String, index=True)
     seals_count: Mapped[int | None] = mapped_column(Integer)
-    
-    # --- Данные о Приеме/Сдаче ---
     accept_state: Mapped[str | None] = mapped_column(String)
     surrender_state: Mapped[str | None] = mapped_column(String)
     accept_road: Mapped[str | None] = mapped_column(String)
     surrender_road: Mapped[str | None] = mapped_column(String)
-    
-    # --- Данные о Доставке и Расстояниях ---
-    delivery_deadline: Mapped[date | None] = mapped_column(Date) # 'Нормативный срок доставки' (21.01.2025)
+    delivery_deadline: Mapped[date | None] = mapped_column(Date)
     total_distance: Mapped[int | None] = mapped_column(Integer)
     distance_traveled: Mapped[int | None] = mapped_column(Integer)
-    km_left: Mapped[int | None] = mapped_column(Integer) # 'Расстояние оставшееся'
-    
-    # --- Данные о Простое ---
+    km_left: Mapped[int | None] = mapped_column(Integer)
     last_op_idle_time_str: Mapped[str | None] = mapped_column(String)
     last_op_idle_days: Mapped[float | None] = mapped_column(Float)
-    
-    # --- Идентификаторы ---
-    waybill: Mapped[str | None] = mapped_column(String) # 'Номер накладной' (ЭЛ970932)
-    dispatch_id: Mapped[str | None] = mapped_column(String) # 'Идентификатор отправки'
-    waybill_id: Mapped[int | None] = mapped_column(BigInteger, index=True) # 'Идентификатор накладной' (1576096824)
-
-    # --- Старое поле (на всякий случай, если оно используется) ---
+    waybill: Mapped[str | None] = mapped_column(String)
+    dispatch_id: Mapped[str | None] = mapped_column(String)
+    waybill_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     forecast_days: Mapped[float | None] = mapped_column(Float)
 
-# =========================================================================
-
-
-# --- Модель Кеша Станций ---
 class StationsCache(Base):
     __tablename__ = "stations_cache"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     original_name: Mapped[str] = mapped_column(String, unique=True, index=True)
     found_name: Mapped[str | None] = mapped_column(String, index=True)
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
 
-# --- Модель Лога Событий Поездов ---
 class TrainEventLog(Base):
     __tablename__ = "train_event_log"
-
     id: Mapped[int] = mapped_column(primary_key=True)
     container_number: Mapped[str] = mapped_column(String(11), index=True)
     train_number: Mapped[str] = mapped_column(String, index=True)
-    event_description: Mapped[str] = mapped_column(Text) # Описание события (прибыл/отправлен и т.д.)
-    station: Mapped[str] = mapped_column(String) # Станция, где произошло событие
-    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True)) # Время события из отчета
-    notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True)) # Когда отправили уведомление
+    event_description: Mapped[str] = mapped_column(Text)
+    station: Mapped[str] = mapped_column(String)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-
-# --- ✅ ОБНОВЛЕННАЯ МОДЕЛЬ: ТАБЛИЦА ПОЕЗДОВ ---
 class Train(Base):
-    """
-    Централизованная таблица для отслеживания АКТУАЛЬНОГО СТАТУСА
-    каждого поезда, агрегируя данные из Tracking и TerminalContainer.
-    """
     __tablename__ = "trains"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    
-    # 1. Ключевая информация (из файла поезда)
-    terminal_train_number: Mapped[str] = mapped_column(String(50), unique=True, index=True) # № поезда (К25-103)
-    container_count: Mapped[int | None] = mapped_column(Integer) # Кол-во контейнеров
-    
-    # 2. Маршрут (из файла поезда или дислокации)
+    terminal_train_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    container_count: Mapped[int | None] = mapped_column(Integer)
     destination_station: Mapped[str | None] = mapped_column(String, index=True)
     departure_date: Mapped[date | None] = mapped_column(Date)
-
-    # 3. Информация о перегрузе (из диалога с админом)
     overload_station_name: Mapped[str | None] = mapped_column(String, nullable=True)
     overload_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    # 4. Динамический статус (обновляется из dislocation_importer)
-    rzd_train_number: Mapped[str | None] = mapped_column(String, index=True, nullable=True) # (e.g., "3005")
+    rzd_train_number: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     last_known_station: Mapped[str | None] = mapped_column(String)
     last_known_road: Mapped[str | None] = mapped_column(String)
     last_operation: Mapped[str | None] = mapped_column(String)
-    last_operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False)) # <-- Используем False, как в Tracking
-    
-    # 5. Прогноз (обновляется из dislocation_importer)
+    last_operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
     km_remaining: Mapped[int | None] = mapped_column(Integer)
     eta_days: Mapped[float | None] = mapped_column(Float)
-
-    # 6. Системные
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
-# =========================================================================
-# === ✅ НОВАЯ МОДЕЛЬ: ПРАВИЛА УВЕДОМЛЕНИЙ О СОБЫТИЯХ ===
-# =========================================================================
 class EventAlertRule(Base):
-    """
-    Таблица для хранения правил уведомлений о событиях поезда.
-    Отвечает на вопросы: КОГО, КУДА, О ЧЕМ и ПОЧЕМУ уведомлять.
-    """
     __tablename__ = "event_alert_rules"
-
     id: Mapped[int] = mapped_column(primary_key=True)
-    
-    # Понятное имя, чтобы админ не запутался (н-р, "Выгрузка для клиента А", "Админ: все события")
     rule_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    
-    # 1. ЧТО случилось? (Триггер)
-    # Возможные значения: 'UNLOAD', 'DEPARTURE', 'OVERLOAD_ARRIVAL', 'IDLE_48H', 'ALL'
     event_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-
-    # 2. КУДА отправить? (Канал)
-    # Возможные значения: 'EMAIL', 'TELEGRAM'
     channel: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-
-    # 3. КОГО уведомить? (Получатель)
-    # Если channel='EMAIL'
     recipient_email: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    
-    # Если channel='TELEGRAM'
-    recipient_user_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.telegram_id", ondelete="SET NULL"), 
-        nullable=True
-    )
-
-    # 4. ЗА ЧЕМ следить? (Область видимости)
-    # Если NULL -> Глобальное правило (все поезда)
-    # Если ID -> Только для контейнеров из этой подписки
-    subscription_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("subscriptions.id", ondelete="CASCADE"), 
-        nullable=True
-    )
-
-    # Связи (для удобства)
-    # --- ⭐️ ИСПРАВЛЕНИЕ ЗДЕСЬ ⭐️ ---
+    recipient_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.telegram_id", ondelete="SET NULL"), nullable=True)
+    subscription_id: Mapped[Optional[int]] = mapped_column(ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=True)
     user: Mapped[Optional["User"]] = relationship(foreign_keys=[recipient_user_id])
     subscription: Mapped[Optional["Subscription"]] = relationship(foreign_keys=[subscription_id])
-    # --- ⭐️ КОНЕЦ ИСПРАВЛЕНИЯ ⭐️ ---
-
     def __repr__(self) -> str:
-        return f"<EventAlertRule(id={self.id}, name='{self.rule_name}', event='{self.event_type}', channel='{self.channel}')>"
+        return f"<EventAlertRule(id={self.id}, name='{self.rule_name}')>"
