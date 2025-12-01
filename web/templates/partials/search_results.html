@@ -35,7 +35,7 @@
                         </div>
                         <div>
                             <h2 class="text-xl font-bold text-slate-900">Поезд {{ group.title }}</h2>
-                            <p class="text-sm text-slate-500">Группа из {{ group.items|length }} контейнеров</p>
+                            <p class="text-sm text-slate-500">Группа из {{ group.containers|length }} контейнеров</p>
                         </div>
                     </div>
                     {% if group.train_info.overload_station %}
@@ -76,7 +76,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        {% for item in group.items %}
+                        {% for item in group.containers %}
                         {% set obj = item.obj %}
                         <tr class="hover:bg-slate-50 transition">
                             <td class="px-6 py-3 font-mono font-bold text-blue-600">{{ obj.container_number }}</td>

@@ -38,7 +38,7 @@ def normalize_search_input(text: str) -> list[str]:
     if not text:
         return []
     text = text.upper().strip()
-    # Разбиваем по запятым, пробелам, переносам строк, точкам с запятой
+    # Разбиваем по запятым, пробелам, переносам строк
     items = re.split(r'[,\s;\n]+', text)
     
     valid_items = []
@@ -173,12 +173,11 @@ async def search_handler(
     enriched_results = await enrich_tracking_data(db, final_results)
 
     # 4. ГРУППИРОВКА ПО ПОЕЗДАМ
-    # Создаем структуру, где элементы могут быть группой (поезд) или одиночкой.
     grouped_structure = []
     train_map = {} # Map: train_number -> index in grouped_structure
 
     for item in enriched_results:
-        terminal_train_num = item['train_info']['number'] # Например "K25-111"
+        terminal_train_num = item['train_info']['number'] 
         
         # Группируем только если есть номер поезда
         if terminal_train_num:
@@ -189,14 +188,14 @@ async def search_handler(
                     "title": terminal_train_num,
                     "train_info": item['train_info'], 
                     "main_route": item['obj'], # Берем первый контейнер как эталон маршрута
-                    "items": []
+                    "containers": [] # ✅ ИСПРАВЛЕНО: используем 'containers' вместо 'items'
                 }
                 grouped_structure.append(group_entry)
                 train_map[terminal_train_num] = len(grouped_structure) - 1
             
             # Добавляем элемент в существующую группу
             group_idx = train_map[terminal_train_num]
-            grouped_structure[group_idx]['items'].append(item)
+            grouped_structure[group_idx]['containers'].append(item) # ✅ ИСПРАВЛЕНО
         
         else:
             # Это одиночный контейнер (без поезда)
@@ -223,7 +222,6 @@ async def export_search_results(
     """
     search_terms = normalize_search_input(q)
     if not search_terms:
-        # Если запрос пустой, просто редирект или ничего (в HTMX это редкость)
         return 
         
     containers = [t for t in search_terms if len(t) == 11]
