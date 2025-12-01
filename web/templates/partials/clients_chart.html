@@ -1,0 +1,57 @@
+<div class="relative h-64 w-full animate-fade-in">
+    <canvas id="clientsChart"></canvas>
+</div>
+
+<script>
+    // Если график уже существует (при обновлении), уничтожаем его, чтобы нарисовать новый
+    // Проверяем, определена ли переменная и существует ли экземпляр
+    if (typeof clientsChartInstance !== 'undefined' && clientsChartInstance) {
+        clientsChartInstance.destroy();
+    }
+
+    var ctx = document.getElementById('clientsChart').getContext('2d');
+    
+    // Создаем глобальную переменную (через window), чтобы иметь к ней доступ при следующем обновлении
+    window.clientsChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_clients_labels|safe }},
+            datasets: [{
+                label: 'Контейнеров',
+                data: {{ chart_clients_values|safe }},
+                backgroundColor: [
+                    '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', 
+                    '#f97316', '#eab308', '#10b981'
+                ],
+                borderRadius: 6,
+                barThickness: 40,
+                maxBarThickness: 60
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    padding: 10,
+                    cornerRadius: 8
+                }
+            },
+            scales: { 
+                y: { 
+                    beginAtZero: true,
+                    grid: { borderDash: [4, 4], color: '#f1f5f9' },
+                    ticks: { precision: 0 }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            },
+            animation: {
+                duration: 500 // Немного ускорим анимацию при обновлении
+            }
+        }
+    });
+</script>
