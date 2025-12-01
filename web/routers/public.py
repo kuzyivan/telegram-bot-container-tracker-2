@@ -7,9 +7,8 @@ from datetime import datetime
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import desc
 
 # --- Хак для импорта модулей из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -52,10 +51,10 @@ def normalize_search_input(text: str) -> list[str]:
 
 async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking]):
     """
-    Добавляет к объектам Tracking:
+    Добавляет к объектам Tracking дополнительные данные:
     - Прогресс (%)
     - Инфо о поезде и перегрузе
-    - Расчетный прогноз (если нет в БД)
+    - Расчетный прогноз
     """
     enriched_data = []
     
@@ -71,7 +70,7 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
         
         progress_percent = max(0, min(100, progress_percent))
 
-        # 2. Инфо о поезде
+        # 2. Поиск информации о поезде (TerminalContainer -> Train)
         terminal_train_info = {
             "number": None,
             "overload_station": None
@@ -100,14 +99,12 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
         elif item.current_station and item.to_station and item.current_station.upper() == item.to_station.upper():
             is_arrived = True
 
-        # 4. ✅ РАСЧЕТ ПРОГНОЗА (ДНИ)
-        # Если в базе нет прогноза, считаем: (км / 600) + 1 день на операции
+        # 4. Расчет прогноза (дни)
         forecast_display = "—"
         if item.forecast_days:
             forecast_display = f"{item.forecast_days:.1f}"
         elif km_left > 0:
             try:
-                # Средняя скорость 600 км/сутки + 1 сутки на тех. операции
                 calc_days = (km_left / 600) + 1
                 forecast_display = f"{calc_days:.1f}"
             except:
@@ -118,7 +115,7 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
             "progress": progress_percent,
             "train_info": terminal_train_info,
             "is_arrived": is_arrived,
-            "forecast_days_display": forecast_display  # <--- Добавили готовое значение
+            "forecast_days_display": forecast_display
         })
         
     return enriched_data
@@ -136,80 +133,66 @@ async def search_handler(
     q: str = Form(""), 
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Обрабатывает HTMX запрос поиска.
-    Возвращает HTML-фрагмент (partials/search_results.html).
-    """
+    """Обрабатывает поиск и возвращает результаты."""
     search_terms = normalize_search_input(q)
     
     if not search_terms:
         return templates.TemplateResponse("partials/search_results.html", {
-            "request": request, "groups": [], "error": "Введите корректные номера контейнеров или вагонов."
+            "request": request, "groups": [], "error": "Введите корректные номера."
         })
 
     # 1. Поиск в БД
-    # Разделяем на контейнеры и вагоны для точного поиска
     containers = [t for t in search_terms if len(t) == 11]
     wagons = [t for t in search_terms if len(t) == 8]
     
     conditions = []
-    if containers:
-        conditions.append(Tracking.container_number.in_(containers))
-    if wagons:
-        conditions.append(Tracking.wagon_number.in_(wagons))
+    if containers: conditions.append(Tracking.container_number.in_(containers))
+    if wagons: conditions.append(Tracking.wagon_number.in_(wagons))
     
     if not conditions:
          return templates.TemplateResponse("partials/search_results.html", {
-            "request": request, "groups": [], "error": "Некорректный формат номеров."
+            "request": request, "groups": [], "error": "Некорректный формат."
         })
 
-    # Выполняем запрос
     stmt = select(Tracking).where(or_(*conditions)).order_by(Tracking.operation_date.desc())
     results_raw = (await db.execute(stmt)).scalars().all()
     
-    # 2. Дедупликация (оставляем только самую свежую запись для каждого номера)
+    # 2. Дедупликация
     unique_map = {}
     for r in results_raw:
-        # Ключ уникальности: если искали по вагону, то номер вагона, иначе контейнера
         key = r.container_number
         if r.wagon_number in wagons and r.container_number not in containers:
              key = r.wagon_number 
-             
         if key not in unique_map:
             unique_map[key] = r
             
     final_results = list(unique_map.values())
     
-    # 3. Обогащение данными
+    # 3. Обогащение
     enriched_results = await enrich_tracking_data(db, final_results)
 
-    # 4. ГРУППИРОВКА ПО ПОЕЗДАМ
+    # 4. Группировка по поездам
     grouped_structure = []
-    train_map = {} # Map: train_number -> index in grouped_structure
+    train_map = {} 
 
     for item in enriched_results:
         terminal_train_num = item['train_info']['number'] 
         
-        # Группируем только если есть номер поезда
         if terminal_train_num:
             if terminal_train_num not in train_map:
-                # Создаем новую группу
                 group_entry = {
                     "is_group": True,
                     "title": terminal_train_num,
                     "train_info": item['train_info'], 
-                    "main_route": item['obj'], # Берем первый контейнер как эталон маршрута
-                    "containers": [] # ✅ ИСПРАВЛЕНО: используем 'containers' вместо 'items'
+                    "main_route": item['obj'], 
+                    "containers": [] 
                 }
                 grouped_structure.append(group_entry)
                 train_map[terminal_train_num] = len(grouped_structure) - 1
             
-            # Добавляем элемент в существующую группу
             group_idx = train_map[terminal_train_num]
-            grouped_structure[group_idx]['containers'].append(item) # ✅ ИСПРАВЛЕНО
-        
+            grouped_structure[group_idx]['containers'].append(item)
         else:
-            # Это одиночный контейнер (без поезда)
             grouped_structure.append({
                 "is_group": False,
                 "item": item
@@ -222,21 +205,18 @@ async def search_handler(
         "has_results": bool(grouped_structure)
     })
 
-# --- НОВЫЙ ЭНДПОИНТ: Список активных поездов ---
+# --- ✅ ВОТ ЭТОТ ЭНДПОИНТ МЫ ЗАБЫЛИ В ПРОШЛЫЙ РАЗ ---
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
     """
-    Возвращает список поездов, у которых есть недавняя активность.
+    Возвращает список активных поездов (последние 15).
     """
-    # Выбираем поезда, у которых есть дата последней операции
-    # Сортируем: сначала те, у кого операция была недавно (сверху)
     stmt = (
         select(Train)
         .where(Train.last_operation_date.isnot(None))
-        .order_by(Train.last_operation_date.desc())
-        .limit(15) # Показываем 15 последних активных
+        .order_by(desc(Train.last_operation_date))
+        .limit(15)
     )
-    
     result = await db.execute(stmt)
     trains = result.scalars().all()
     
@@ -244,19 +224,16 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
         "request": request,
         "trains": trains
     })
+# ----------------------------------------------------
 
 @router.post("/search/export")
 async def export_search_results(
     q: str = Form(""),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Генерация Excel-файла для найденных результатов.
-    Возвращает файл для скачивания.
-    """
+    """Экспорт в Excel."""
     search_terms = normalize_search_input(q)
-    if not search_terms:
-        return 
+    if not search_terms: return
         
     containers = [t for t in search_terms if len(t) == 11]
     wagons = [t for t in search_terms if len(t) == 8]
@@ -264,13 +241,11 @@ async def export_search_results(
     conditions = []
     if containers: conditions.append(Tracking.container_number.in_(containers))
     if wagons: conditions.append(Tracking.wagon_number.in_(wagons))
-    
     if not conditions: return
 
     stmt = select(Tracking).where(or_(*conditions)).order_by(Tracking.operation_date.desc())
     results = (await db.execute(stmt)).scalars().all()
     
-    # Дедупликация
     unique_map = {}
     for r in results:
         key = r.container_number
@@ -279,7 +254,6 @@ async def export_search_results(
     
     final_data = list(unique_map.values())
     
-    # Формируем Excel
     headers = [
         'Номер', 'Дата отправления', 'Станция отправления', 'Станция назначения',
         'Станция операции', 'Операция', 'Дата операции', 'Вагон', 'Индекс поезда', 
@@ -304,7 +278,6 @@ async def export_search_results(
     file_path = await asyncio.to_thread(create_excel_file_from_strings, rows, headers)
     filename = get_vladivostok_filename("Search_Result")
     
-    # Генератор для потоковой отдачи файла и последующего удаления
     def iterfile():
         with open(file_path, mode="rb") as file_like:
             yield from file_like
