@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Админ-Дашборд — Logistrail{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold text-slate-900">Дашборд логистики</h1>
+        <a href="/admin/schedule" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            График поездов
+        </a>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">Отправлено поездов</p>
+                <p class="text-4xl font-extrabold text-slate-900 mt-2">{{ kpi_trains }}</p>
+            </div>
+            <div class="p-3 bg-blue-50 rounded-full">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">Отправлено контейнеров</p>
+                <p class="text-4xl font-extrabold text-slate-900 mt-2">{{ kpi_containers }}</p>
+            </div>
+            <div class="p-3 bg-green-50 rounded-full">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Топ клиентов по объемам</h3>
+            <div class="relative h-64">
+                <canvas id="clientsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Ритмичность погрузки (30 дней)</h3>
+            <div class="relative h-64">
+                <canvas id="rhythmChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    // --- График Клиентов ---
+    const ctxClients = document.getElementById('clientsChart');
+    new Chart(ctxClients, {
+        type: 'doughnut',
+        data: {
+            labels: {{ chart_clients_labels|safe }},
+            datasets: [{
+                label: 'Контейнеров',
+                data: {{ chart_clients_values|safe }},
+                backgroundColor: [
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+                    '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#64748b'
+                ],
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+
+    // --- График Ритмичности ---
+    const ctxRhythm = document.getElementById('rhythmChart');
+    new Chart(ctxRhythm, {
+        type: 'bar', // Можно поменять на 'line' для линии
+        data: {
+            labels: {{ chart_rhythm_labels|safe }},
+            datasets: [{
+                label: 'Принято контейнеров',
+                data: {{ chart_rhythm_values|safe }},
+                backgroundColor: '#3b82f6',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+</script>
+{% endblock %}

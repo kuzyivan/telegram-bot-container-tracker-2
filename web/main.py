@@ -10,6 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 # Импортируем наши роутеры
 from web.routers import public
+from web.routers import admin  # [NEW] <-- Добавляем импорт админского роутера
 
 app = FastAPI(title="Logistrail Tracker")
 
@@ -20,6 +21,7 @@ app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 # 2. Подключаем роутеры (разделы сайта)
 app.include_router(public.router)
+app.include_router(admin.router)  # [NEW] <-- Подключаем роутер админки
 
 # Запуск сервера
 if __name__ == "__main__":
