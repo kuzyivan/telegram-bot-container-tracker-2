@@ -3,103 +3,218 @@
 {% block title %}Админ-Дашборд — Logistrail{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
+<div class="space-y-8 animate-fade-in pb-10">
     
-    <div class="flex justify-between items-center">
-        <h1 class="text-3xl font-bold text-slate-900">Дашборд логистики</h1>
-        <a href="/admin/schedule" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            График поездов
-        </a>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">Отправлено поездов</p>
-                <p class="text-4xl font-extrabold text-slate-900 mt-2">{{ kpi_trains }}</p>
-            </div>
-            <div class="p-3 bg-blue-50 rounded-full">
-                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </div>
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900">Дашборд</h1>
+            <p class="text-slate-500">Обзор активности системы и ключевые метрики.</p>
         </div>
-
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-slate-500 uppercase tracking-wider">Отправлено контейнеров</p>
-                <p class="text-4xl font-extrabold text-slate-900 mt-2">{{ kpi_containers }}</p>
-            </div>
-            <div class="p-3 bg-green-50 rounded-full">
-                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
-            </div>
+        <div class="flex gap-3">
+            <a href="/admin/schedule" class="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition flex items-center gap-2 shadow-sm font-medium">
+                <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                График поездов
+            </a>
+            <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-md flex items-center gap-2 font-medium" onclick="location.reload()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Обновить
+            </button>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition duration-200">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Запросов сегодня</p>
+                    <p class="text-3xl font-extrabold text-slate-900 mt-1">{{ kpi_requests_today }}</p>
+                </div>
+                <div class="p-2 bg-green-50 rounded-lg">
+                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition duration-200">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Активные подписки</p>
+                    <p class="text-3xl font-extrabold text-slate-900 mt-1">{{ kpi_subs }}</p>
+                </div>
+                <div class="p-2 bg-blue-50 rounded-lg">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition duration-200">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Пользователей</p>
+                    <p class="text-3xl font-extrabold text-slate-900 mt-1">{{ kpi_users }}</p>
+                </div>
+                <div class="p-2 bg-purple-50 rounded-lg">
+                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition duration-200">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Отправлено поездов</p>
+                    <p class="text-3xl font-extrabold text-slate-900 mt-1">{{ kpi_trains }}</p>
+                </div>
+                <div class="p-2 bg-orange-50 rounded-lg">
+                    <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h3 class="text-lg font-bold text-slate-800 mb-4">Топ клиентов по объемам</h3>
-            <div class="relative h-64">
-                <canvas id="clientsChart"></canvas>
+        <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                Динамика запросов (14 дней)
+            </h3>
+            <div class="relative h-80 w-full">
+                <canvas id="activityChart"></canvas>
             </div>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h3 class="text-lg font-bold text-slate-800 mb-4">Ритмичность погрузки (30 дней)</h3>
-            <div class="relative h-64">
-                <canvas id="rhythmChart"></canvas>
+        <div class="bg-white p-0 rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+            <div class="p-6 border-b border-slate-100 bg-slate-50">
+                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    Лента действий
+                </h3>
             </div>
+            <div class="flex-grow overflow-y-auto max-h-[320px]">
+                <table class="w-full text-sm text-left">
+                    <tbody class="divide-y divide-slate-100">
+                        {% for item in feed_data %}
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="px-6 py-3">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="font-semibold text-slate-900 text-xs">{{ item.username }}</span>
+                                    <span class="text-xs text-slate-400">{{ item.time }}</span>
+                                </div>
+                                <p class="text-xs text-slate-600 bg-slate-100 rounded px-2 py-1 inline-block truncate max-w-[200px]" title="{{ item.query }}">
+                                    {{ item.query }}
+                                </p>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td class="px-6 py-8 text-center text-slate-500">Пока тихо...</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            Топ клиентов по объемам
+        </h3>
+        <div class="relative h-64 w-full">
+            <canvas id="clientsChart"></canvas>
         </div>
     </div>
 
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
-    // --- График Клиентов ---
-    const ctxClients = document.getElementById('clientsChart');
-    new Chart(ctxClients, {
-        type: 'doughnut',
+    // Настройки по умолчанию для шрифтов
+    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.color = '#64748b';
+
+    // 1. График Активности (Линия)
+    new Chart(document.getElementById('activityChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_activity_labels|safe }},
+            datasets: [{
+                label: 'Запросы',
+                data: {{ chart_activity_values|safe }},
+                borderColor: '#2563eb', // blue-600
+                backgroundColor: (context) => {
+                    const ctx = context.chart.ctx;
+                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                    gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+                    gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+                    return gradient;
+                },
+                borderWidth: 3,
+                pointBackgroundColor: '#fff',
+                pointBorderColor: '#2563eb',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { 
+                y: { 
+                    beginAtZero: true, 
+                    grid: { borderDash: [4, 4], color: '#f1f5f9' },
+                    ticks: { precision: 0 }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index',
+            },
+        }
+    });
+
+    // 2. График Клиентов (Бар)
+    new Chart(document.getElementById('clientsChart'), {
+        type: 'bar',
         data: {
             labels: {{ chart_clients_labels|safe }},
             datasets: [{
                 label: 'Контейнеров',
                 data: {{ chart_clients_values|safe }},
                 backgroundColor: [
-                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-                    '#6366f1', '#ec4899', '#14b8a6', '#f97316', '#64748b'
+                    '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', 
+                    '#f97316', '#eab308', '#10b981'
                 ],
-                hoverOffset: 4
+                borderRadius: 6,
+                barThickness: 40,
+                maxBarThickness: 60
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'right' }
-            }
-        }
-    });
-
-    // --- График Ритмичности ---
-    const ctxRhythm = document.getElementById('rhythmChart');
-    new Chart(ctxRhythm, {
-        type: 'bar', // Можно поменять на 'line' для линии
-        data: {
-            labels: {{ chart_rhythm_labels|safe }},
-            datasets: [{
-                label: 'Принято контейнеров',
-                data: {{ chart_rhythm_values|safe }},
-                backgroundColor: '#3b82f6',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: { beginAtZero: true }
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    padding: 10,
+                    cornerRadius: 8
+                }
+            },
+            scales: { 
+                y: { 
+                    beginAtZero: true,
+                    grid: { borderDash: [4, 4], color: '#f1f5f9' }
+                },
+                x: {
+                    grid: { display: false }
+                }
             }
         }
     });
