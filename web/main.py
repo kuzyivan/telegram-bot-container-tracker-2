@@ -1,30 +1,35 @@
+# web/main.py
 import sys
 import os
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends # Добавили Depends
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 
-# --- Хак для импорта из родительской папки ---
-# Это нужно, чтобы Python видел папку 'web' и корень проекта как модули
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-# Импортируем наши роутеры
-from web.routers import public
-from web.routers import admin  # [NEW] <-- Добавляем импорт админского роутера
+from web.routers import public, admin, auth # <-- Добавили auth
+from web.auth import login_required # <-- Импортируем функцию защиты
 
 app = FastAPI(title="Logistrail Tracker")
 
-# 1. Подключаем статические файлы (CSS, картинки, JS)
-# Они будут доступны по адресу /static/filename
-# Убедись, что папка web/static существует!
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
-# 2. Подключаем роутеры (разделы сайта)
+# 1. Публичные роуты (Логин, Главная - если она публичная)
+app.include_router(auth.router)
 app.include_router(public.router)
-app.include_router(admin.router)  # [NEW] <-- Подключаем роутер админки
 
-# Запуск сервера
+# 2. Админские роуты (ЗАЩИЩЕНЫ)
+# Теперь к любому запросу на /admin/... будет применяться проверка токена
+app.include_router(
+    admin.router, 
+    dependencies=[Depends(login_required)] 
+)
+
+# Редирект с корня на логин или дашборд (по желанию)
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse("/login")
+
 if __name__ == "__main__":
-    # reload=True позволяет менять код без перезагрузки сервера
-    # ИСПРАВЛЕНО: Порт 8002, чтобы не конфликтовать с ботом на 8000
     uvicorn.run("web.main:app", host="0.0.0.0", port=8002, reload=True)
