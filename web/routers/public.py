@@ -185,7 +185,7 @@ async def search_handler(
                     "title": terminal_train_num,
                     "train_info": item['train_info'], 
                     "main_route": item['obj'], 
-                    "containers": [] # Используем 'containers' вместо 'items'
+                    "containers": [] 
                 }
                 grouped_structure.append(group_entry)
                 train_map[terminal_train_num] = len(grouped_structure) - 1
@@ -211,13 +211,14 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
     """
     Возвращает список активных поездов.
     Сортировка: по номеру поезда (K25-...) от большего к меньшему.
-    Лимит: 7 записей.
+    Лимит: 10 записей.
     """
     stmt = (
         select(Train)
         .where(Train.last_operation_date.isnot(None))
-        .order_by(desc(Train.terminal_train_number)) # Сортировка по номеру поезда
-        .limit(7)
+        .order_by(desc(Train.terminal_train_number)) 
+        # ✅ ИСПРАВЛЕНО: Лимит 10
+        .limit(10)
     )
     result = await db.execute(stmt)
     trains = result.scalars().all()
