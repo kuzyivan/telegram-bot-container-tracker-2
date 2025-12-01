@@ -38,16 +38,14 @@ def normalize_search_input(text: str) -> list[str]:
     if not text:
         return []
     text = text.upper().strip()
-    # Разбиваем по запятым, пробелам, переносам строк
     items = re.split(r'[,\s;\n]+', text)
     
     valid_items = []
     for item in items:
-        # Контейнер (3 буквы + U + 7 цифр) или Вагон (8 цифр)
         if re.fullmatch(r'[A-Z]{3}U\d{7}', item) or re.fullmatch(r'\d{8}', item):
             valid_items.append(item)
             
-    return list(set(valid_items)) # Удаляем дубликаты
+    return list(set(valid_items))
 
 async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking]):
     """
@@ -70,7 +68,7 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
         
         progress_percent = max(0, min(100, progress_percent))
 
-        # 2. Поиск информации о поезде (TerminalContainer -> Train)
+        # 2. Поиск информации о поезде
         terminal_train_info = {
             "number": None,
             "overload_station": None
@@ -205,19 +203,24 @@ async def search_handler(
         "has_results": bool(grouped_structure)
     })
 
-# --- ЭНДПОИНТ ДЛЯ АКТИВНЫХ ПОЕЗДОВ ---
+# --- ЭНДПОИНТ ДЛЯ АКТИВНЫХ ПОЕЗДОВ (С ФИЛЬТРАМИ) ---
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Возвращает список активных поездов.
-    Сортировка: по номеру поезда (K25-...) от большего к меньшему.
-    Лимит: 10 записей.
+    Фильтры:
+    - Исключаем операции (39) Завоз и (49) Вывоз
+    - Сортировка по номеру поезда
+    - Лимит 10
     """
     stmt = (
         select(Train)
         .where(Train.last_operation_date.isnot(None))
+        # ✅ ИСКЛЮЧАЕМ ОПЕРАЦИИ 39 и 49 (используем поиск подстроки)
+        .where(Train.last_operation.not_ilike("%(39)%"))
+        .where(Train.last_operation.not_ilike("%(49)%"))
+        # -----------------------------------------------------
         .order_by(desc(Train.terminal_train_number)) 
-        # ✅ ИСПРАВЛЕНО: Лимит 10
         .limit(10)
     )
     result = await db.execute(stmt)
