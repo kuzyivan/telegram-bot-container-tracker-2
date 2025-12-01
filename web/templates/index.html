@@ -5,12 +5,12 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4">
     
-    <div class="text-center mb-10 fade-in">
+    <div class="text-center mb-6 fade-in">
         <h1 class="text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">Поиск контейнера</h1>
         <p class="text-lg text-slate-500">Отслеживание контейнеров и вагонов в реальном времени.</p>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-10 transition-all focus-within:ring-4 focus-within:ring-blue-100">
+    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6 transition-all focus-within:ring-4 focus-within:ring-blue-100">
         <form hx-post="/search" hx-target="#search-results" hx-indicator="#loading-spinner">
             
             <label for="q" class="block text-sm font-medium text-slate-700 mb-2">
@@ -36,7 +36,7 @@
         </form>
     </div>
 
-    <div id="loading-spinner" class="htmx-indicator flex justify-center py-10">
+    <div id="loading-spinner" class="htmx-indicator flex justify-center py-4">
         <div class="flex flex-col items-center gap-3">
             <svg class="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -46,14 +46,14 @@
         </div>
     </div>
 
-    <div id="search-results" class="min-h-[20px] mb-12">
+    <div id="search-results" class="min-h-[10px] mb-6">
         </div>
 
     <div id="active-trains-block" 
          hx-get="/active_trains" 
          hx-trigger="load" 
          hx-swap="innerHTML"
-         class="mt-12">
+         class="mt-6">
         <div class="flex justify-center py-10">
             <svg class="animate-spin h-8 w-8 text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
