@@ -185,7 +185,7 @@ async def search_handler(
                     "title": terminal_train_num,
                     "train_info": item['train_info'], 
                     "main_route": item['obj'], 
-                    "containers": [] 
+                    "containers": [] # Используем 'containers' вместо 'items'
                 }
                 grouped_structure.append(group_entry)
                 train_map[terminal_train_num] = len(grouped_structure) - 1
@@ -205,17 +205,19 @@ async def search_handler(
         "has_results": bool(grouped_structure)
     })
 
-# --- ✅ ВОТ ЭТОТ ЭНДПОИНТ МЫ ЗАБЫЛИ В ПРОШЛЫЙ РАЗ ---
+# --- ЭНДПОИНТ ДЛЯ АКТИВНЫХ ПОЕЗДОВ ---
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
     """
-    Возвращает список активных поездов (последние 15).
+    Возвращает список активных поездов.
+    Сортировка: по номеру поезда (K25-...) от большего к меньшему.
+    Лимит: 7 записей.
     """
     stmt = (
         select(Train)
         .where(Train.last_operation_date.isnot(None))
-        .order_by(desc(Train.last_operation_date))
-        .limit(15)
+        .order_by(desc(Train.terminal_train_number)) # Сортировка по номеру поезда
+        .limit(7)
     )
     result = await db.execute(stmt)
     trains = result.scalars().all()
@@ -224,7 +226,6 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
         "request": request,
         "trains": trains
     })
-# ----------------------------------------------------
 
 @router.post("/search/export")
 async def export_search_results(
