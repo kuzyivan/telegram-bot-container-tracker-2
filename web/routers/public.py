@@ -1,12 +1,13 @@
-# web/routers/public.py
 import sys
 import os
+from pathlib import Path
 from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # --- Хак для импорта из родительской папки (чтобы видеть db.py и models.py) ---
+# Добавляем корень проекта в sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
@@ -15,8 +16,15 @@ from models import Tracking
 # Создаем роутер
 router = APIRouter()
 
-# Настраиваем шаблоны (путь указываем относительно корня запуска, обычно это web/)
-templates = Jinja2Templates(directory="templates")
+# --- НАСТРОЙКА ШАБЛОНОВ (ИСПРАВЛЕНО) ---
+# Получаем абсолютный путь к текущему файлу (web/routers/public.py)
+current_file = Path(__file__).resolve()
+# Переходим на два уровня вверх: web/routers -> web -> templates
+templates_dir = current_file.parent.parent / "templates"
+
+# Инициализируем Jinja2 с абсолютным путем
+templates = Jinja2Templates(directory=str(templates_dir))
+# ---------------------------------------
 
 # Зависимость для получения сессии БД
 async def get_db():
@@ -40,14 +48,12 @@ async def search_container(
 ):
     """
     Поиск контейнера.
-    Работает и как обычная страница (если открыть ссылку),
-    и (в будущем) как API для HTMX.
     """
     query_str = q.strip().upper()
     tracking_info = None
 
     if query_str:
-        # Ищем по номеру контейнера
+        # Ищем по номеру контейнера (последнюю запись)
         result = await db.execute(
             select(Tracking)
             .where(Tracking.container_number == query_str)
