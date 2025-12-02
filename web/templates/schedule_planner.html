@@ -107,13 +107,31 @@
                 updateEventDate(info.event.id, info.event.start);
             },
             
+            // --- КАСТОМНЫЙ РЕНДЕР КАРТОЧКИ ---
             eventContent: function(arg) {
                 let props = arg.event.extendedProps;
-                let html = `<div class="p-1"><div class="text-xs font-bold truncate">${arg.event.title}</div>`;
+                
+                // Собираем HTML строку
+                let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-1">`;
+                
+                // 1. Станция назначения (Самое важное - жирным)
+                html += `<div class="text-xs font-extrabold text-slate-800 truncate" title="Назначение">📍 ${props.dest}</div>`;
+                
+                // 2. Сервис поезда (Синим)
+                html += `<div class="text-[10px] font-bold text-blue-700 truncate" title="Сервис">🚆 ${props.service}</div>`;
+                
+                // 3. Сток (если есть)
                 if (props.stock) {
-                    html += `<div class="text-[10px] opacity-90 truncate">📦 ${props.stock}</div>`;
+                    html += `<div class="text-[10px] text-slate-600 truncate border-t border-slate-100 mt-0.5 pt-0.5">📦 ${props.stock}</div>`;
                 }
+                
+                // 4. Собственник (если есть)
+                if (props.owner) {
+                    html += `<div class="text-[10px] text-slate-500 italic truncate">👤 ${props.owner}</div>`;
+                }
+                
                 html += `</div>`;
+                
                 return { html: html }
             }
         });
@@ -148,11 +166,8 @@
     }
 
     async function submitCreate() {
-        // Если ID есть, то это режим "создания нового" (пока не делаем UPDATE формы, 
-        // просто удалим старый и создадим новый, или просто создадим)
-        // Для простоты MVP:
         if (selectedEventId) {
-            // Если открыли существующий - сначала удалим старый (простейший update)
+            // Для простоты MVP: удаляем старый и создаем новый
             await deleteEvent(true); 
         }
 
@@ -198,15 +213,42 @@
 </script>
 
 <style>
-    .fc-event { border: none !important; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    /* Стиль карточки события */
+    .fc-event {
+        background-color: #ffffff !important; /* Белый фон */
+        border: 1px solid #e2e8f0 !important; /* Тонкая рамка */
+        border-left: 3px solid #3b82f6 !important; /* Синяя полоска слева */
+        border-radius: 4px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        cursor: pointer;
+        margin-bottom: 2px !important;
+        transition: transform 0.1s, box-shadow 0.1s;
+    }
+    
+    .fc-event:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        z-index: 5;
+    }
+
+    /* Убираем стандартные паддинги и точки */
     .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
-    .fc-event-main { width: 100%; }
-    .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; }
+    .fc-daygrid-event-dot { display: none; } 
+    .fc-event-main { width: 100%; padding: 0; }
+
+    /* Стили заголовка календаря */
+    .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #1e293b; }
+    
+    /* Кнопки календаря */
     .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
     .fc-button:hover { background-color: #f8fafc !important; }
     .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
+    
+    /* Заголовки дней */
     .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
-    .fc-daygrid-day-number { color: #334155; font-weight: 500; }
+    .fc-daygrid-day-number { color: #334155; font-weight: 500; padding: 8px !important; }
+    
+    /* Текущий день */
     .fc-day-today { background-color: #f8fafc !important; }
 </style>
 {% endblock %}
