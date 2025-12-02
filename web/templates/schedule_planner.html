@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}График поездов — Logistrail{% endblock %}
+
+{% block content %}
+<div class="space-y-6 pb-10 animate-fade-in">
+
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold text-slate-900">График поездов</h1>
+            <p class="text-slate-500">Планирование отправки сервисов.</p>
+        </div>
+        
+        <div class="text-sm text-slate-500 flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+            Запланировано
+        </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div id='calendar' class="min-h-[600px]"></div>
+    </div>
+
+</div>
+
+<div id="eventModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeModal()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4" id="modal-title">Планирование поезда</h3>
+                
+                <form id="createEventForm" class="space-y-4">
+                    <input type="hidden" id="eventDate" name="date_str">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Сервис поезда *</label>
+                        <input type="text" name="service" id="inpService" required placeholder="FESCO Moscow Shuttle" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Станция назначения *</label>
+                        <input type="text" name="destination" id="inpDest" required placeholder="Силикатная" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Сток</label>
+                            <input type="text" name="stock" id="inpStock" placeholder="20 x 40'HC" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Собственник</label>
+                            <input type="text" name="owner" id="inpOwner" placeholder="ТрансКонтейнер" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button type="button" onclick="submitCreate()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+                    Сохранить
+                </button>
+                <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    Отмена
+                </button>
+                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden mt-3 w-full inline-flex justify-center rounded-md border border-red-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-red-600 hover:bg-red-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    Удалить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+
+<script>
+    let calendar;
+    let selectedEventId = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var calendarEl = document.getElementById('calendar');
+        
+        calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            locale: 'ru',
+            firstDay: 1,
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,dayGridWeek'
+            },
+            editable: true,
+            selectable: true,
+            events: '/admin/api/schedule/events', 
+
+            dateClick: function(info) {
+                openModalForCreate(info.dateStr);
+            },
+
+            eventClick: function(info) {
+                openModalForView(info.event);
+            },
+
+            eventDrop: function(info) {
+                updateEventDate(info.event.id, info.event.start);
+            },
+            
+            eventContent: function(arg) {
+                let props = arg.event.extendedProps;
+                let html = `<div class="p-1"><div class="text-xs font-bold truncate">${arg.event.title}</div>`;
+                if (props.stock) {
+                    html += `<div class="text-[10px] opacity-90 truncate">📦 ${props.stock}</div>`;
+                }
+                html += `</div>`;
+                return { html: html }
+            }
+        });
+        
+        calendar.render();
+    });
+
+    function openModalForCreate(dateStr) {
+        selectedEventId = null;
+        document.getElementById('modal-title').innerText = "План на " + dateStr;
+        document.getElementById('eventDate').value = dateStr;
+        document.getElementById('createEventForm').reset();
+        document.getElementById('btnDelete').classList.add('hidden'); 
+        document.getElementById('eventModal').classList.remove('hidden');
+    }
+
+    function openModalForView(event) {
+        selectedEventId = event.id;
+        let props = event.extendedProps;
+        document.getElementById('modal-title').innerText = "Поезд: " + props.service;
+        document.getElementById('eventDate').value = event.startStr;
+        document.getElementById('inpService').value = props.service;
+        document.getElementById('inpDest').value = props.dest;
+        document.getElementById('inpStock').value = props.stock;
+        document.getElementById('inpOwner').value = props.owner;
+        document.getElementById('btnDelete').classList.remove('hidden');
+        document.getElementById('eventModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.getElementById('eventModal').classList.add('hidden');
+    }
+
+    async function submitCreate() {
+        // Если ID есть, то это режим "создания нового" (пока не делаем UPDATE формы, 
+        // просто удалим старый и создадим новый, или просто создадим)
+        // Для простоты MVP:
+        if (selectedEventId) {
+            // Если открыли существующий - сначала удалим старый (простейший update)
+            await deleteEvent(true); 
+        }
+
+        const form = document.getElementById('createEventForm');
+        const formData = new FormData(form);
+
+        try {
+            let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData });
+            if (response.ok) {
+                closeModal();
+                calendar.refetchEvents();
+            } else { alert("Ошибка сохранения"); }
+        } catch (e) { console.error(e); }
+    }
+
+    async function updateEventDate(id, newDate) {
+        const dateStr = newDate.toISOString().split('T')[0];
+        const formData = new FormData();
+        formData.append('new_date', dateStr);
+        try {
+            let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData });
+            if (!response.ok) {
+                alert("Ошибка");
+                calendar.refetchEvents();
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    async function deleteEvent(silent = false) {
+        if (!selectedEventId) return;
+        if (!silent && !confirm("Удалить?")) return;
+
+        try {
+            let response = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' });
+            if (response.ok) {
+                if(!silent) {
+                    closeModal();
+                    calendar.refetchEvents();
+                }
+            }
+        } catch (e) { console.error(e); }
+    }
+</script>
+
+<style>
+    .fc-event { border: none !important; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
+    .fc-event-main { width: 100%; }
+    .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; }
+    .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+    .fc-button:hover { background-color: #f8fafc !important; }
+    .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
+    .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
+    .fc-daygrid-day-number { color: #334155; font-weight: 500; }
+    .fc-day-today { background-color: #f8fafc !important; }
+</style>
+{% endblock %}
