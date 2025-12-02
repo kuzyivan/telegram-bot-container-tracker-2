@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>График поездов ({{ link_name }})</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Стиль карточки события (Read-Only) */
+        .fc-event {
+            background-color: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-left: 3px solid #3b82f6 !important;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 2px !important;
+            cursor: default; /* Не кликабельно как кнопка */
+        }
+        
+        .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
+        .fc-event-main { width: 100%; padding: 0; }
+        
+        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #1e293b; }
+        .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .fc-button:hover { background-color: #f8fafc !important; }
+        .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
+        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
+        .fc-daygrid-day-number { color: #334155; font-weight: 500; padding: 8px !important; }
+        .fc-day-today { background-color: #f8fafc !important; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Шапка -->
+        <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 p-2 rounded-lg text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">График поездов</h1>
+                    <p class="text-xs text-slate-500">Доступ: {{ link_name }}</p>
+                </div>
+            </div>
+            
+            <div class="flex gap-4 text-sm text-slate-600 items-center">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <span>Запланировано</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Календарь -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div id='calendar' class="min-h-[600px]"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            var token = "{{ token }}"; // Получаем токен из шаблона Jinja2
+
+            var calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'ru',
+                firstDay: 1, // Понедельник
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridWeek'
+                },
+                editable: false,      // ЗАПРЕЩЕНО редактирование
+                selectable: false,    // ЗАПРЕЩЕНО выделение
+                events: `/api/share/${token}/events`, // Публичный API с токеном
+
+                // Рендер карточки (такой же красивый, как у админа)
+                eventContent: function(arg) {
+                    let props = arg.event.extendedProps;
+                    
+                    let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-1">`;
+                    html += `<div class="text-xs font-extrabold text-slate-800 truncate">📍 ${props.dest}</div>`;
+                    html += `<div class="text-[10px] font-bold text-blue-700 truncate">🚆 ${props.service}</div>`;
+                    if (props.stock) {
+                        html += `<div class="text-[10px] text-slate-600 truncate border-t border-slate-100 mt-0.5 pt-0.5">📦 ${props.stock}</div>`;
+                    }
+                    if (props.owner) {
+                        html += `<div class="text-[10px] text-slate-500 italic truncate">👤 ${props.owner}</div>`;
+                    }
+                    html += `</div>`;
+                    
+                    return { html: html }
+                }
+            });
+            calendar.render();
+        });
+    </script>
+</body>
+</html>

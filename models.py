@@ -84,8 +84,6 @@ class User(Base):
 class UserEmail(Base):
     __tablename__ = "user_emails"
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Оставляем связь по telegram_id для совместимости со старым кодом бота, 
-    # хотя идеологически правильнее было бы по user.id
     user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
     email: Mapped[str] = mapped_column(String, index=True) 
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False) 
@@ -229,7 +227,7 @@ class EventAlertRule(Base):
     user: Mapped[Optional["User"]] = relationship(foreign_keys=[recipient_user_id])
     subscription: Mapped[Optional["Subscription"]] = relationship(foreign_keys=[subscription_id])
 
-# --- 5. НОВАЯ МОДЕЛЬ ДЛЯ КАЛЕНДАРЯ ---
+# --- 5. КАЛЕНДАРЬ ПОЕЗДОВ ---
 
 class ScheduledTrain(Base):
     """
@@ -238,28 +236,23 @@ class ScheduledTrain(Base):
     __tablename__ = "scheduled_trains"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    
-    # Дата отправления (на которую ставим в календаре)
     schedule_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
-    
-    # Поля графика
     service_name: Mapped[str] = mapped_column(String, nullable=False)   # FESCO Moscow
     destination: Mapped[str] = mapped_column(String, nullable=False)    # Станция
     stock_info: Mapped[str | None] = mapped_column(String)              # Сток
     wagon_owner: Mapped[str | None] = mapped_column(String)             # Собственник
-    
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    class ScheduleShareLink(Base):
+# --- 6. ССЫЛКИ ДЛЯ ПУБЛИЧНОГО ДОСТУПА (Новое) ---
+
+class ScheduleShareLink(Base):
     """
     Ссылки для публичного доступа к графику.
     """
     __tablename__ = "schedule_share_links"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False) # Уникальный код ссылки
-    name: Mapped[str] = mapped_column(String, nullable=False) # Описание (кому дали: "Для офиса")
+    token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False) # Уникальный код
+    name: Mapped[str] = mapped_column(String, nullable=False) # Кому дали
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    
-    # Можно добавить created_by_user_id, если нужно знать, кто создал
