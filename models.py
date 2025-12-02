@@ -16,106 +16,77 @@ from sqlalchemy.sql import func
 # Импортируем Base из общего файла
 from db_base import Base
 
-# --- 1. Новые структуры для ЛК (Enums) ---
+# --- 1. Enums (Перечисления) ---
 
 class UserRole(str, enum.Enum):
     """Роли пользователей в системе."""
-    ADMIN = "admin"       # Супер-админ (Технический)
-    OWNER = "owner"       # Владелец компании (Клиент)
+    ADMIN = "admin"       # Супер-админ
+    OWNER = "owner"       # Владелец компании
     MANAGER = "manager"   # Сотрудник компании
     VIEWER = "viewer"     # Только просмотр
 
-# --- 2. Новые модели для ЛК (Company, CompanyContainer) ---
+# --- 2. Модели ЛК (Компании) ---
 
 class Company(Base):
-    """
-    Модель компании-клиента.
-    Позволяет группировать пользователей и их контейнеры.
-    """
     __tablename__ = "companies"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String, index=True, nullable=False) # Название (ООО Ромашка)
-    inn: Mapped[str | None] = mapped_column(String, index=True)           # ИНН
-    
-    # Ключ для автоматической привязки из Excel-файлов терминала ("CLIENT_A")
+    name: Mapped[str] = mapped_column(String, index=True, nullable=False)
+    inn: Mapped[str | None] = mapped_column(String, index=True)
     import_mapping_key: Mapped[str | None] = mapped_column(String, index=True) 
-    
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Связи
     users: Mapped[List["User"]] = relationship(back_populates="company")
     containers: Mapped[List["CompanyContainer"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<Company(id={self.id}, name='{self.name}')>"
 
-
 class CompanyContainer(Base):
-    """
-    Архив/Реестр контейнеров компании.
-    Связывает конкретный номер контейнера с компанией. 
-    Заполняется автоматически при импорте или вручную.
-    """
     __tablename__ = "company_containers"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     container_number: Mapped[str] = mapped_column(String(11), index=True, nullable=False)
-    
-    # Метаданные (когда добавили в архив)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
-    # Связи
     company: Mapped["Company"] = relationship(back_populates="containers")
 
     def __repr__(self) -> str:
-        return f"<CompanyContainer(id={self.id}, container='{self.container_number}', company_id={self.company_id})>"
+        return f"<CompanyContainer(id={self.id}, container='{self.container_number}')>"
 
-
-# --- 3. Обновленная модель User ---
+# --- 3. Пользователи ---
 
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    
-    # telegram_id теперь NULLABLE (для web-only пользователей)
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True, nullable=True)
-    
     username: Mapped[str | None] = mapped_column(String)
     first_name: Mapped[str | None] = mapped_column(String)
     last_name: Mapped[str | None] = mapped_column(String)
     
-    # --- Новые поля для Auth и RBAC ---
-    email_login: Mapped[str | None] = mapped_column(String, unique=True, index=True) # Для входа по почте
-    password_hash: Mapped[str | None] = mapped_column(String) # Хеш пароля
-    
+    # Auth & RBAC
+    email_login: Mapped[str | None] = mapped_column(String, unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String)
     role: Mapped[UserRole] = mapped_column(PgEnum(UserRole), default=UserRole.VIEWER, nullable=False)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
-    # ----------------------------------
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
-    # Связи
     subscriptions: Mapped[List["Subscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     emails: Mapped[List["UserEmail"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     requests: Mapped[List["UserRequest"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    
     company: Mapped[Optional["Company"]] = relationship(back_populates="users")
-
-
-# --- Существующие модели (остаются без изменений, только imports проверены) ---
 
 class UserEmail(Base):
     __tablename__ = "user_emails"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE")) # Важно: ссылка на telegram_id
-    # Note: Если telegram_id станет None, старая связь сломается. 
-    # TODO: В будущем лучше мигрировать ForeignKey на users.id, но пока оставим для совместимости с ботом.
-    
+    # Оставляем связь по telegram_id для совместимости со старым кодом бота, 
+    # хотя идеологически правильнее было бы по user.id
+    user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
     email: Mapped[str] = mapped_column(String, index=True) 
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False) 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -136,6 +107,8 @@ class UserRequest(Base):
      query_text: Mapped[str] = mapped_column(Text)
      timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
      user: Mapped["User"] = relationship(back_populates="requests")
+
+# --- 4. Подписки и Трекинг ---
 
 class Subscription(Base):
     __tablename__ = "subscriptions"
@@ -255,5 +228,25 @@ class EventAlertRule(Base):
     subscription_id: Mapped[Optional[int]] = mapped_column(ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=True)
     user: Mapped[Optional["User"]] = relationship(foreign_keys=[recipient_user_id])
     subscription: Mapped[Optional["Subscription"]] = relationship(foreign_keys=[subscription_id])
-    def __repr__(self) -> str:
-        return f"<EventAlertRule(id={self.id}, name='{self.rule_name}')>"
+
+# --- 5. НОВАЯ МОДЕЛЬ ДЛЯ КАЛЕНДАРЯ ---
+
+class ScheduledTrain(Base):
+    """
+    Планирование отправки поездов (для календаря).
+    """
+    __tablename__ = "scheduled_trains"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    
+    # Дата отправления (на которую ставим в календаре)
+    schedule_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
+    
+    # Поля графика
+    service_name: Mapped[str] = mapped_column(String, nullable=False)   # FESCO Moscow
+    destination: Mapped[str] = mapped_column(String, nullable=False)    # Станция
+    stock_info: Mapped[str | None] = mapped_column(String)              # Сток
+    wagon_owner: Mapped[str | None] = mapped_column(String)             # Собственник
+    
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
