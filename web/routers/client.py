@@ -17,6 +17,8 @@ from db import SessionLocal
 from models import User, Company, CompanyContainer, Tracking
 from model.terminal_container import TerminalContainer
 from web.auth import login_required
+from fastapi.responses import StreamingResponse
+from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 
 router = APIRouter(prefix="/client", tags=["client"])
 
@@ -232,3 +234,93 @@ async def search_containers(
         "request": request,
         "containers": data
     })
+
+@router.get("/export")
+async def export_client_excel(
+    q: str = Query(""),
+    status: str = Query("all"),
+    train: str = Query(""),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(login_required)
+):
+    """Генерация Excel-отчета для клиента с учетом фильтров."""
+    if not user.company_id:
+        return RedirectResponse("/client/dashboard")
+
+    # 1. Парсинг дат
+    d_from, d_to = None, None
+    if date_from:
+        try: d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+        except: pass
+    if date_to:
+        try: d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+        except: pass
+
+    # 2. Получение отфильтрованных данных (используем ту же функцию, что и для таблицы)
+    data = await get_client_data(
+        db, 
+        user.company_id, 
+        query_str=q, 
+        status_filter=status, 
+        train_filter=train,
+        date_from=d_from, 
+        date_to=d_to
+    )
+
+    # 3. Подготовка строк для Excel
+    headers = [
+        'Контейнер', 'Поезд', 'Станция отправления', 'Станция назначения',
+        'Текущая станция', 'Операция', 'Дата операции (UTC)', 
+        'Вагон', 'Осталось км', 'Прогноз (дней)'
+    ]
+    
+    rows = []
+    for item in data:
+        # item['status'] — это объект Tracking или None
+        t = item['status']
+        
+        # Безопасное извлечение полей
+        cont_num = item['number']
+        train_num = item.get('train') or ""
+        
+        from_st = t.from_station if t else ""
+        to_st = t.to_station if t else ""
+        curr_st = t.current_station if t else ""
+        oper = t.operation if t else "Нет данных"
+        
+        op_date = ""
+        if t and t.operation_date:
+            op_date = t.operation_date.strftime('%d.%m.%Y %H:%M')
+            
+        wagon = t.wagon_number if t else ""
+        km_left = str(t.km_left) if (t and t.km_left is not None) else ""
+        forecast = str(t.forecast_days) if (t and t.forecast_days is not None) else ""
+
+        rows.append([
+            cont_num, train_num, from_st, to_st, 
+            curr_st, oper, op_date, 
+            wagon, km_left, forecast
+        ])
+
+    # 4. Генерация файла
+    file_path = await asyncio.to_thread(create_excel_file_from_strings, rows, headers)
+    
+    # Имя файла с датой
+    filename = get_vladivostok_filename(prefix=f"Report_{datetime.now().strftime('%Y%m%d')}")
+
+    # 5. Отдача файла (Streaming)
+    def iterfile():
+        with open(file_path, mode="rb") as file_like:
+            yield from file_like
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+
+    return StreamingResponse(
+        iterfile(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

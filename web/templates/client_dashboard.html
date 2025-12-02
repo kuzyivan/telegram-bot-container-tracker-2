@@ -96,14 +96,25 @@
                 </div>
             </div>
 
-            <div class="col-span-2 grid grid-cols-2 gap-2">
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">С даты</label>
-                    <input type="date" name="date_from" class="block w-full p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">По дату</label>
-                    <input type="date" name="date_to" class="block w-full p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600">
+                <div class="col-span-2 flex items-end gap-2">
+                    <div class="flex-grow grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">С даты</label>
+                            <input type="date" name="date_from" class="block w-full p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">По дату</label>
+                            <input type="date" name="date_to" class="block w-full p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600">
+                        </div>
+                    </div>
+                    
+                    <button type="submit" 
+                            formaction="/client/export" 
+                            formtarget="_blank"
+                            class="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg transition shadow-sm h-[38px] w-[38px] flex items-center justify-center mb-[1px]"
+                            title="Скачать Excel отчет">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    </button>
                 </div>
             </div>
         </form>
