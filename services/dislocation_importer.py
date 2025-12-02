@@ -327,6 +327,44 @@ async def process_dislocation_file(filepath: str):
                 new_operation_date = row_data.get('operation_date') 
                 
                 if existing_entry:
+                    # =====================================================
+                    # 🔥 ЛОГИКА "ЗАМОРОЗКИ" (Фильтр завершенного рейса) 🔥
+                    # =====================================================
+                    
+                    # Проверяем текущее состояние в БД
+                    db_curr_station = (existing_entry.current_station or "").strip().lower()
+                    db_dest_station = (existing_entry.to_station or "").strip().lower()
+                    db_operation = (existing_entry.operation or "").strip().lower()
+                    
+                    # Флаг: контейнер УЖЕ выгружен на станции назначения
+                    is_already_completed = False
+                    if db_curr_station and db_dest_station:
+                         # Если станции совпадают И операция содержит "выгрузка"
+                         if db_curr_station == db_dest_station and "выгрузка" in db_operation:
+                             is_already_completed = True
+
+                    if is_already_completed:
+                        # Проверяем, не является ли новая строка началом НОВОГО рейса
+                        new_waybill = row_data.get('waybill')
+                        new_dest = row_data.get('to_station')
+                        
+                        is_new_trip = False
+                        
+                        # Если изменилась накладная -> Новый рейс
+                        if new_waybill and existing_entry.waybill and new_waybill != existing_entry.waybill:
+                            is_new_trip = True
+                            
+                        # Если изменилась станция назначения -> Новый рейс
+                        elif new_dest and existing_entry.to_station and new_dest != existing_entry.to_station:
+                            is_new_trip = True
+                            
+                        # Если это НЕ новый рейс, а "хвост" старого (Вывоз/Завоз) -> ИГНОРИРУЕМ
+                        if not is_new_trip:
+                            # logger.debug(f"Пропуск обновления для {container_number}: рейс завершен (Выгрузка на назначении).")
+                            continue 
+                    
+                    # =====================================================
+                    
                     # --- ЛОГИКА ОБНОВЛЕНИЯ ---
                     current_date = existing_entry.operation_date 
                     
