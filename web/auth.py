@@ -5,6 +5,8 @@ import hmac
 import time
 from datetime import datetime, timedelta
 from typing import Optional
+import logging
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Request, HTTPException, status, Depends
@@ -13,30 +15,34 @@ from sqlalchemy import select
 
 from db import SessionLocal
 from models import User, UserRole
-from config import TOKEN as BOT_TOKEN # Токен бота нужен для проверки подписи Telegram
+from config import TOKEN as BOT_TOKEN 
 
-# Настройки из .env
-SECRET_KEY = os.getenv("SECRET_KEY", "unsafe_secret_key")
+# Логгер для отладки авторизации
+logger = logging.getLogger(__name__)
+
+# --- 1. Настройки безопасности ---
+# Если в .env нет ключа, используем встроенный (для dev-режима), чтобы не вылетать при рестарте
+SECRET_KEY = os.getenv("SECRET_KEY", "unsafe_secret_key_change_in_env")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 120))
 
-# Контекст для хеширования паролей (bcrypt)
+# Настройка хеширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# --- 1. Работа с паролями ---
+# --- 2. Работа с паролями ---
 
 def verify_password(plain_password, hashed_password):
-    """Проверяет, совпадает ли введенный пароль с хешем."""
+    """Проверяет, совпадает ли введенный пароль с хешем в БД."""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password):
-    """Создает хеш пароля."""
+    """Создает хеш пароля для сохранения в БД."""
     return pwd_context.hash(password)
 
-# --- 2. Работа с JWT Токенами ---
+# --- 3. Работа с JWT Токенами ---
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """Генерирует JWT токен с данными пользователя."""
+    """Генерирует JWT токен с данными пользователя (ID, роль)."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -47,12 +53,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# --- 3. Проверка Telegram Login Widget ---
+# --- 4. Проверка Telegram Login Widget ---
 
 def check_telegram_authorization(auth_data: dict) -> bool:
     """
-    Проверяет валидность данных, полученных от Telegram Login Widget.
-    Подтверждает, что данные пришли от Телеграм, а не подделаны.
+    Проверяет подпись данных от виджета Telegram.
+    Гарантирует, что запрос действительно от Телеграм.
     """
     check_hash = auth_data.get('hash')
     if not check_hash:
@@ -73,19 +79,19 @@ def check_telegram_authorization(auth_data: dict) -> bool:
     if hash_calc != check_hash:
         return False
         
-    # Проверка на устаревание (чтобы нельзя было использовать старый запрос)
+    # Проверка на устаревание (защита от replay-атак, 24 часа)
     auth_date = int(auth_data.get('auth_date', 0))
-    if (time.time() - auth_date) > 86400: # 24 часа
+    if (time.time() - auth_date) > 86400:
         return False
         
     return True
 
-# --- 4. Зависимости (Dependencies) для защиты роутов ---
+# --- 5. Зависимости (Dependencies) для защиты роутов ---
 
 async def get_current_user(request: Request) -> Optional[User]:
     """
-    Извлекает пользователя из Cookies.
-    Используется как Dependency в FastAPI endpoint'ах.
+    Извлекает пользователя из Cookies (access_token).
+    Если токена нет или он невалиден — возвращает None.
     """
     token = request.cookies.get("access_token")
     if not token:
@@ -94,7 +100,7 @@ async def get_current_user(request: Request) -> Optional[User]:
     try:
         # Декодируем токен
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id_str: str = payload.get("sub") # Это наше внутреннее id из БД
+        user_id_str: str = payload.get("sub") # ID пользователя
         if user_id_str is None:
             return None
         user_id = int(user_id_str)
@@ -107,12 +113,12 @@ async def get_current_user(request: Request) -> Optional[User]:
         user = result.scalar_one_or_none()
         return user
 
-# Защита: Только для авторизованных
+# Защита: Только для авторизованных (редирект на логин)
 async def login_required(user: Optional[User] = Depends(get_current_user)):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-            headers={"Location": "/login"} # Перенаправляем на логин
+            headers={"Location": "/login"} 
         )
     return user
 
@@ -121,6 +127,6 @@ async def admin_required(user: User = Depends(login_required)):
     if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Нужны права администратора"
+            detail="Требуются права администратора"
         )
     return user
