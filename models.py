@@ -228,7 +228,6 @@ class EventAlertRule(Base):
     subscription: Mapped[Optional["Subscription"]] = relationship(foreign_keys=[subscription_id])
 
 # --- 5. КАЛЕНДАРЬ ПОЕЗДОВ ---
-
 class ScheduledTrain(Base):
     """
     Планирование отправки поездов (для календаря).
@@ -237,11 +236,15 @@ class ScheduledTrain(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     schedule_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
-    service_name: Mapped[str] = mapped_column(String, nullable=False)   # FESCO Moscow
-    destination: Mapped[str] = mapped_column(String, nullable=False)    # Станция
-    stock_info: Mapped[str | None] = mapped_column(String)              # Сток
-    wagon_owner: Mapped[str | None] = mapped_column(String)             # Собственник
+    service_name: Mapped[str] = mapped_column(String, nullable=False)
+    destination: Mapped[str] = mapped_column(String, nullable=False)
+    stock_info: Mapped[str | None] = mapped_column(String)
+    wagon_owner: Mapped[str | None] = mapped_column(String)
     comment: Mapped[str | None] = mapped_column(Text)
+    
+    # НОВОЕ ПОЛЕ: Цвет события (HEX код)
+    color: Mapped[str] = mapped_column(String, default="#3b82f6", nullable=False)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 # --- 6. ССЫЛКИ ДЛЯ ПУБЛИЧНОГО ДОСТУПА (Новое) ---
