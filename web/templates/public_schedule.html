@@ -13,75 +13,55 @@
         }
     </script>
     <style>
-        :root {
-            --bg-main: #f8fafc;
-            --bg-card: #ffffff;
-            --border-color: #e2e8f0;
-            --text-primary: #1e293b;
-            --text-secondary: #475569;
-            --text-event-title: #1e293b;
-            --text-event-body: #475569;
-            --text-event-meta: #64748b;
-            --btn-bg: #ffffff;
-            --btn-hover-bg: #f8fafc;
-            --btn-active-bg: #eff6ff;
-            --btn-active-text: #2563eb;
-            --btn-active-border: #bfdbfe;
-            --today-bg: #f8fafc;
-        }
-        .dark {
-            --bg-main: #0f172a;
-            --bg-card: #1e293b;
-            --border-color: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --text-event-title: #f1f5f9;
-            --text-event-body: #cbd5e1;
-            --text-event-meta: #64748b;
-            --btn-bg: #1e293b;
-            --btn-hover-bg: #334155;
-            --btn-active-bg: #3730a3;
-            --btn-active-text: #e0e7ff;
-            --btn-active-border: #4f46e5;
-            --today-bg: #1e293b;
-        }
-
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: var(--bg-main);
-            color: var(--text-primary);
-        }
+        body { font-family: 'Inter', sans-serif; }
         
         /* --- Стили календаря --- */
         .fc-event {
-            background-color: var(--bg-card) !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 6px;
+            background-color: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            /* border-left задается динамически в JS */
+            border-radius: 4px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 4px !important;
-            cursor: pointer;
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            margin-bottom: 2px !important;
+            cursor: default;
+            transition: transform 0.1s;
         }
-        .fc-event:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
+        .fc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
         .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
         .fc-event-main { width: 100%; padding: 0; }
-        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: var(--text-primary) !important; }
-        .fc-button { background-color: var(--btn-bg) !important; color: var(--text-secondary) !important; border: 1px solid var(--border-color) !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-        .fc-button:hover { background-color: var(--btn-hover-bg) !important; }
-        .fc-button-active { background-color: var(--btn-active-bg) !important; color: var(--btn-active-text) !important; border-color: var(--btn-active-border) !important; }
-        .fc-day-today { background-color: var(--today-bg) !important; }
-        .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number { font-weight: 700; }
-        .fc-col-header-cell-cushion { font-weight: 600; color: var(--text-secondary); text-transform: capitalize; }
-        .fc-daygrid-day-number { color: var(--text-secondary); }
+        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #1e293b; }
+        .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .fc-button:hover { background-color: #f8fafc !important; }
+        .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
+        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
+        .fc-daygrid-day-number { color: #334155; font-weight: 500; padding: 8px !important; }
+        .fc-day-today { background-color: #f8fafc !important; }
 
-        /* --- Анимация Модального окна --- */
+        /* Dark mode overrides */
+        .dark .fc-event {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        .dark .fc-toolbar-title { color: #e2e8f0 !important; }
+        .dark .fc-button {
+            background-color: #334155 !important;
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+        .dark .fc-button:hover { background-color: #475569 !important; }
+        .dark .fc-button-active {
+            background-color: #2563eb !important;
+            color: white !important;
+            border-color: #2563eb !important;
+        }
+        .dark .fc-col-header-cell-cushion { color: #94a3b8 !important; }
+        .dark .fc-daygrid-day-number { color: #cbd5e1 !important; }
+        .dark .fc-day-today { background-color: #1a2233 !important; }
+
+        /* Анимация Модалки */
         #modalOverlay { transition: opacity 0.3s ease-out; }
         #modalPanel { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        
         .modal-closed { opacity: 0; pointer-events: none; }
         .modal-closed #modalPanel { transform: scale(0.95) translateY(10px); opacity: 0; }
         .modal-open { opacity: 1; pointer-events: auto; }
@@ -110,8 +90,8 @@
             </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div id='calendar' class="min-h-[600px] sm:min-h-[750px]"></div>
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div id='calendar' class="min-h-[600px]"></div>
         </div>
     </div>
 
@@ -137,7 +117,7 @@
                 
                 <div class="flex items-start gap-3">
                     <div class="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-600 dark:text-slate-300 mt-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
                     </div>
                     <div>
                         <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Сервис поезда</p>
@@ -157,7 +137,7 @@
 
                 <div class="flex items-start gap-3" id="blockOwner">
                     <div class="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-500 dark:text-slate-400 mt-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
                     <div>
                         <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Собственник</p>
@@ -189,20 +169,20 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             var calendarEl = document.getElementById('calendar');
-            var token = "{{ token }}";
+            var token = "{{ token }}"; // Получаем токен из шаблона Jinja2
 
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 locale: 'ru',
-                firstDay: 1,
+                firstDay: 1, // Понедельник
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
                     right: 'dayGridMonth,dayGridWeek'
                 },
-                editable: false,
-                selectable: false,
-                events: `/api/share/${token}/events`,
+                editable: false,      // ЗАПРЕЩЕНО редактирование
+                selectable: false,    // ЗАПРЕЩЕНО выделение
+                events: `/api/share/${token}/events`, // Публичный API с токеном
 
                 // Клик по событию -> Открытие модалки
                 eventClick: function(info) {
@@ -210,12 +190,12 @@
                     openModal(info.event);
                 },
 
-                // Рендер карточки с ЦВЕТНОЙ полоской
+                // Рендер карточки с ЦВЕТНОЙ полоской и ИКОНКАМИ
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps;
-                    let bgColor = arg.event.backgroundColor || '#3b82f6';
+                    let bgColor = arg.event.backgroundColor || '#3b82f6'; // Получаем цвет
                     
-                    // Определяем цвета текста в зависимости от темы
+                    // Определяем цвета текста
                     let isDark = document.documentElement.classList.contains('dark');
                     let titleColor = isDark ? 'var(--text-event-title)' : '#1e293b';
                     let serviceColor = isDark ? 'var(--text-event-body)' : '#334155';
@@ -224,14 +204,26 @@
                     let borderColor = isDark ? 'var(--border-color)' : '#f1f5f9';
 
                     let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-2" style="border-left: 3px solid ${bgColor}">`;
-                    html += `<div style="color: ${titleColor}" class="text-xs font-extrabold truncate" title="${props.dest}">📍 ${props.dest}</div>`;
-                    html += `<div style="color: ${serviceColor}" class="text-[10px] font-bold truncate">🚆 ${props.service}</div>`;
+                    html += `<div style="color: ${titleColor}" class="text-xs font-extrabold truncate" title="${props.dest}">
+                        <svg class="w-3 h-3 inline-block mr-1 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        ${props.dest}
+                    </div>`;
+                    html += `<div style="color: ${serviceColor}" class="text-[10px] font-bold truncate">
+                        <svg class="w-3 h-3 inline-block mr-1 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
+                        ${props.service}
+                    </div>`;
                     
                     if (props.stock) {
-                        html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[10px] truncate border-t mt-0.5 pt-0.5">📦 ${props.stock}</div>`;
+                        html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[10px] truncate border-t mt-0.5 pt-0.5">
+                            <svg class="w-3 h-3 inline-block mr-1 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                            ${props.stock}
+                        </div>`;
                     }
                     if (props.owner) {
-                        html += `<div style="color: ${ownerColor}" class="text-[10px] italic truncate">👤 ${props.owner}</div>`;
+                        html += `<div style="color: ${ownerColor}" class="text-[10px] italic truncate">
+                            <svg class="w-3 h-3 inline-block mr-1 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            ${props.owner}
+                        </div>`;
                     }
                     html += `</div>`;
                     
@@ -240,7 +232,7 @@
             });
             calendar.render();
 
-            // Перерисовываем календарь при смене темы, чтобы обновить цвета
+            // Перерисовываем календарь при смене темы
             const themeObserver = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     if (mutation.attributeName === 'class') {
@@ -265,11 +257,11 @@
             document.getElementById('modalDest').innerText = props.dest;
             document.getElementById('modalService').innerText = props.service;
             
-            // 3. Красим шапку модалки в цвет события!
+            // 3. Красим шапку модалки
             const color = event.backgroundColor || '#3b82f6';
             const header = document.getElementById('modalHeader');
-            header.className = 'px-6 py-4 transition-colors duration-300'; 
-            header.style.backgroundColor = color; 
+            header.className = 'px-6 py-4 transition-colors duration-300';
+            header.style.backgroundColor = color;
             
             // Сток
             const elStock = document.getElementById('modalStock');
@@ -321,3 +313,5 @@
             if (e.key === 'Escape') closeModal();
         });
     </script>
+</body>
+</html>
