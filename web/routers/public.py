@@ -4,21 +4,20 @@ import os
 import re
 import asyncio
 from pathlib import Path
-from datetime import datetime, timedelta, date # <--- Добавил date
+from datetime import datetime, timedelta, date
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_, desc, and_, not_, func # <--- Добавил and_
+from sqlalchemy import select, or_, desc, and_, not_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # --- Импорты из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-# --- ✅ ДОБАВЛЕНЫ ScheduledTrain, ScheduleShareLink ---
-from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink
+from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink # <--- ✅ ИМПОРТЫ
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from web.auth import get_current_user
@@ -201,6 +200,7 @@ async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(ge
         except OSError: pass
     return StreamingResponse(iterfile(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
+
 # ==========================================
 # === 🔗 ПУБЛИЧНЫЙ ДОСТУП К ГРАФИКУ ===
 # ==========================================
@@ -217,7 +217,7 @@ async def view_shared_schedule_page(
     link = res.scalar_one_or_none()
     
     if not link:
-        # Если ссылка неверная, возвращаем 404
+        # Возвращаем 404, если ссылка не найдена
         return templates.TemplateResponse("client_no_company.html", {"request": request, "user": None}, status_code=404)
 
     return templates.TemplateResponse("public_schedule.html", {
@@ -239,7 +239,6 @@ async def get_shared_schedule_events(
     if not res_link.scalar_one_or_none():
         return []
 
-    # Парсим даты
     try:
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
         end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
@@ -262,13 +261,17 @@ async def get_shared_schedule_events(
             "owner": t.wagon_owner or "",
             "comment": t.comment or ""
         }
+        
+        # Передаем цвет, если он есть (или дефолтный)
+        color = t.color if hasattr(t, 'color') else "#3b82f6"
+        
         events.append({
             "id": t.id,
             "title": title,
             "start": t.schedule_date.isoformat(),
             "allDay": True,
-            "backgroundColor": "#3b82f6",
-            "borderColor": "#2563eb",
+            "backgroundColor": color,
+            "borderColor": color,
             "extendedProps": extendedProps
         })
         

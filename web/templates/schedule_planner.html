@@ -43,6 +43,20 @@
                     <input type="hidden" id="eventDate" name="date_str">
                     
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Цвет метки</label>
+                        <div class="flex items-center gap-3">
+                            <input type="hidden" name="color" id="inpColor" value="#3b82f6">
+                            
+                            <button type="button" onclick="selectColor('#3b82f6', this)" class="w-8 h-8 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-blue-500 color-btn"></button>
+                            <button type="button" onclick="selectColor('#10b981', this)" class="w-8 h-8 rounded-full bg-green-500 color-btn hover:opacity-80"></button>
+                            <button type="button" onclick="selectColor('#f59e0b', this)" class="w-8 h-8 rounded-full bg-amber-500 color-btn hover:opacity-80"></button>
+                            <button type="button" onclick="selectColor('#ef4444', this)" class="w-8 h-8 rounded-full bg-red-500 color-btn hover:opacity-80"></button>
+                            <button type="button" onclick="selectColor('#8b5cf6', this)" class="w-8 h-8 rounded-full bg-purple-500 color-btn hover:opacity-80"></button>
+                            <button type="button" onclick="selectColor('#64748b', this)" class="w-8 h-8 rounded-full bg-slate-500 color-btn hover:opacity-80"></button>
+                        </div>
+                    </div>
+
+                    <div>
                         <label class="block text-sm font-medium text-gray-700">Сервис поезда *</label>
                         <input type="text" name="service" id="inpService" required placeholder="FESCO Moscow Shuttle" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                     </div>
@@ -86,12 +100,10 @@
         <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
             <div class="bg-white px-4 pt-5 pb-4 sm:p-6">
                 <h3 class="text-lg leading-6 font-medium text-gray-900 mb-4">Настройки доступа по ссылке</h3>
-                
                 <div class="flex gap-2 mb-6">
                     <input type="text" id="newLinkName" placeholder="Кому (например: Партнеры)" class="flex-1 border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
                     <button onclick="createLink()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 font-medium text-sm">Создать</button>
                 </div>
-
                 <h4 class="text-xs font-bold text-gray-500 uppercase mb-2">Активные ссылки</h4>
                 <div class="space-y-3 max-h-60 overflow-y-auto" id="linksList">
                     <p class="text-sm text-gray-500 text-center py-2">Загрузка...</p>
@@ -138,11 +150,19 @@
                 updateEventDate(info.event.id, info.event.start);
             },
             
+            // --- РЕНДЕР КАРТОЧКИ С ЦВЕТОМ ---
             eventContent: function(arg) {
                 let props = arg.event.extendedProps;
-                let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-1">`;
-                html += `<div class="text-xs font-extrabold text-slate-800 truncate" title="Назначение">📍 ${props.dest}</div>`;
-                html += `<div class="text-[10px] font-bold text-blue-700 truncate" title="Сервис">🚆 ${props.service}</div>`;
+                let bgColor = arg.event.backgroundColor || '#3b82f6'; // Получаем цвет
+                
+                // Добавляем стиль border-left-color
+                let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-2" style="border-left: 3px solid ${bgColor}">`;
+                
+                html += `<div class="text-xs font-extrabold text-slate-800 truncate" title="${props.dest}">📍 ${props.dest}</div>`;
+                
+                // Сервис делаем цветом, похожим на цвет метки, или просто темным
+                html += `<div class="text-[10px] font-bold text-slate-700 truncate">🚆 ${props.service}</div>`;
+                
                 if (props.stock) {
                     html += `<div class="text-[10px] text-slate-600 truncate border-t border-slate-100 mt-0.5 pt-0.5">📦 ${props.stock}</div>`;
                 }
@@ -157,13 +177,36 @@
         calendar.render();
     });
 
-    // --- Функции Модального окна (События) ---
+    // --- Управление Цветами ---
+    function selectColor(color, btn) {
+        // Снимаем выделение со всех кнопок
+        document.querySelectorAll('.color-btn').forEach(b => {
+            b.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-500', 'ring-green-500', 'ring-amber-500', 'ring-red-500', 'ring-purple-500', 'ring-slate-500');
+        });
+        
+        // Ставим значение
+        document.getElementById('inpColor').value = color;
+        
+        // Добавляем кольцо выделения на нажатую кнопку
+        btn.classList.add('ring-2', 'ring-offset-2');
+        // Цвет кольца зависит от цвета кнопки (немного костыльно, но работает с Tailwind классами)
+        if (color === '#3b82f6') btn.classList.add('ring-blue-500');
+        if (color === '#10b981') btn.classList.add('ring-green-500');
+        if (color === '#f59e0b') btn.classList.add('ring-amber-500');
+        if (color === '#ef4444') btn.classList.add('ring-red-500');
+        if (color === '#8b5cf6') btn.classList.add('ring-purple-500');
+        if (color === '#64748b') btn.classList.add('ring-slate-500');
+    }
 
     function openModalForCreate(dateStr) {
         selectedEventId = null;
         document.getElementById('modal-title').innerText = "План на " + dateStr;
         document.getElementById('eventDate').value = dateStr;
         document.getElementById('createEventForm').reset();
+        
+        // Сброс цвета на синий
+        selectColor('#3b82f6', document.querySelector('.color-btn')); 
+        
         document.getElementById('btnDelete').classList.add('hidden'); 
         document.getElementById('eventModal').classList.remove('hidden');
     }
@@ -177,6 +220,13 @@
         document.getElementById('inpDest').value = props.dest;
         document.getElementById('inpStock').value = props.stock;
         document.getElementById('inpOwner').value = props.owner;
+        
+        // Устанавливаем цвет (если есть в event, иначе дефолт)
+        let color = event.backgroundColor || '#3b82f6';
+        // Находим кнопку с таким цветом и кликаем (визуально)
+        // Для простоты пока просто ставим в input, визуальное выделение кнопок можно доработать
+        document.getElementById('inpColor').value = color;
+        
         document.getElementById('btnDelete').classList.remove('hidden');
         document.getElementById('eventModal').classList.remove('hidden');
     }
@@ -189,8 +239,10 @@
         if (selectedEventId) {
             await deleteEvent(true); 
         }
+
         const form = document.getElementById('createEventForm');
         const formData = new FormData(form);
+
         try {
             let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData });
             if (response.ok) {
@@ -216,6 +268,7 @@
     async function deleteEvent(silent = false) {
         if (!selectedEventId) return;
         if (!silent && !confirm("Удалить?")) return;
+
         try {
             let response = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' });
             if (response.ok) {
@@ -227,83 +280,43 @@
         } catch (e) { console.error(e); }
     }
 
-    // --- Функции Модального окна (Шеринг) ---
-
-    function openShareModal() {
-        document.getElementById('shareModal').classList.remove('hidden');
-        loadLinks();
-    }
-
-    function closeShareModal() {
-        document.getElementById('shareModal').classList.add('hidden');
-    }
-
+    // --- Шеринг ---
+    function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
+    function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
     async function loadLinks() {
         const list = document.getElementById('linksList');
         try {
             let res = await fetch('/admin/api/schedule/links');
             let links = await res.json();
-            
-            if (links.length === 0) {
-                list.innerHTML = '<p class="text-sm text-gray-400 text-center">Нет активных ссылок.</p>';
-                return;
-            }
-
+            if (links.length === 0) { list.innerHTML = '<p class="text-sm text-gray-400 text-center">Нет активных ссылок.</p>'; return; }
             let html = '';
             links.forEach(link => {
                 const fullUrl = window.location.origin + `/schedule/share/${link.token}`;
-                html += `
-                    <div class="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100 mb-2">
-                        <div class="overflow-hidden mr-3 w-full">
-                            <p class="text-sm font-bold text-slate-800">${link.name}</p>
-                            <div class="flex items-center gap-2 mt-1">
-                                <input type="text" readonly value="${fullUrl}" class="text-xs text-slate-500 bg-white border border-slate-200 rounded px-2 py-1 w-full focus:outline-none" onclick="this.select()">
-                                <a href="${fullUrl}" target="_blank" class="text-blue-600 hover:text-blue-800">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                                </a>
-                            </div>
-                        </div>
-                        <button onclick="deleteLink(${link.id})" class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </div>
-                `;
+                html += `<div class="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-100 mb-2"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-slate-800">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-xs text-slate-500 bg-white border border-slate-200 rounded px-2 py-1 w-full focus:outline-none" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-blue-600 hover:text-blue-800"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`;
             });
             list.innerHTML = html;
         } catch (e) { console.error(e); }
     }
-
     async function createLink() {
         const nameInput = document.getElementById('newLinkName');
         const name = nameInput.value.trim();
         if (!name) return alert("Введите название");
-
         const formData = new FormData();
         formData.append('name', name);
-
-        try {
-            let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData });
-            if (res.ok) {
-                nameInput.value = '';
-                loadLinks();
-            }
-        } catch (e) { console.error(e); }
+        try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); }
     }
-
     async function deleteLink(id) {
-        if (!confirm("Удалить ссылку? Доступ по ней будет закрыт.")) return;
-        try {
-            let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' });
-            if (res.ok) loadLinks();
-        } catch (e) { console.error(e); }
+        if (!confirm("Удалить ссылку?")) return;
+        try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); }
     }
 </script>
 
 <style>
+    /* Стиль карточки события */
     .fc-event {
-        background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-left: 3px solid #3b82f6 !important;
+        background-color: #ffffff !important; /* Белый фон */
+        border: 1px solid #e2e8f0 !important; /* Тонкая рамка */
+        /* border-left задается динамически в JS, но дефолт оставим */
         border-radius: 4px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         cursor: pointer;
