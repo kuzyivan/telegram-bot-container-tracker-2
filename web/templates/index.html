@@ -8,14 +8,14 @@
     <div class="max-w-4xl mx-auto">
         
         <div class="text-center mb-6 fade-in">
-            <h1 class="text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">Поиск контейнера</h1>
-            <p class="text-lg text-slate-500">Отслеживание контейнеров и вагонов в реальном времени.</p>
+            <h1 class="text-4xl font-extrabold text-slate-900 dark:text-white mb-3 tracking-tight">Поиск контейнера</h1>
+            <p class="text-lg text-slate-500 dark:text-slate-400">Отслеживание контейнеров и вагонов в реальном времени.</p>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-6 transition-all focus-within:ring-4 focus-within:ring-blue-100">
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 mb-6 transition-all focus-within:ring-4 focus-within:ring-blue-100 dark:focus-within:ring-blue-900/50">
             <form hx-post="/search" hx-target="#search-results" hx-indicator="#loading-spinner">
                 
-                <label for="q" class="block text-sm font-medium text-slate-700 mb-2">
+                <label for="q" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                     Введите номера (через пробел, запятую или с новой строки):
                 </label>
                 
@@ -24,7 +24,7 @@
                         id="q" 
                         name="q" 
                         rows="3" 
-                        class="block w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-lg uppercase transition duration-200 resize-y placeholder:text-slate-400 placeholder:normal-case"
+                        class="block w-full p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl focus:bg-white dark:focus:bg-slate-800/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-lg uppercase transition duration-200 resize-y placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white"
                         placeholder="Например: TCNU1234567, 12345678..." required></textarea>
                     
                     <div class="absolute bottom-3 right-3">
@@ -34,7 +34,7 @@
                         </button>
                     </div>
                 </div>
-                <p class="mt-2 text-xs text-slate-400">Поддерживается массовый поиск. Вставьте список из Excel.</p>
+                <p class="mt-2 text-xs text-slate-400 dark:text-slate-500">Поддерживается массовый поиск. Вставьте список из Excel.</p>
             </form>
         </div>
 
@@ -44,7 +44,7 @@
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span class="text-slate-500 font-medium animate-pulse">Поиск данных...</span>
+                <span class="text-slate-500 dark:text-slate-400 font-medium animate-pulse">Поиск данных...</span>
             </div>
         </div>
 
@@ -56,7 +56,7 @@
          hx-swap="innerHTML"
          class="mt-6">
         <div class="flex justify-center py-10">
-            <svg class="animate-spin h-8 w-8 text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-8 w-8 text-slate-300 dark:text-slate-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
