@@ -4,23 +4,24 @@ import os
 import re
 import asyncio
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date # <--- Добавил date
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, or_, desc, and_, not_, func
+from sqlalchemy import select, or_, desc, and_, not_, func # <--- Добавил and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # --- Импорты из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import Tracking, Train, User # <--- Добавили User
+# --- ✅ ДОБАВЛЕНЫ ScheduledTrain, ScheduleShareLink ---
+from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
-from web.auth import get_current_user # <--- Добавили импорт авторизации
+from web.auth import get_current_user
 
 router = APIRouter()
 
@@ -95,10 +96,9 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
 @router.get("/")
 async def read_root(
     request: Request, 
-    user: Optional[User] = Depends(get_current_user) # <--- ВАЖНО: Проверяем куку
+    user: Optional[User] = Depends(get_current_user)
 ):
     """Отображает главную страницу поиска."""
-    # Теперь мы передаем user в шаблон, и base.html покажет правильное меню
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "user": user 
@@ -200,3 +200,76 @@ async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(ge
         try: os.remove(file_path)
         except OSError: pass
     return StreamingResponse(iterfile(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+# ==========================================
+# === 🔗 ПУБЛИЧНЫЙ ДОСТУП К ГРАФИКУ ===
+# ==========================================
+
+@router.get("/schedule/share/{token}")
+async def view_shared_schedule_page(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Публичная страница календаря (Read-Only)."""
+    stmt = select(ScheduleShareLink).where(ScheduleShareLink.token == token)
+    res = await db.execute(stmt)
+    link = res.scalar_one_or_none()
+    
+    if not link:
+        # Если ссылка неверная, возвращаем 404
+        return templates.TemplateResponse("client_no_company.html", {"request": request, "user": None}, status_code=404)
+
+    return templates.TemplateResponse("public_schedule.html", {
+        "request": request, 
+        "token": token,
+        "link_name": link.name
+    })
+
+@router.get("/api/share/{token}/events")
+async def get_shared_schedule_events(
+    token: str,
+    start: str, 
+    end: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Отдает события по токену."""
+    stmt_link = select(ScheduleShareLink).where(ScheduleShareLink.token == token)
+    res_link = await db.execute(stmt_link)
+    if not res_link.scalar_one_or_none():
+        return []
+
+    # Парсим даты
+    try:
+        start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
+        end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
+    except:
+        return []
+    
+    stmt = select(ScheduledTrain).where(
+        and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date)
+    )
+    result = await db.execute(stmt)
+    trains = result.scalars().all()
+    
+    events = []
+    for t in trains:
+        title = f"{t.service_name} -> {t.destination}"
+        extendedProps = {
+            "service": t.service_name,
+            "dest": t.destination,
+            "stock": t.stock_info or "",
+            "owner": t.wagon_owner or "",
+            "comment": t.comment or ""
+        }
+        events.append({
+            "id": t.id,
+            "title": title,
+            "start": t.schedule_date.isoformat(),
+            "allDay": True,
+            "backgroundColor": "#3b82f6",
+            "borderColor": "#2563eb",
+            "extendedProps": extendedProps
+        })
+        
+    return events

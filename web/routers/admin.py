@@ -2,7 +2,7 @@
 import sys
 import os
 import json
-import secrets # <--- Для генерации токенов
+import secrets
 from datetime import datetime, timedelta, date
 from pathlib import Path
 from typing import Optional
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import User, UserRequest, Train, Company, UserRole, ScheduledTrain, ScheduleShareLink # <--- Импорт Link
+from models import User, UserRequest, Train, Company, UserRole, ScheduledTrain, ScheduleShareLink
 from model.terminal_container import TerminalContainer
 from web.auth import admin_required, get_current_user
 
@@ -31,7 +31,7 @@ async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# --- Старые функции KPI ---
+# ... (Вспомогательные функции KPI и Clients Stats) ...
 async def get_kpi_data(session: AsyncSession, period: str):
     now = datetime.now()
     start_date = None
@@ -147,10 +147,7 @@ async def delete_share_link(link_id: int, db: AsyncSession = Depends(get_db), us
     return {"status": "ok"}
 
 
-# ==========================================
-# === ДАШБОРД / КОМПАНИИ ===
-# ==========================================
-
+# ... (Остальные роуты: dashboard, companies, users...) ...
 @router.get("/dashboard")
 async def dashboard(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_required)):
     kpi_data = await get_kpi_data(db, "today")
