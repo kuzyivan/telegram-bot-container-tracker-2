@@ -11,10 +11,7 @@ async def sync_terminal_to_company_containers(session: AsyncSession) -> int:
     если совпадает client == import_mapping_key.
     """
     
-    # 1. Сначала очищаем форматирование (на всякий случай)
-    # Это тяжелая операция, но для надежности стоит того.
-    # Если база огромная, лучше делать это индексами, но пока так:
-    
+    # Исправленный запрос: Убрали ошибочный ON CONFLICT
     sql = text("""
         INSERT INTO company_containers (company_id, container_number, created_at)
         SELECT DISTINCT 
