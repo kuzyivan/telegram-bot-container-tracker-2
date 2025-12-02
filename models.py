@@ -250,3 +250,16 @@ class ScheduledTrain(Base):
     
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    class ScheduleShareLink(Base):
+    """
+    Ссылки для публичного доступа к графику.
+    """
+    __tablename__ = "schedule_share_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False) # Уникальный код ссылки
+    name: Mapped[str] = mapped_column(String, nullable=False) # Описание (кому дали: "Для офиса")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    # Можно добавить created_by_user_id, если нужно знать, кто создал
