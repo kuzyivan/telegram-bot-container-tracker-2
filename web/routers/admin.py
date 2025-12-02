@@ -20,6 +20,7 @@ from db import SessionLocal
 from models import User, UserRequest, Train, Company, UserRole
 from model.terminal_container import TerminalContainer
 from web.auth import admin_required, get_current_user # Проверка прав
+from web.auth import get_password_hash  # <--- Импортируем функцию хеширования
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -276,6 +277,42 @@ async def admin_companies(
         "users": users,
         "UserRole": UserRole # Чтобы использовать Enum в шаблоне
     })
+
+@router.post("/users/create")
+async def create_web_user(
+    request: Request,
+    login: str = Form(...),
+    password: str = Form(...),
+    name: str = Form(...),
+    company_id: int = Form(0), # 0 = нет компании
+    role: str = Form("viewer"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Создает нового пользователя для Web-доступа."""
+
+    # Проверяем, нет ли уже такого логина
+    stmt = select(User).where(User.email_login == login)
+    existing = await db.execute(stmt)
+    if existing.scalar_one_or_none():
+        # В идеале нужно вернуть ошибку, но для простоты редиректим
+        return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
+
+    hashed_password = get_password_hash(password)
+    company_val = company_id if company_id > 0 else None
+
+    new_user = User(
+        email_login=login,
+        password_hash=hashed_password,
+        first_name=name,
+        company_id=company_val,
+        role=role
+    )
+
+    db.add(new_user)
+    await db.commit()
+
+    return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/companies/create")
 async def create_company(

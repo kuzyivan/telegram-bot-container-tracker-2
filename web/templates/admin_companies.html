@@ -41,6 +41,43 @@
         </form>
     </div>
 
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 border-l-4 border-l-green-500">
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+            Создать Web-пользователя (Клиента)
+        </h2>
+        
+        <form action="/admin/users/create" method="POST" class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Имя</label>
+                <input type="text" name="name" required placeholder="Иван Клиент" 
+                       class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Логин (Email)</label>
+                <input type="text" name="login" required placeholder="client" 
+                       class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Пароль</label>
+                <input type="text" name="password" required placeholder="12345" 
+                       class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1">Компания</label>
+                <select name="company_id" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none">
+                    <option value="0">— Без компании —</option>
+                    {% for comp in companies %}
+                    <option value="{{ comp.id }}">{{ comp.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition shadow-sm h-[42px]">
+                Создать
+            </button>
+        </form>
+    </div>
+
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="px-6 py-4 bg-slate-50 border-b border-slate-200">
             <h3 class="font-bold text-slate-700">Активные компании</h3>
