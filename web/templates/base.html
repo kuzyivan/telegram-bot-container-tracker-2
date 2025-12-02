@@ -39,14 +39,29 @@
 
                 <nav class="hidden md:flex gap-6 items-center">
                     <a href="/" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Поиск</a>
-                    <a href="/admin/dashboard" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Дашборд</a>
-                    
-                    <a href="/admin/companies" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition flex items-center gap-1">
-                        <span>Компании</span>
-                        <span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 rounded-md font-bold">NEW</span>
-                    </a>
 
-                    <a href="/logout" class="text-sm font-medium text-red-500 hover:text-red-700 transition ml-4">Выход</a>
+                    {% if user %}
+                        {% if user.role == 'admin' %}
+                            <a href="/admin/dashboard" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition">Дашборд</a>
+                            <a href="/admin/companies" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition flex items-center gap-1">
+                                <span>Компании</span>
+                                <span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 rounded-md font-bold">NEW</span>
+                            </a>
+                        {% else %}
+                            <a href="/client/dashboard" class="text-sm font-medium text-slate-600 hover:text-blue-600 transition flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                                Мои грузы
+                            </a>
+                        {% endif %}
+
+                        <div class="h-4 w-px bg-slate-300 mx-2"></div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs font-bold text-slate-500 uppercase">{{ user.role }}</span>
+                            <a href="/logout" class="text-sm font-medium text-red-500 hover:text-red-700 transition">Выход</a>
+                        </div>
+                    {% else %}
+                        <a href="/login" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow-sm">Войти</a>
+                    {% endif %}
                 </nav>
 
             <div class="flex items-center gap-4">

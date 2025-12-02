@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, or_, desc, and_, not_, func # <--- Добавили операторы
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
 # --- Хак для импорта модулей из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -17,6 +18,9 @@ from db import SessionLocal
 from models import Tracking, Train
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
+from web.auth import get_current_user # Добавь импорт
+from models import User # Добавь импорт
+from typing import Optional # Добавь импорт
 
 router = APIRouter()
 
@@ -311,3 +315,14 @@ async def export_search_results(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@router.get("/")
+async def read_root(
+    request: Request, 
+    user: Optional[User] = Depends(get_current_user) # <-- Добавляем dependency
+):
+    """Отображает главную страницу поиска."""
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "user": user # <-- Передаем юзера в шаблон
+    })

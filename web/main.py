@@ -10,6 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from web.routers import public, admin, auth # <-- Добавили auth
 from web.auth import login_required # <-- Импортируем функцию защиты
+from web.routers import public, admin, auth, client # <--- Добавили client
 
 app = FastAPI(title="Logistrail Tracker")
 
@@ -24,6 +25,11 @@ app.include_router(public.router)
 app.include_router(
     admin.router, 
     dependencies=[Depends(login_required)] 
+)
+
+app.include_router(
+    client.router, 
+    dependencies=[Depends(login_required)]
 )
 
 # Редирект с корня на логин или дашборд (по желанию)

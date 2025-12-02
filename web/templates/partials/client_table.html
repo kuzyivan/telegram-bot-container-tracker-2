@@ -1,0 +1,73 @@
+{% for item in containers %}
+<tr class="hover:bg-slate-50 transition group">
+    <td class="px-6 py-4">
+        <div class="font-bold text-blue-600 font-mono text-base">
+            {{ item.number }}
+        </div>
+        {% if item.status and item.status.wagon_number %}
+        <div class="text-xs text-slate-400 mt-1">
+            Вагон: {{ item.status.wagon_number }}
+        </div>
+        {% endif %}
+    </td>
+
+    <td class="px-6 py-4">
+        {% if item.status %}
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-1 text-slate-900 font-medium">
+                    <span>{{ item.status.from_station or '?' }}</span>
+                    <span class="text-slate-300">➝</span>
+                    <span>{{ item.status.to_station or '?' }}</span>
+                </div>
+                {% if item.status.trip_start_datetime %}
+                <span class="text-xs text-slate-400">
+                    Выход: {{ item.status.trip_start_datetime.strftime('%d.%m.%Y') }}
+                </span>
+                {% endif %}
+            </div>
+        {% else %}
+            <span class="text-slate-400 italic">Нет данных</span>
+        {% endif %}
+    </td>
+
+    <td class="px-6 py-4">
+        {% if item.status %}
+            <div class="font-medium text-slate-800">
+                {{ item.status.operation }}
+            </div>
+            <div class="text-xs text-slate-500 mt-0.5">
+                ст. {{ item.status.current_station }}
+            </div>
+        {% else %}
+            —
+        {% endif %}
+    </td>
+
+    <td class="px-6 py-4 whitespace-nowrap">
+        {% if item.status and item.status.operation_date %}
+            {{ item.status.operation_date.strftime('%d.%m %H:%M') }}
+        {% else %}
+            —
+        {% endif %}
+    </td>
+
+    <td class="px-6 py-4 align-middle">
+        {% if item.status and item.progress > 0 %}
+            <div class="w-24 bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div class="bg-blue-600 h-2.5 rounded-full transition-all duration-1000" style="width: {{ item.progress }}%"></div>
+            </div>
+            <div class="text-xs text-slate-500 mt-1 text-center w-24">
+                {{ item.progress }}% ({{ item.status.km_left or '?' }} км)
+            </div>
+        {% else %}
+            <span class="text-xs text-slate-400">Н/Д</span>
+        {% endif %}
+    </td>
+</tr>
+{% else %}
+<tr>
+    <td colspan="5" class="px-6 py-8 text-center text-slate-500">
+        Контейнеры не найдены.
+    </td>
+</tr>
+{% endfor %}
