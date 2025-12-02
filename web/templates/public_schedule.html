@@ -14,11 +14,11 @@
         .fc-event {
             background-color: #ffffff !important;
             border: 1px solid #e2e8f0 !important;
-            border-left: 3px solid #3b82f6 !important;
+            /* border-left задается динамически в JS */
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             margin-bottom: 4px !important;
-            cursor: pointer; /* Курсор-рука, чтобы показать кликабельность */
+            cursor: pointer;
             transition: transform 0.1s ease, box-shadow 0.1s ease;
         }
         .fc-event:hover {
@@ -36,7 +36,7 @@
 
         /* --- Анимация Модального окна --- */
         #modalOverlay { transition: opacity 0.3s ease-out; }
-        #modalPanel { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); } /* Эффект пружины */
+        #modalPanel { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
         
         .modal-closed {
             opacity: 0;
@@ -89,13 +89,13 @@
 
         <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden">
             
-            <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4">
+            <div id="modalHeader" class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 transition-colors duration-300">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1" id="modalDate">ДАТА</p>
+                        <p class="text-white/80 text-xs font-bold uppercase tracking-wider mb-1" id="modalDate">ДАТА</p>
                         <h2 class="text-white text-2xl font-bold leading-tight" id="modalDest">Назначение</h2>
                     </div>
-                    <button onclick="closeModal()" class="text-blue-200 hover:text-white transition p-1 rounded-full hover:bg-blue-500/20">
+                    <button onclick="closeModal()" class="text-white/70 hover:text-white transition p-1 rounded-full hover:bg-white/20">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
@@ -104,12 +104,12 @@
             <div class="p-6 space-y-5">
                 
                 <div class="flex items-start gap-3">
-                    <div class="bg-blue-50 p-2 rounded-lg text-blue-600 mt-1">
+                    <div class="bg-slate-100 p-2 rounded-lg text-slate-600 mt-1">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
                     <div>
                         <p class="text-sm text-slate-500 font-medium">Сервис поезда</p>
-                        <p class="text-lg font-bold text-slate-800" id="modalService">FESCO Moscow</p>
+                        <p class="text-lg font-bold text-slate-800" id="modalService">Service Name</p>
                     </div>
                 </div>
 
@@ -119,7 +119,7 @@
                     </div>
                     <div>
                         <p class="text-sm text-slate-500 font-medium">Доступный сток</p>
-                        <p class="text-base font-semibold text-slate-700" id="modalStock">20 x 40'HC</p>
+                        <p class="text-base font-semibold text-slate-700" id="modalStock">Stock Info</p>
                     </div>
                 </div>
 
@@ -129,7 +129,7 @@
                     </div>
                     <div>
                         <p class="text-sm text-slate-500 font-medium">Собственник</p>
-                        <p class="text-base font-semibold text-slate-700" id="modalOwner">ТрансКонтейнер</p>
+                        <p class="text-base font-semibold text-slate-700" id="modalOwner">Owner Name</p>
                     </div>
                 </div>
                 
@@ -165,23 +165,30 @@
                 selectable: false,
                 events: `/api/share/${token}/events`,
 
-                // --- КЛИК ПО СОБЫТИЮ ---
+                // Клик по событию -> Открытие модалки
                 eventClick: function(info) {
-                    // Останавливаем переход по ссылке (если есть)
                     info.jsEvent.preventDefault(); 
                     openModal(info.event);
                 },
 
-                // Рендер карточки в календаре
+                // Рендер карточки с ЦВЕТНОЙ полоской
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps;
-                    let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-2">`;
+                    // Получаем цвет, переданный с бэкенда
+                    let bgColor = arg.event.backgroundColor || '#3b82f6';
+                    
+                    let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-2" style="border-left: 3px solid ${bgColor}">`;
                     html += `<div class="text-xs font-extrabold text-slate-800 truncate" title="${props.dest}">📍 ${props.dest}</div>`;
-                    html += `<div class="text-[10px] font-bold text-blue-700 truncate">🚆 ${props.service}</div>`;
+                    html += `<div class="text-[10px] font-bold text-slate-700 truncate">🚆 ${props.service}</div>`;
+                    
                     if (props.stock) {
-                        html += `<div class="text-[10px] text-slate-500 truncate border-t border-slate-100 mt-1 pt-0.5">📦 ${props.stock}</div>`;
+                        html += `<div class="text-[10px] text-slate-600 truncate border-t border-slate-100 mt-0.5 pt-0.5">📦 ${props.stock}</div>`;
+                    }
+                    if (props.owner) {
+                        html += `<div class="text-[10px] text-slate-500 italic truncate">👤 ${props.owner}</div>`;
                     }
                     html += `</div>`;
+                    
                     return { html: html }
                 }
             });
@@ -193,14 +200,21 @@
         function openModal(event) {
             const props = event.extendedProps;
             
-            // 1. Форматируем дату
+            // 1. Дата
             const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
             const dateStr = event.start.toLocaleDateString('ru-RU', dateOptions);
-            
-            // 2. Заполняем данные
             document.getElementById('modalDate').innerText = dateStr;
+            
+            // 2. Данные
             document.getElementById('modalDest').innerText = props.dest;
             document.getElementById('modalService').innerText = props.service;
+            
+            // 3. Красим шапку модалки в цвет события!
+            const color = event.backgroundColor || '#3b82f6';
+            const header = document.getElementById('modalHeader');
+            // Сбрасываем классы градиента Tailwind и ставим свой цвет
+            header.className = 'px-6 py-4 transition-colors duration-300'; 
+            header.style.backgroundColor = color; 
             
             // Сток
             const elStock = document.getElementById('modalStock');
@@ -236,7 +250,7 @@
                 blockComment.classList.add('hidden');
             }
 
-            // 3. Анимация открытия
+            // Анимация открытия
             const overlay = document.getElementById('modalOverlay');
             overlay.classList.remove('modal-closed');
             overlay.classList.add('modal-open');
@@ -248,7 +262,6 @@
             overlay.classList.add('modal-closed');
         }
         
-        // Закрытие по Esc
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeModal();
         });

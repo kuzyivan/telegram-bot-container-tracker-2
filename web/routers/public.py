@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink # <--- ✅ ИМПОРТЫ
+from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from web.auth import get_current_user
@@ -200,7 +200,6 @@ async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(ge
         except OSError: pass
     return StreamingResponse(iterfile(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
-
 # ==========================================
 # === 🔗 ПУБЛИЧНЫЙ ДОСТУП К ГРАФИКУ ===
 # ==========================================
@@ -217,7 +216,6 @@ async def view_shared_schedule_page(
     link = res.scalar_one_or_none()
     
     if not link:
-        # Возвращаем 404, если ссылка не найдена
         return templates.TemplateResponse("client_no_company.html", {"request": request, "user": None}, status_code=404)
 
     return templates.TemplateResponse("public_schedule.html", {
@@ -262,7 +260,7 @@ async def get_shared_schedule_events(
             "comment": t.comment or ""
         }
         
-        # Передаем цвет, если он есть (или дефолтный)
+        # ✅ ИСПРАВЛЕНИЕ: Берем реальный цвет из базы
         color = t.color if hasattr(t, 'color') else "#3b82f6"
         
         events.append({
@@ -270,7 +268,7 @@ async def get_shared_schedule_events(
             "title": title,
             "start": t.schedule_date.isoformat(),
             "allDay": True,
-            "backgroundColor": color,
+            "backgroundColor": color, # Передаем правильный цвет
             "borderColor": color,
             "extendedProps": extendedProps
         })
