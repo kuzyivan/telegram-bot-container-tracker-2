@@ -24,8 +24,13 @@
     </td>
 
     <td class="px-6 py-4 align-top">
-        {% if item.status %}
-            <div class="flex flex-col gap-1">
+        {% if item.status_code == 'terminal' %}
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                Ожидает отправки
+            </span>
+        {% elif item.status %}
+            <div class="flex flex-col gap-1 min-w-[140px]">
                 <div class="flex items-center gap-1 text-slate-900 font-medium text-xs break-words">
                     <span class="truncate max-w-[100px]" title="{{ item.status.from_station }}">{{ item.status.from_station or '?' }}</span>
                     <span class="text-slate-300">➝</span>
@@ -43,7 +48,9 @@
     </td>
 
     <td class="px-6 py-4 align-top">
-        {% if item.status %}
+        {% if item.status_code == 'terminal' %}
+            <span class="text-slate-400 text-xs italic">На терминале</span>
+        {% elif item.status %}
             <div class="font-medium text-slate-800 text-sm leading-snug">
                 {{ item.status.operation }}
             </div>
