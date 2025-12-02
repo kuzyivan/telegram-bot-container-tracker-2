@@ -7,11 +7,11 @@
     
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h1 class="text-3xl font-bold text-slate-900">Дашборд</h1>
-            <p class="text-slate-500">Обзор активности системы и ключевые метрики.</p>
+            <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Дашборд</h1>
+            <p class="text-slate-500 dark:text-slate-400">Обзор активности системы и ключевые метрики.</p>
         </div>
         <div class="flex gap-3">
-            <a href="/admin/schedule" class="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition flex items-center gap-2 shadow-sm font-medium">
+            <a href="/admin/schedule" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center gap-2 shadow-sm font-medium">
                 📅 График поездов
             </a>
             <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-md flex items-center gap-2 font-medium" onclick="location.reload()">
@@ -23,21 +23,21 @@
 
     <div class="space-y-4">
         <div class="flex justify-start sm:justify-end">
-            <div class="inline-flex bg-slate-100 p-1 rounded-lg shadow-inner">
+            <div class="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg shadow-inner">
                 <button hx-get="/admin/dashboard/kpi?period=today" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-blue-600 focus:shadow-sm">
+                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
                     Сегодня
                 </button>
                 <button hx-get="/admin/dashboard/kpi?period=week" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-blue-600 focus:shadow-sm">
+                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
                     7 дней
                 </button>
                 <button hx-get="/admin/dashboard/kpi?period=month" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-blue-600 focus:shadow-sm">
+                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
                     30 дней
                 </button>
                 <button hx-get="/admin/dashboard/kpi?period=all" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-blue-600 focus:shadow-sm">
+                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
                     Все время
                 </button>
             </div>
@@ -50,8 +50,8 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-            <h3 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+        <div class="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
                 <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
                 Динамика запросов (14 дней)
             </h3>
@@ -60,30 +60,30 @@
             </div>
         </div>
 
-        <div class="bg-white p-0 rounded-2xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-            <div class="p-6 border-b border-slate-100 bg-slate-50">
-                <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <div class="bg-white dark:bg-slate-800 p-0 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
+            <div class="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     Лента действий
                 </h3>
             </div>
             <div class="flex-grow overflow-y-auto max-h-[320px]">
                 <table class="w-full text-sm text-left">
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                         {% for item in feed_data %}
-                        <tr class="hover:bg-slate-50 transition">
+                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
                             <td class="px-6 py-3">
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="font-semibold text-slate-900 text-xs">{{ item.username }}</span>
-                                    <span class="text-xs text-slate-400">{{ item.time }}</span>
+                                    <span class="font-semibold text-slate-900 dark:text-white text-xs">{{ item.username }}</span>
+                                    <span class="text-xs text-slate-400 dark:text-slate-500">{{ item.time }}</span>
                                 </div>
-                                <p class="text-xs text-slate-600 bg-slate-100 rounded px-2 py-1 inline-block truncate max-w-[200px]" title="{{ item.query }}">
+                                <p class="text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded px-2 py-1 inline-block truncate max-w-[200px]" title="{{ item.query }}">
                                     {{ item.query }}
                                 </p>
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td class="px-6 py-8 text-center text-slate-500">Пока тихо...</td></tr>
+                        <tr><td class="px-6 py-8 text-center text-slate-500 dark:text-slate-400">Пока тихо...</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -91,25 +91,25 @@
         </div>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
         
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                 Топ клиентов по объемам
             </h3>
 
-            <div class="inline-flex bg-slate-100 p-1 rounded-lg">
+            <div class="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                 <button hx-get="/admin/dashboard/clients?period=week" hx-target="#clients-chart-container" hx-swap="innerHTML"
-                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-purple-600 focus:shadow-sm">
+                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-purple-600 dark:focus:text-purple-400 focus:shadow-sm">
                     7 дней
                 </button>
                 <button hx-get="/admin/dashboard/clients?period=month" hx-target="#clients-chart-container" hx-swap="innerHTML"
-                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-purple-600 focus:shadow-sm">
+                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-purple-600 dark:focus:text-purple-400 focus:shadow-sm">
                     30 дней
                 </button>
                 <button hx-get="/admin/dashboard/clients?period=all" hx-target="#clients-chart-container" hx-swap="innerHTML"
-                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white hover:shadow-sm transition focus:bg-white focus:text-purple-600 focus:shadow-sm">
+                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-purple-600 dark:focus:text-purple-400 focus:shadow-sm">
                     Все время
                 </button>
             </div>
@@ -125,8 +125,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // Настройки по умолчанию
+    const isDarkMode = document.documentElement.classList.contains('dark');
     Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = '#64748b';
+    Chart.defaults.color = isDarkMode ? '#94a3b8' : '#64748b'; // slate-400 dark:slate-300
 
     // 1. Инициализация Графика Активности (он статический на этой странице)
     // График Клиентов инициализируется внутри своего partial файла
@@ -141,13 +142,18 @@
                 backgroundColor: (context) => {
                     const ctx = context.chart.ctx;
                     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
-                    gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+                    if (isDarkMode) {
+                        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.5)');
+                        gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+                    } else {
+                        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+                        gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+                    }
                     return gradient;
                 },
                 borderWidth: 3,
-                pointBackgroundColor: '#fff',
-                pointBorderColor: '#2563eb',
+                pointBackgroundColor: isDarkMode ? '#1e293b' : '#fff', // slate-800 : white
+                pointBorderColor: '#2563eb', // blue-600
                 pointRadius: 4,
                 pointHoverRadius: 6,
                 tension: 0.4,
@@ -161,7 +167,10 @@
             scales: { 
                 y: { 
                     beginAtZero: true, 
-                    grid: { borderDash: [4, 4], color: '#f1f5f9' },
+                    grid: { 
+                        borderDash: [4, 4], 
+                        color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#f1f5f9' // dark:slate-800-ish : slate-100
+                    },
                     ticks: { precision: 0 }
                 },
                 x: {

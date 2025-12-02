@@ -10,6 +10,7 @@
     }
 
     var ctx = document.getElementById('clientsChart').getContext('2d');
+    const isDarkMode = document.documentElement.classList.contains('dark');
     
     // Создаем глобальную переменную (через window), чтобы иметь к ней доступ при следующем обновлении
     window.clientsChartInstance = new Chart(ctx, {
@@ -34,19 +35,32 @@
             plugins: { 
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    backgroundColor: isDarkMode ? 'rgb(30 41 59 / 0.9)' : 'rgb(249 250 251 / 0.9)',
+                    titleColor: isDarkMode ? '#cbd5e1' : '#1e293b',
+                    bodyColor: isDarkMode ? '#cbd5e1' : '#1e293b',
                     padding: 10,
-                    cornerRadius: 8
+                    cornerRadius: 8,
+                    borderColor: isDarkMode ? '#334155' : '#e5e7eb',
+                    borderWidth: 1
                 }
             },
             scales: { 
                 y: { 
                     beginAtZero: true,
-                    grid: { borderDash: [4, 4], color: '#f1f5f9' },
-                    ticks: { precision: 0 }
+                    grid: { 
+                        borderDash: [4, 4], 
+                        color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#f1f5f9'
+                    },
+                    ticks: { 
+                        precision: 0,
+                        color: isDarkMode ? '#94a3b8' : '#64748b'
+                    }
                 },
                 x: {
-                    grid: { display: false }
+                    grid: { display: false },
+                    ticks: {
+                        color: isDarkMode ? '#94a3b8' : '#64748b'
+                    }
                 }
             },
             animation: {
