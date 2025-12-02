@@ -9,84 +9,64 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
-            darkMode: 'class', // Включаем ручное переключение
+            darkMode: 'class',
         }
     </script>
     <style>
-        :root {
-            --bg-main: #f8fafc;
-            --bg-card: #ffffff;
-            --border-color: #e2e8f0;
-            --text-primary: #1e293b;
-            --text-secondary: #475569;
-            --text-event-title: #1e293b;
-            --text-event-body: #334155;
-            --text-event-meta: #64748b;
-            --btn-bg: #ffffff;
-            --btn-hover-bg: #f8fafc;
-            --btn-active-bg: #eff6ff;
-            --btn-active-text: #2563eb;
-            --btn-active-border: #bfdbfe;
-            --today-bg: #f8fafc;
-        }
-        .dark {
-            --bg-main: #0f172a;
-            --bg-card: #1e293b;
-            --border-color: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --text-event-title: #f1f5f9;
-            --text-event-body: #cbd5e1;
-            --text-event-meta: #64748b;
-            --btn-bg: #1e293b;
-            --btn-hover-bg: #334155;
-            --btn-active-bg: #3730a3;
-            --btn-active-text: #e0e7ff;
-            --btn-active-border: #4f46e5;
-            --today-bg: #1a2233;
-        }
-
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: var(--bg-main);
-            color: var(--text-primary);
-            transition: background-color 0.3s, color 0.3s;
-        }
+        body { font-family: 'Inter', sans-serif; }
         
-        /* --- Стили календаря --- */
         .fc-event {
-            background-color: var(--bg-card) !important;
-            border: 1px solid var(--border-color) !important;
+            background-color: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            /* border-left задается динамически в JS */
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 4px !important;
+            margin-bottom: 2px !important;
             cursor: default;
-            transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.3s, border-color 0.3s;
+            transition: transform 0.1s;
         }
-        .fc-event:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
+        .fc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
         .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
         .fc-event-main { width: 100%; padding: 0; }
-        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: var(--text-primary) !important; }
-        .fc-button { background-color: var(--btn-bg) !important; color: var(--text-secondary) !important; border: 1px solid var(--border-color) !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-        .fc-button:hover { background-color: var(--btn-hover-bg) !important; }
-        .fc-button-active { background-color: var(--btn-active-bg) !important; color: var(--btn-active-text) !important; border-color: var(--btn-active-border) !important; }
-        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: var(--text-secondary) !important; padding-top: 10px !important; padding-bottom: 10px !important; }
-        .fc-daygrid-day-number { color: var(--text-secondary) !important; font-weight: 500; padding: 8px !important; }
-        .fc-day-today { background-color: var(--today-bg) !important; }
+        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #1e293b; }
+        .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .fc-button:hover { background-color: #f8fafc !important; }
+        .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
+        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
+        .fc-daygrid-day-number { color: #334155; font-weight: 500; padding: 8px !important; }
+        .fc-day-today { background-color: #f8fafc !important; }
 
-        /* --- Анимация Модального окна --- */
+        /* Dark mode overrides */
+        .dark .fc-event {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }
+        .dark .fc-toolbar-title { color: #e2e8f0 !important; }
+        .dark .fc-button {
+            background-color: #334155 !important;
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+        .dark .fc-button:hover { background-color: #475569 !important; }
+        .dark .fc-button-active {
+            background-color: #2563eb !important;
+            color: white !important;
+            border-color: #2563eb !important;
+        }
+        .dark .fc-col-header-cell-cushion { color: #94a3b8 !important; }
+        .dark .fc-daygrid-day-number { color: #cbd5e1 !important; }
+        .dark .fc-day-today { background-color: #1a2233 !important; }
+
+        /* Анимация Модалки */
         #modalOverlay { transition: opacity 0.3s ease-out; }
         #modalPanel { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        
         .modal-closed { opacity: 0; pointer-events: none; }
         .modal-closed #modalPanel { transform: scale(0.95) translateY(10px); opacity: 0; }
         .modal-open { opacity: 1; pointer-events: auto; }
         .modal-open #modalPanel { transform: scale(1) translateY(0); opacity: 1; }
     </style>
+    
     <script>
         if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
@@ -95,7 +75,7 @@
         }
     </script>
 </head>
-<body class="min-h-screen p-4 md:p-8">
+<body class="bg-slate-50 dark:bg-slate-900 min-h-screen p-4 md:p-8 transition-colors duration-300">
 
     <div class="max-w-7xl mx-auto space-y-6">
         <div class="flex flex-col sm:flex-row justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 gap-4">
@@ -192,11 +172,11 @@
     </div>
 
     <script>
+        // Логика переключения темы
         var themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
         var themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
         var themeToggleBtn = document.getElementById('theme-toggle');
 
-        // Инициализация иконки
         if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             themeToggleLightIcon.classList.remove('hidden');
         } else {
@@ -224,13 +204,18 @@
                     localStorage.setItem('color-theme', 'dark');
                 }
             }
+            // Перерисовка календаря при смене темы
+            if (typeof calendar !== 'undefined') {
+                calendar.render();
+            }
         });
+
 
         document.addEventListener('DOMContentLoaded', function() {
             var calendarEl = document.getElementById('calendar');
             var token = "{{ token }}";
 
-            var calendar = new FullCalendar.Calendar(calendarEl, {
+            window.calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 locale: 'ru',
                 firstDay: 1,
@@ -248,6 +233,7 @@
                     openModal(info.event);
                 },
 
+                // Рендер карточки с УВЕЛИЧЕННЫМ ШРИФТОМ
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps;
                     let bgColor = arg.event.backgroundColor || '#3b82f6';
@@ -259,36 +245,40 @@
                     let ownerColor = isDark ? 'var(--text-event-meta)' : '#64748b';
                     let borderColor = isDark ? 'var(--border-color)' : '#f1f5f9';
 
-                    let html = `<div class="flex flex-col gap-0.5 leading-tight py-1 px-2" style="border-left: 3px solid ${bgColor}">`;
-                    html += `<div style="color: ${titleColor}" class="text-xs font-extrabold truncate" title="${props.dest}">
-                        <svg class="w-3 h-3 inline-block mr-1 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    let html = `<div class="flex flex-col gap-1 leading-tight py-1.5 px-2" style="border-left: 3px solid ${bgColor}">`;
+                    
+                    // 1. Станция: 14px (text-sm), иконка 16px (w-4)
+                    html += `<div style="color: ${titleColor}" class="text-sm font-bold truncate" title="${props.dest}">
+                        <svg class="w-4 h-4 inline-block mr-1 mb-0.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                         ${props.dest}
                     </div>`;
-                    html += `<div style="color: ${serviceColor}" class="text-[10px] font-bold truncate">
-                        <svg class="w-3 h-3 inline-block mr-1 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
+                    
+                    // 2. Сервис: 12px (text-xs), иконка 14px (w-3.5)
+                    html += `<div style="color: ${serviceColor}" class="text-xs font-medium truncate">
+                        <svg class="w-3.5 h-3.5 inline-block mr-1 mb-0.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
                         ${props.service}
                     </div>`;
                     
+                    // 3. Сток
                     if (props.stock) {
-                        html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[10px] truncate border-t mt-0.5 pt-0.5">
-                            <svg class="w-3 h-3 inline-block mr-1 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[11px] truncate border-t mt-1 pt-1">
+                            <svg class="w-3 h-3 inline-block mr-1 mb-0.5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                             ${props.stock}
                         </div>`;
                     }
+                    // 4. Собственник
                     if (props.owner) {
-                        html += `<div style="color: ${ownerColor}" class="text-[10px] italic truncate">
-                            <svg class="w-3 h-3 inline-block mr-1 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        html += `<div style="color: ${ownerColor}" class="text-[11px] italic truncate">
+                            <svg class="w-3 h-3 inline-block mr-1 mb-0.5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             ${props.owner}
                         </div>`;
                     }
                     html += `</div>`;
-                    
                     return { html: html }
                 }
             });
             calendar.render();
 
-            // Перерисовываем календарь при смене темы
             const themeObserver = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     if (mutation.attributeName === 'class') {
