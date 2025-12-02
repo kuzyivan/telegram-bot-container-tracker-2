@@ -1,7 +1,7 @@
 {% for item in containers %}
 <tr class="hover:bg-slate-50 transition group">
     
-    <td class="px-6 py-4">
+    <td class="px-6 py-4 align-top">
         <div class="font-bold text-blue-600 font-mono text-base">
             {{ item.number }}
         </div>
@@ -13,9 +13,9 @@
         {% endif %}
     </td>
 
-    <td class="px-6 py-4">
+    <td class="px-6 py-4 align-top">
         {% if item.train %}
-            <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono text-xs font-bold border border-slate-200 whitespace-nowrap">
+            <span class="inline-block bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono text-xs font-bold border border-slate-200 whitespace-nowrap">
                 {{ item.train }}
             </span>
         {% else %}
@@ -23,13 +23,13 @@
         {% endif %}
     </td>
 
-    <td class="px-6 py-4">
+    <td class="px-6 py-4 align-top">
         {% if item.status %}
-            <div class="flex flex-col gap-1 min-w-[140px]">
-                <div class="flex items-center gap-1 text-slate-900 font-medium text-xs">
-                    <span class="truncate max-w-[80px]" title="{{ item.status.from_station }}">{{ item.status.from_station or '?' }}</span>
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-1 text-slate-900 font-medium text-xs break-words">
+                    <span class="truncate max-w-[100px]" title="{{ item.status.from_station }}">{{ item.status.from_station or '?' }}</span>
                     <span class="text-slate-300">➝</span>
-                    <span class="truncate max-w-[80px]" title="{{ item.status.to_station }}">{{ item.status.to_station or '?' }}</span>
+                    <span class="truncate max-w-[100px]" title="{{ item.status.to_station }}">{{ item.status.to_station or '?' }}</span>
                 </div>
                 {% if item.status.trip_start_datetime %}
                 <span class="text-[10px] text-slate-400">
@@ -42,12 +42,12 @@
         {% endif %}
     </td>
 
-    <td class="px-6 py-4">
+    <td class="px-6 py-4 align-top">
         {% if item.status %}
-            <div class="font-medium text-slate-800 text-sm truncate max-w-[150px]" title="{{ item.status.operation }}">
+            <div class="font-medium text-slate-800 text-sm leading-snug">
                 {{ item.status.operation }}
             </div>
-            <div class="text-xs text-slate-500 mt-0.5 truncate max-w-[150px]">
+            <div class="text-xs text-slate-500 mt-1">
                 {{ item.status.current_station }}
             </div>
         {% else %}
@@ -55,25 +55,28 @@
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
+    <td class="px-6 py-4 whitespace-nowrap text-xs text-slate-600 align-top">
         {% if item.status and item.status.operation_date %}
-            {{ item.status.operation_date.strftime('%d.%m %H:%M') }}
+            {{ item.status.operation_date.strftime('%d.%m.%Y') }}
+            <div class="text-slate-400 text-[10px]">
+                {{ item.status.operation_date.strftime('%H:%M') }}
+            </div>
         {% else %}
             —
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 align-middle">
+    <td class="px-6 py-4 align-top">
         {% if item.status and item.progress > 0 %}
-            <div class="w-20 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+            <div class="w-full max-w-[80px] bg-slate-200 rounded-full h-1.5 overflow-hidden">
                 <div class="bg-blue-600 h-1.5 rounded-full transition-all duration-1000" style="width: {{ item.progress }}%"></div>
             </div>
-            <div class="text-[10px] text-slate-500 mt-1 text-center w-20">
+            <div class="text-[10px] text-slate-500 mt-1">
                 {{ item.progress }}%
             </div>
         {% else %}
             {% if item.status_code == 'arrived' %}
-                <span class="text-green-600 text-xs font-bold">Прибыл</span>
+                <span class="text-green-600 text-xs font-bold bg-green-50 px-2 py-0.5 rounded">Прибыл</span>
             {% else %}
                 <span class="text-slate-300 text-xs">—</span>
             {% endif %}

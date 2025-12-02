@@ -3,63 +3,110 @@
 {% block title %}Мои грузы — {{ company.name }}{% endblock %}
 
 {% block content %}
-<div class="space-y-8 animate-fade-in pb-10">
+<div class="space-y-6 animate-fade-in pb-10">
 
-    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <div class="flex items-center gap-3 mb-1">
-                <h1 class="text-2xl font-bold text-slate-900">Мои грузы</h1>
+            <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-3">
+                Мои грузы
                 <span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider">
                     {{ company.name }}
                 </span>
-            </div>
-            <p class="text-slate-500 text-sm">Отслеживание контейнеров в реальном времени</p>
-        </div>
-        
-        <div class="relative w-full md:w-64">
-            <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            </div>
-            <input type="text" 
-                   name="q"
-                   hx-get="/client/containers/search" 
-                   hx-target="#containers-table-body" 
-                   hx-trigger="keyup changed delay:300ms" 
-                   placeholder="Поиск по номеру..." 
-                   class="block w-full p-2.5 pl-10 text-sm text-slate-900 border border-slate-200 rounded-lg bg-slate-50 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+            </h1>
+            <p class="text-slate-500 text-sm">Оперативный мониторинг контейнеров</p>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-            <div>
-                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Всего контейнеров</p>
-                <p class="text-3xl font-extrabold text-slate-900 mt-2">{{ kpi.total }}</p>
-            </div>
-            <div class="p-3 bg-slate-100 rounded-xl text-slate-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-            </div>
-        </div>
-
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-            <div>
-                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">В пути</p>
-                <p class="text-3xl font-extrabold text-blue-600 mt-2">{{ kpi.in_transit }}</p>
-            </div>
-            <div class="p-3 bg-blue-50 rounded-xl text-blue-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <div onclick="applyFilter('all')" 
+             class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-slate-400 transition relative overflow-hidden group select-none">
+            <div id="indicator-all" class="absolute top-0 left-0 w-1 h-full bg-slate-500 transition-opacity" style="opacity: 1;"></div>
+            
+            <div class="flex justify-between items-center pointer-events-none">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Всего</p>
+                    <p class="text-2xl font-extrabold text-slate-900 mt-1">{{ kpi.total }}</p>
+                </div>
+                <div class="p-2 bg-slate-100 rounded-lg text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                </div>
             </div>
         </div>
 
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
-            <div>
-                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Прибыло / Назначение</p>
-                <p class="text-3xl font-extrabold text-green-600 mt-2">{{ kpi.arrived }}</p>
-            </div>
-            <div class="p-3 bg-green-50 rounded-xl text-green-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        <div onclick="applyFilter('transit')"
+             class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-blue-400 transition relative overflow-hidden group select-none">
+            <div id="indicator-transit" class="absolute top-0 left-0 w-1 h-full bg-blue-600 transition-opacity" style="opacity: 0;"></div>
+            
+            <div class="flex justify-between items-center pointer-events-none">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">В пути</p>
+                    <p class="text-2xl font-extrabold text-blue-600 mt-1">{{ kpi.in_transit }}</p>
+                </div>
+                <div class="p-2 bg-blue-50 rounded-lg text-blue-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
             </div>
         </div>
+
+        <div onclick="applyFilter('arrived')"
+             class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-green-400 transition relative overflow-hidden group select-none">
+            <div id="indicator-arrived" class="absolute top-0 left-0 w-1 h-full bg-green-600 transition-opacity" style="opacity: 0;"></div>
+            
+            <div class="flex justify-between items-center pointer-events-none">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Прибыло</p>
+                    <p class="text-2xl font-extrabold text-green-600 mt-1">{{ kpi.arrived }}</p>
+                </div>
+                <div class="p-2 bg-green-50 rounded-lg text-green-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <form id="filter-form" 
+              hx-get="/client/containers/search" 
+              hx-target="#containers-table-body" 
+              hx-trigger="submit, input delay:500ms"
+              class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            
+            <input type="hidden" name="status" id="status-input" value="all">
+
+            <div class="col-span-1">
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Контейнер</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <input type="text" name="q" placeholder="Номер..." 
+                           class="block w-full p-2 pl-9 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="col-span-1">
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Поезд (Терминал)</label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                    </div>
+                    <input type="text" name="train" placeholder="Например: K25-103" 
+                           class="block w-full p-2 pl-9 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="col-span-2 grid grid-cols-2 gap-2">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">С даты</label>
+                    <input type="date" name="date_from" class="block w-full p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">По дату</label>
+                    <input type="date" name="date_to" class="block w-full p-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600">
+                </div>
+            </div>
+        </form>
     </div>
 
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -67,11 +114,11 @@
             <table class="w-full text-sm text-left text-slate-500">
                 <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
                     <tr>
-                        <th class="px-6 py-3">Контейнер</th>
-                        <th class="px-6 py-3">Маршрут</th>
-                        <th class="px-6 py-3">Текущая операция</th>
-                        <th class="px-6 py-3">Дата (UTC)</th>
-                        <th class="px-6 py-3">Прогресс</th>
+                        <th class="px-6 py-3 w-[15%]">Контейнер</th>
+                        <th class="px-6 py-3 w-[10%]">Поезд</th> <th class="px-6 py-3 w-[20%]">Маршрут</th>
+                        <th class="px-6 py-3 w-[25%]">Операция</th>
+                        <th class="px-6 py-3 w-[15%]">Дата (UTC)</th>
+                        <th class="px-6 py-3 w-[15%]">Прогресс</th>
                     </tr>
                 </thead>
                 <tbody id="containers-table-body" class="divide-y divide-slate-100">
@@ -81,4 +128,41 @@
         </div>
     </div>
 </div>
+
+<script>
+    function applyFilter(statusType) {
+        console.log("Фильтр нажат:", statusType);
+
+        // 1. Обновляем скрытое поле
+        const hiddenInput = document.getElementById('status-input');
+        if (hiddenInput) {
+            hiddenInput.value = statusType;
+        } else {
+            console.error("Ошибка: не найдено поле status-input");
+            return;
+        }
+
+        // 2. Обновляем цвета индикаторов на карточках
+        const indicators = {
+            'all': document.getElementById('indicator-all'),
+            'transit': document.getElementById('indicator-transit'),
+            'arrived': document.getElementById('indicator-arrived')
+        };
+
+        // Сбрасываем все
+        for (const key in indicators) {
+            if (indicators[key]) indicators[key].style.opacity = '0';
+        }
+        // Включаем нужный
+        if (indicators[statusType]) {
+            indicators[statusType].style.opacity = '1';
+        }
+
+        // 3. Отправляем форму через HTMX
+        const form = document.getElementById('filter-form');
+        if (form) {
+            htmx.trigger(form, 'submit');
+        }
+    }
+</script>
 {% endblock %}
