@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, desc, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from queries.company_queries import sync_terminal_to_company_containers # <-- Новый импорт
 
 # --- Хак для импортов из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -358,4 +359,17 @@ async def update_user_role(
     await db.execute(stmt)
     await db.commit()
 
+    return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
+
+@router.post("/companies/sync")
+async def sync_companies_data(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Ручной запуск синхронизации контейнеров по названию компании."""
+    count = await sync_terminal_to_company_containers(db)
+
+    # Можно передать флеш-сообщение или просто перезагрузить
+    # Для простоты пока просто редирект, но в логах ты увидишь результат.
     return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
