@@ -228,7 +228,7 @@
                     html += `<div style="color: ${serviceColor}" class="text-[10px] font-bold truncate">🚆 ${props.service}</div>`;
                     
                     if (props.stock) {
-                        html += `<div style="color: ${stockColor}" class="text-[10px] truncate border-t mt-0.5 pt-0.5" style="border-color: ${borderColor}cc">📦 ${props.stock}</div>`;
+                        html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[10px] truncate border-t mt-0.5 pt-0.5">📦 ${props.stock}</div>`;
                     }
                     if (props.owner) {
                         html += `<div style="color: ${ownerColor}" class="text-[10px] italic truncate">👤 ${props.owner}</div>`;
