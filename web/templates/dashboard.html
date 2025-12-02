@@ -1,50 +1,66 @@
 {% extends "base.html" %}
 
-{% block title %}Админ-Дашборд — Logistrail{% endblock %}
+{% block title %}Аналитика — Logistrail{% endblock %}
 
 {% block content %}
 <div class="space-y-8 animate-fade-in pb-10">
     
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div class="flex justify-between items-center">
         <div>
-            <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Дашборд</h1>
-            <p class="text-slate-500 dark:text-slate-400">Обзор активности системы и ключевые метрики.</p>
+            <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Бизнес-аналитика</h1>
+            <p class="text-slate-500 dark:text-slate-400">Обзор ключевых показателей за 30 дней.</p>
         </div>
         <div class="flex gap-3">
-            <a href="/admin/schedule" class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition flex items-center gap-2 shadow-sm font-medium">
-                📅 График поездов
-            </a>
-            <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-md flex items-center gap-2 font-medium" onclick="location.reload()">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Обновить
+            <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-md flex items-center gap-2 font-bold text-sm" onclick="location.reload()">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Обновить данные
             </button>
         </div>
     </div>
 
-    <div class="space-y-4">
-        <div class="flex justify-start sm:justify-end">
-            <div class="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg shadow-inner">
-                <button hx-get="/admin/dashboard/kpi?period=today" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
-                    Сегодня
-                </button>
-                <button hx-get="/admin/dashboard/kpi?period=week" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
-                    7 дней
-                </button>
-                <button hx-get="/admin/dashboard/kpi?period=month" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
-                    30 дней
-                </button>
-                <button hx-get="/admin/dashboard/kpi?period=all" hx-target="#kpi-grid" hx-swap="innerHTML"
-                        class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-blue-600 dark:focus:text-blue-400 focus:shadow-sm">
-                    Все время
-                </button>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ср. срок доставки</p>
+            <div class="mt-2 flex items-end gap-2">
+                <p class="text-3xl font-extrabold text-slate-900 dark:text-white">{{ avg_delivery_days }}</p>
+                <p class="text-sm font-medium text-slate-500 mb-1">дней</p>
+            </div>
+            <div class="mt-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                <div class="bg-green-500 h-1.5 rounded-full" style="width: 70%"></div>
             </div>
         </div>
 
-        <div id="kpi-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {% include "partials/kpi_cards.html" %}
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ср. время простоя</p>
+            <div class="mt-2 flex items-end gap-2">
+                <p class="text-3xl font-extrabold text-slate-900 dark:text-white">{{ avg_idle_days }}</p>
+                <p class="text-sm font-medium text-slate-500 mb-1">дней</p>
+            </div>
+            <div class="mt-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                <div class="bg-orange-500 h-1.5 rounded-full" style="width: 40%"></div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+            <div>
+                <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Типы (30 дн)</p>
+                <div class="text-sm text-slate-600 dark:text-slate-300 space-y-1">
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-blue-500"></span> 20ft: <b>{{ count_20 }}</b></div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-purple-500"></span> 40ft: <b>{{ count_40 }}</b></div>
+                </div>
+            </div>
+            <div class="h-16 w-16">
+                <canvas id="typesChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Поездов в пути</p>
+            <div class="mt-2 flex items-end gap-2">
+                <p class="text-3xl font-extrabold text-blue-600 dark:text-blue-400">{{ active_trains }}</p>
+                <p class="text-sm font-medium text-slate-500 mb-1">составов</p>
+            </div>
         </div>
     </div>
 
@@ -52,22 +68,36 @@
         
         <div class="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
-                Динамика запросов (14 дней)
+                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                Ритмичность погрузки (Контейнеров)
             </h3>
-            <div class="relative h-80 w-full">
-                <canvas id="activityChart"></canvas>
+            <div class="relative h-72 w-full">
+                <canvas id="rhythmChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">Топ клиентов</h3>
+            <div class="relative h-64 w-full flex-grow flex items-center justify-center">
+                <canvas id="clientsPieChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6">Нагрузка на бот (Запросы)</h3>
+            <div class="relative h-64 w-full">
+                <canvas id="requestsChart"></canvas>
             </div>
         </div>
 
         <div class="bg-white dark:bg-slate-800 p-0 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
             <div class="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Лента действий
-                </h3>
+                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Последние действия</h3>
             </div>
-            <div class="flex-grow overflow-y-auto max-h-[320px]">
+            <div class="flex-grow overflow-y-auto max-h-[250px]">
                 <table class="w-full text-sm text-left">
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                         {% for item in feed_data %}
@@ -77,13 +107,11 @@
                                     <span class="font-semibold text-slate-900 dark:text-white text-xs">{{ item.username }}</span>
                                     <span class="text-xs text-slate-400 dark:text-slate-500">{{ item.time }}</span>
                                 </div>
-                                <p class="text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded px-2 py-1 inline-block truncate max-w-[200px]" title="{{ item.query }}">
+                                <p class="text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded px-2 py-1 inline-block truncate max-w-[300px]">
                                     {{ item.query }}
                                 </p>
                             </td>
                         </tr>
-                        {% else %}
-                        <tr><td class="px-6 py-8 text-center text-slate-500 dark:text-slate-400">Пока тихо...</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -91,96 +119,97 @@
         </div>
     </div>
 
-    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-        
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                Топ клиентов по объемам
-            </h3>
-
-            <div class="inline-flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                <button hx-get="/admin/dashboard/clients?period=week" hx-target="#clients-chart-container" hx-swap="innerHTML"
-                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-purple-600 dark:focus:text-purple-400 focus:shadow-sm">
-                    7 дней
-                </button>
-                <button hx-get="/admin/dashboard/clients?period=month" hx-target="#clients-chart-container" hx-swap="innerHTML"
-                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-purple-600 dark:focus:text-purple-400 focus:shadow-sm">
-                    30 дней
-                </button>
-                <button hx-get="/admin/dashboard/clients?period=all" hx-target="#clients-chart-container" hx-swap="innerHTML"
-                        class="px-3 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-700 transition focus:bg-white dark:focus:bg-slate-700 focus:text-purple-600 dark:focus:text-purple-400 focus:shadow-sm">
-                    Все время
-                </button>
-            </div>
-        </div>
-
-        <div id="clients-chart-container" class="w-full">
-            {% include "partials/clients_chart.html" %}
-        </div>
-    </div>
-
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Настройки по умолчанию
-    const isDarkMode = document.documentElement.classList.contains('dark');
+    const isDark = document.documentElement.classList.contains('dark');
     Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = isDarkMode ? '#94a3b8' : '#64748b'; // slate-400 dark:slate-300
+    Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
 
-    // 1. Инициализация Графика Активности (он статический на этой странице)
-    // График Клиентов инициализируется внутри своего partial файла
-    new Chart(document.getElementById('activityChart'), {
+    // --- 1. Doughnut: Types (20 vs 40) ---
+    new Chart(document.getElementById('typesChart'), {
+        type: 'doughnut',
+        data: {
+            labels: ['20 ft', '40 ft'],
+            datasets: [{
+                data: [{{ count_20 }}, {{ count_40 }}],
+                backgroundColor: ['#3b82f6', '#a855f7'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            cutout: '75%'
+        }
+    });
+
+    // --- 2. Line: Rhythm (Погрузка) ---
+    new Chart(document.getElementById('rhythmChart'), {
         type: 'line',
         data: {
-            labels: {{ chart_activity_labels|safe }},
+            labels: {{ rhythm_labels|safe }},
             datasets: [{
-                label: 'Запросы',
-                data: {{ chart_activity_values|safe }},
-                borderColor: '#2563eb', // blue-600
-                backgroundColor: (context) => {
-                    const ctx = context.chart.ctx;
-                    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-                    if (isDarkMode) {
-                        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.5)');
-                        gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
-                    } else {
-                        gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
-                        gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
-                    }
+                label: 'Контейнеров',
+                data: {{ rhythm_values|safe }},
+                borderColor: '#3b82f6',
+                backgroundColor: (ctx) => {
+                    const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
+                    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
+                    gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
                     return gradient;
                 },
-                borderWidth: 3,
-                pointBackgroundColor: isDarkMode ? '#1e293b' : '#fff', // slate-800 : white
-                pointBorderColor: '#2563eb', // blue-600
-                pointRadius: 4,
-                pointHoverRadius: 6,
-                tension: 0.4,
-                fill: true
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
-            scales: { 
-                y: { 
-                    beginAtZero: true, 
-                    grid: { 
-                        borderDash: [4, 4], 
-                        color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#f1f5f9' // dark:slate-800-ish : slate-100
-                    },
-                    ticks: { precision: 0 }
-                },
-                x: {
-                    grid: { display: false }
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index',
-            },
+            scales: { y: { beginAtZero: true, grid: { color: isDark ? '#334155' : '#e2e8f0' } }, x: { grid: { display: false } } }
+        }
+    });
+
+    // --- 3. Pie: Clients ---
+    new Chart(document.getElementById('clientsPieChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ clients_labels|safe }},
+            datasets: [{
+                data: {{ clients_values|safe }},
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'],
+                borderWidth: 2,
+                borderColor: isDark ? '#1e293b' : '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } }
+        }
+    });
+
+    // --- 4. Bar: Requests ---
+    new Chart(document.getElementById('requestsChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ req_labels|safe }},
+            datasets: [{
+                label: 'Запросы',
+                data: {{ req_values|safe }},
+                backgroundColor: '#10b981',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, grid: { color: isDark ? '#334155' : '#e2e8f0' } }, x: { grid: { display: false } } }
         }
     });
 </script>
