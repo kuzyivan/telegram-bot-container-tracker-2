@@ -127,6 +127,7 @@
 <script>
     const isDark = document.documentElement.classList.contains('dark');
     Chart.defaults.font.family = "'Inter', sans-serif";
+    // Цвет текста тоже сделаем чуть мягче
     Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
 
     // --- 1. Line: Rhythm (Погрузка) ---
@@ -153,7 +154,20 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, grid: { color: isDark ? '#334155' : '#e2e8f0' } }, x: { grid: { display: false } } }
+            scales: { 
+                y: { 
+                    beginAtZero: true, 
+                    grid: { 
+                        // 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ
+                        color: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9' 
+                    },
+                    border: { display: false } // Убираем жирную линию оси
+                }, 
+                x: { 
+                    grid: { display: false },
+                    border: { display: false }
+                } 
+            }
         }
     });
 
@@ -166,13 +180,14 @@
                 data: {{ clients_values|safe }},
                 backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'],
                 borderWidth: 2,
+                // Цвет границ сегментов в темной теме (под фон карточки)
                 borderColor: isDark ? '#1e293b' : '#ffffff'
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } }
+            plugins: { legend: { position: 'right', labels: { boxWidth: 12, usePointStyle: true } } }
         }
     });
 
@@ -192,7 +207,20 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
-            scales: { y: { beginAtZero: true, grid: { color: isDark ? '#334155' : '#e2e8f0' } }, x: { grid: { display: false } } }
+            scales: { 
+                y: { 
+                    beginAtZero: true, 
+                    grid: { 
+                        // 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ
+                        color: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9' 
+                    },
+                    border: { display: false }
+                }, 
+                x: { 
+                    grid: { display: false },
+                    border: { display: false }
+                } 
+            }
         }
     });
 </script>
