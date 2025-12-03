@@ -31,45 +31,39 @@ async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# --- 🔥 НОВАЯ СТАТИСТИКА (V2) ---
+# --- 🔥 НОВАЯ СТАТИСТИКА (V3 + Trend) ---
 async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: date):
     """
-    Собирает статистику за произвольный период.
+    Собирает статистику и рассчитывает линию тренда.
     """
     
-    # Хелпер для фильтрации по дате
     def filter_date(query, column):
         return query.where(column >= date_from).where(column <= date_to)
 
-    # 1. KPI: Новые пользователи
+    # 1. KPI
     new_users = await session.scalar(filter_date(select(func.count(User.id)), User.created_at)) or 0
     
-    # 2. KPI: Активные поезда (В моменте, без фильтра дат, так как это текущее состояние)
     active_trains = await session.scalar(
         select(func.count(Train.id))
         .where(Train.last_operation_date >= (datetime.now() - timedelta(days=45)))
         .where(and_(Train.last_operation.not_ilike('%выгрузка%'), Train.last_operation.isnot(None)))
     ) or 0
 
-    # 3. 📦 ВСЕГО ОТПРАВЛЕНО (Вместо типов)
-    # Считаем по таблице TerminalContainer (принятые к перевозке) за этот период
+    # 2. Всего отправлено
     total_sent_stmt = select(func.count(TerminalContainer.id))
-    # Используем accept_date если есть, иначе created_at
     total_sent = await session.scalar(filter_date(total_sent_stmt, TerminalContainer.created_at)) or 0
 
-    # 4. 🚚 СРОКИ ДОСТАВКИ (Tracking: End - Start)
-    # Считаем только для рейсов, которые ЗАВЕРШИЛИСЬ в выбранный период (trip_end_datetime попадает в интервал)
+    # 3. Сроки доставки
     avg_delivery_stmt = (
         select(func.avg(func.extract('day', Tracking.trip_end_datetime - Tracking.trip_start_datetime)))
         .where(Tracking.trip_end_datetime.isnot(None))
         .where(Tracking.trip_start_datetime.isnot(None))
-        # Фильтруем по дате ОКОНЧАНИЯ рейса
         .where(func.date(Tracking.trip_end_datetime) >= date_from)
         .where(func.date(Tracking.trip_end_datetime) <= date_to)
     )
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
-    # 5. 📈 Ритмичность погрузки (График)
+    # 4. 📈 Ритмичность погрузки + ТРЕНД
     rhythm_stmt = (
         select(func.date(TerminalContainer.created_at).label('date'), func.count(TerminalContainer.id))
         .where(func.date(TerminalContainer.created_at) >= date_from)
@@ -79,10 +73,44 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     )
     rhythm_res = await session.execute(rhythm_stmt)
     rhythm_rows = rhythm_res.all()
-    rhythm_labels = [r.date.strftime('%d.%m') for r in rhythm_rows]
-    rhythm_values = [r[1] for r in rhythm_rows]
+    
+    # Заполняем пропуски дат нулями (чтобы график был честным)
+    rhythm_dict = {r.date: r[1] for r in rhythm_rows}
+    rhythm_labels = []
+    rhythm_values = []
+    
+    current = date_from
+    while current <= date_to:
+        rhythm_labels.append(current.strftime('%d.%m'))
+        rhythm_values.append(rhythm_dict.get(current, 0))
+        current += timedelta(days=1)
 
-    # 6. 🍰 Клиенты (Pie Chart)
+    # --- 🧮 Расчет Линейной Регрессии (y = mx + c) ---
+    trend_values = []
+    n = len(rhythm_values)
+    if n > 1:
+        x = list(range(n)) # [0, 1, 2, ...]
+        y = rhythm_values
+        
+        sum_x = sum(x)
+        sum_y = sum(y)
+        sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+        sum_xx = sum(xi ** 2 for xi in x)
+        
+        denominator = n * sum_xx - sum_x ** 2
+        
+        if denominator != 0:
+            m = (n * sum_xy - sum_x * sum_y) / denominator # Наклон
+            c = (sum_y - m * sum_x) / n                 # Смещение
+            
+            # Генерируем точки линии
+            trend_values = [max(0, round(m * xi + c, 1)) for xi in x] # max(0) чтобы не уходило в минус
+        else:
+            trend_values = [0] * n
+    else:
+        trend_values = rhythm_values # Если 1 точка, тренд равен точке
+
+    # 5. Клиенты
     clients_stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label('cnt'))
         .where(func.date(TerminalContainer.created_at) >= date_from)
@@ -97,7 +125,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     clients_labels = [r.client for r in clients_rows]
     clients_values = [r.cnt for r in clients_rows]
 
-    # 7. 🤖 Запросы в бот
+    # 6. Запросы
     req_stmt = (
         select(func.date(UserRequest.timestamp).label("date"), func.count(UserRequest.id))
         .where(func.date(UserRequest.timestamp) >= date_from)
@@ -113,10 +141,11 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     return {
         "new_users": new_users,
         "active_trains": active_trains,
-        "total_sent": total_sent, # Новая метрика
+        "total_sent": total_sent,
         "avg_delivery_days": round(avg_delivery_days, 1),
         "rhythm_labels": json.dumps(rhythm_labels),
         "rhythm_values": json.dumps(rhythm_values),
+        "trend_values": json.dumps(trend_values), # <--- НОВОЕ
         "clients_labels": json.dumps(clients_labels),
         "clients_values": json.dumps(clients_values),
         "req_labels": json.dumps(req_labels),
@@ -133,7 +162,6 @@ async def dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_required)
 ):
-    # Логика дат по умолчанию (последние 30 дней)
     today = datetime.now().date()
     
     if date_from:
@@ -146,10 +174,8 @@ async def dashboard(
     else:
         d_to = today
 
-    # Получаем статистику
     stats = await get_dashboard_stats(db, d_from, d_to)
     
-    # Лента (как и была)
     feed_stmt = select(UserRequest, User).join(User, UserRequest.user_telegram_id == User.telegram_id, isouter=True).order_by(desc(UserRequest.timestamp)).limit(8)
     feed_res = await db.execute(feed_stmt)
     feed_data = []
@@ -161,14 +187,12 @@ async def dashboard(
         "request": request, 
         "user": current_user, 
         "feed_data": feed_data,
-        "current_date_from": d_from, # Передаем текущие даты в шаблон для value input
+        "current_date_from": d_from, 
         "current_date_to": d_to,
         **stats
     })
 
-# ... (Остальные роуты schedule, companies, users оставляем без изменений) ...
-# --- ВСТАВЬ СЮДА ВЕСЬ ОСТАЛЬНОЙ КОД ИЗ ПРЕДЫДУЩЕГО ФАЙЛА (schedule_planner, events, links...) ---
-# ...
+# ... (остальные роуты schedule_planner, events, links, companies, users без изменений) ...
 @router.get("/schedule_planner")
 async def schedule_planner_page(request: Request, user: User = Depends(admin_required)):
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})

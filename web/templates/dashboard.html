@@ -127,41 +127,54 @@
 <script>
     const isDark = document.documentElement.classList.contains('dark');
     Chart.defaults.font.family = "'Inter', sans-serif";
-    // Цвет текста тоже сделаем чуть мягче
     Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
 
-    // --- 1. Line: Rhythm (Погрузка) ---
+    // --- 1. Line: Rhythm (Погрузка + Тренд) ---
     new Chart(document.getElementById('rhythmChart'), {
         type: 'line',
         data: {
             labels: {{ rhythm_labels|safe }},
-            datasets: [{
-                label: 'Контейнеров',
-                data: {{ rhythm_values|safe }},
-                borderColor: '#3b82f6',
-                backgroundColor: (ctx) => {
-                    const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
-                    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
-                    gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
-                    return gradient;
+            datasets: [
+                {
+                    label: 'Тренд',
+                    data: {{ trend_values|safe }},
+                    borderColor: '#f59e0b', // Оранжевый
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderDash: [5, 5], // Пунктирная линия
+                    pointRadius: 0,     // Без точек
+                    tension: 0.4,       // Плавная
+                    order: 0            // Рисуем поверх
                 },
-                fill: true,
-                tension: 0.3,
-                pointRadius: 3
-            }]
+                {
+                    label: 'Контейнеров',
+                    data: {{ rhythm_values|safe }},
+                    borderColor: '#3b82f6',
+                    backgroundColor: (ctx) => {
+                        const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
+                        gradient.addColorStop(0, isDark ? 'rgba(59, 130, 246, 0.5)' : 'rgba(59, 130, 246, 0.2)');
+                        gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+                        return gradient;
+                    },
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: '#3b82f6',
+                    borderWidth: 2,
+                    order: 1
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            plugins: { legend: { display: true, labels: { boxHeight: 2, boxWidth: 10 } } }, // Включили легенду
             scales: { 
                 y: { 
                     beginAtZero: true, 
-                    grid: { 
-                        // 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ
-                        color: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9' 
-                    },
-                    border: { display: false } // Убираем жирную линию оси
+                    grid: { color: gridColor, borderDash: [4, 4] },
+                    border: { display: false } 
                 }, 
                 x: { 
                     grid: { display: false },
@@ -178,16 +191,18 @@
             labels: {{ clients_labels|safe }},
             datasets: [{
                 data: {{ clients_values|safe }},
-                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b'],
-                borderWidth: 2,
-                // Цвет границ сегментов в темной теме (под фон карточки)
-                borderColor: isDark ? '#1e293b' : '#ffffff'
+                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#0ea5e9'],
+                borderWidth: 0,
+                hoverOffset: 4
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'right', labels: { boxWidth: 12, usePointStyle: true } } }
+            plugins: { 
+                legend: { position: 'right', labels: { boxWidth: 12, usePointStyle: true, padding: 20 } } 
+            },
+            layout: { padding: 0 }
         }
     });
 
@@ -200,7 +215,8 @@
                 label: 'Запросы',
                 data: {{ req_values|safe }},
                 backgroundColor: '#10b981',
-                borderRadius: 4
+                borderRadius: 4,
+                maxBarThickness: 40
             }]
         },
         options: {
@@ -210,15 +226,12 @@
             scales: { 
                 y: { 
                     beginAtZero: true, 
-                    grid: { 
-                        // 👇 ИСПРАВЛЕНИЕ ЗДЕСЬ
-                        color: isDark ? 'rgba(255, 255, 255, 0.05)' : '#f1f5f9' 
-                    },
-                    border: { display: false }
+                    grid: { color: gridColor, borderDash: [4, 4] }, 
+                    border: { display: false } 
                 }, 
                 x: { 
                     grid: { display: false },
-                    border: { display: false }
+                    border: { display: false } 
                 } 
             }
         }
