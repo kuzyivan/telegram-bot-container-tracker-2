@@ -105,11 +105,21 @@
                 <div class="flex-grow grid grid-cols-2 gap-2">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">С даты</label>
-                        <input type="date" name="date_from" class="block w-full p-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600 dark:text-slate-300">
+                        <div class="relative">
+                            <input type="text" name="date_from" class="datepicker block w-full p-2 pl-8 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-600" placeholder="ДД.ММ.ГГГГ">
+                            <div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            </div>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">По дату</label>
-                        <input type="date" name="date_to" class="block w-full p-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 focus:ring-2 focus:ring-blue-500 outline-none text-slate-600 dark:text-slate-300">
+                        <div class="relative">
+                            <input type="text" name="date_to" class="datepicker block w-full p-2 pl-8 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-600" placeholder="ДД.ММ.ГГГГ">
+                            <div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
+                                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -145,6 +155,16 @@
 </div>
 
 <script>
+    // Инициализация Flatpickr
+    flatpickr(".datepicker", {
+        locale: "ru",
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d.m.Y",
+        allowInput: true,
+        disableMobile: "true"
+    });
+
     function applyFilter(statusType) {
         // 1. Обновляем скрытое поле
         const hiddenInput = document.getElementById('status-input');
