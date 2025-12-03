@@ -31,70 +31,49 @@ async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# --- 🔥 НОВАЯ ФУНКЦИЯ СБОРА СТАТИСТИКИ ---
-async def get_dashboard_stats(session: AsyncSession):
+# --- 🔥 НОВАЯ СТАТИСТИКА (V2) ---
+async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: date):
     """
-    Собирает всю статистику для обновленного дашборда.
+    Собирает статистику за произвольный период.
     """
-    today = datetime.now().date()
-    month_ago = today - timedelta(days=30)
     
-    # 1. KPI Карточки (Верхний ряд)
-    # Новые пользователи за 30 дней
-    new_users = await session.scalar(
-        select(func.count(User.id)).where(User.created_at >= month_ago)
-    ) or 0
+    # Хелпер для фильтрации по дате
+    def filter_date(query, column):
+        return query.where(column >= date_from).where(column <= date_to)
+
+    # 1. KPI: Новые пользователи
+    new_users = await session.scalar(filter_date(select(func.count(User.id)), User.created_at)) or 0
     
-    # Активные поезда (те, что не завершены)
+    # 2. KPI: Активные поезда (В моменте, без фильтра дат, так как это текущее состояние)
     active_trains = await session.scalar(
         select(func.count(Train.id))
-        .where(Train.last_operation_date >= month_ago)
-        # Грубая оценка активности: есть операции за месяц и не "выгрузка" на станции назначения
-        # (Упрощаем для скорости)
+        .where(Train.last_operation_date >= (datetime.now() - timedelta(days=45)))
+        .where(and_(Train.last_operation.not_ilike('%выгрузка%'), Train.last_operation.isnot(None)))
     ) or 0
 
-    # 2. 📦 Типы контейнеров (20 vs 40) - берем из Tracking за 30 дней
-    # (Ищем уникальные контейнеры и смотрим их тип)
-    types_stmt = (
-        select(
-            case(
-                (Tracking.container_type.ilike('%20%'), '20 ft'),
-                (Tracking.container_type.ilike('%40%'), '40 ft'),
-                else_='Other'
-            ).label('ctype'),
-            func.count(distinct(Tracking.container_number))
-        )
-        .where(Tracking.operation_date >= month_ago)
-        .group_by('ctype')
-    )
-    types_res = await session.execute(types_stmt)
-    types_data = {row.ctype: row[1] for row in types_res.all()}
-    count_20 = types_data.get('20 ft', 0)
-    count_40 = types_data.get('40 ft', 0)
+    # 3. 📦 ВСЕГО ОТПРАВЛЕНО (Вместо типов)
+    # Считаем по таблице TerminalContainer (принятые к перевозке) за этот период
+    total_sent_stmt = select(func.count(TerminalContainer.id))
+    # Используем accept_date если есть, иначе created_at
+    total_sent = await session.scalar(filter_date(total_sent_stmt, TerminalContainer.created_at)) or 0
 
-    # 3. 🚚 Фактические сроки доставки (Train)
-    # Берем поезда, у которых есть departure_date и last_operation_date
-    # и считаем среднюю разницу
+    # 4. 🚚 СРОКИ ДОСТАВКИ (Tracking: End - Start)
+    # Считаем только для рейсов, которые ЗАВЕРШИЛИСЬ в выбранный период (trip_end_datetime попадает в интервал)
     avg_delivery_stmt = (
-        select(func.avg(func.extract('day', Train.last_operation_date - Train.created_at))) # Используем created_at как прокси, если departure нет
-        .where(Train.last_operation.ilike('%выгрузка%')) # Только завершенные
-        .where(Train.last_operation_date >= month_ago)
+        select(func.avg(func.extract('day', Tracking.trip_end_datetime - Tracking.trip_start_datetime)))
+        .where(Tracking.trip_end_datetime.isnot(None))
+        .where(Tracking.trip_start_datetime.isnot(None))
+        # Фильтруем по дате ОКОНЧАНИЯ рейса
+        .where(func.date(Tracking.trip_end_datetime) >= date_from)
+        .where(func.date(Tracking.trip_end_datetime) <= date_to)
     )
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
-    # 4. ⏳ Средний простой (из Tracking)
-    # Берем среднее от last_op_idle_days
-    avg_idle_stmt = (
-        select(func.avg(Tracking.last_op_idle_days))
-        .where(Tracking.operation_date >= month_ago)
-        .where(Tracking.last_op_idle_days > 0)
-    )
-    avg_idle_days = await session.scalar(avg_idle_stmt) or 0
-
-    # 5. 📈 Ритмичность погрузки (TerminalContainer по дням)
+    # 5. 📈 Ритмичность погрузки (График)
     rhythm_stmt = (
         select(func.date(TerminalContainer.created_at).label('date'), func.count(TerminalContainer.id))
-        .where(TerminalContainer.created_at >= month_ago)
+        .where(func.date(TerminalContainer.created_at) >= date_from)
+        .where(func.date(TerminalContainer.created_at) <= date_to)
         .group_by('date')
         .order_by('date')
     )
@@ -106,21 +85,23 @@ async def get_dashboard_stats(session: AsyncSession):
     # 6. 🍰 Клиенты (Pie Chart)
     clients_stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label('cnt'))
-        .where(TerminalContainer.created_at >= month_ago)
+        .where(func.date(TerminalContainer.created_at) >= date_from)
+        .where(func.date(TerminalContainer.created_at) <= date_to)
         .where(TerminalContainer.client.isnot(None))
         .group_by(TerminalContainer.client)
         .order_by(desc('cnt'))
-        .limit(6) # Топ 6
+        .limit(8)
     )
     clients_res = await session.execute(clients_stmt)
     clients_rows = clients_res.all()
     clients_labels = [r.client for r in clients_rows]
     clients_values = [r.cnt for r in clients_rows]
 
-    # 7. 🤖 Динамика запросов в бота
+    # 7. 🤖 Запросы в бот
     req_stmt = (
         select(func.date(UserRequest.timestamp).label("date"), func.count(UserRequest.id))
-        .where(UserRequest.timestamp >= month_ago)
+        .where(func.date(UserRequest.timestamp) >= date_from)
+        .where(func.date(UserRequest.timestamp) <= date_to)
         .group_by('date')
         .order_by('date')
     )
@@ -132,10 +113,8 @@ async def get_dashboard_stats(session: AsyncSession):
     return {
         "new_users": new_users,
         "active_trains": active_trains,
-        "count_20": count_20,
-        "count_40": count_40,
+        "total_sent": total_sent, # Новая метрика
         "avg_delivery_days": round(avg_delivery_days, 1),
-        "avg_idle_days": round(avg_idle_days, 1),
         "rhythm_labels": json.dumps(rhythm_labels),
         "rhythm_values": json.dumps(rhythm_values),
         "clients_labels": json.dumps(clients_labels),
@@ -149,10 +128,26 @@ async def get_dashboard_stats(session: AsyncSession):
 @router.get("/dashboard")
 async def dashboard(
     request: Request, 
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_required)
 ):
-    stats = await get_dashboard_stats(db)
+    # Логика дат по умолчанию (последние 30 дней)
+    today = datetime.now().date()
+    
+    if date_from:
+        d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+    else:
+        d_from = today - timedelta(days=30)
+        
+    if date_to:
+        d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+    else:
+        d_to = today
+
+    # Получаем статистику
+    stats = await get_dashboard_stats(db, d_from, d_to)
     
     # Лента (как и была)
     feed_stmt = select(UserRequest, User).join(User, UserRequest.user_telegram_id == User.telegram_id, isouter=True).order_by(desc(UserRequest.timestamp)).limit(8)
@@ -166,160 +161,84 @@ async def dashboard(
         "request": request, 
         "user": current_user, 
         "feed_data": feed_data,
+        "current_date_from": d_from, # Передаем текущие даты в шаблон для value input
+        "current_date_to": d_to,
         **stats
     })
 
-# ==========================================
-# === 📅 КАЛЕНДАРЬ ПЛАНИРОВАНИЯ ===
-# ==========================================
-
+# ... (Остальные роуты schedule, companies, users оставляем без изменений) ...
+# --- ВСТАВЬ СЮДА ВЕСЬ ОСТАЛЬНОЙ КОД ИЗ ПРЕДЫДУЩЕГО ФАЙЛА (schedule_planner, events, links...) ---
+# ...
 @router.get("/schedule_planner")
 async def schedule_planner_page(request: Request, user: User = Depends(admin_required)):
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
 
 @router.get("/api/schedule/events")
-async def get_schedule_events(
-    start: str, 
-    end: str,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
-    # FullCalendar присылает даты как '2025-12-01T00:00:00'
+async def get_schedule_events(start: str, end: str, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
     end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
-    
-    stmt = select(ScheduledTrain).where(
-        and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date)
-    )
+    stmt = select(ScheduledTrain).where(and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date))
     result = await db.execute(stmt)
     trains = result.scalars().all()
-    
     events = []
     for t in trains:
         title = f"{t.service_name} -> {t.destination}"
-        
-        extendedProps = {
-            "service": t.service_name,
-            "dest": t.destination,
-            "stock": t.stock_info or "",
-            "owner": t.wagon_owner or "",
-            "comment": t.comment or ""
-        }
-        
-        # Используем цвет из БД или дефолтный
+        extendedProps = {"service": t.service_name, "dest": t.destination, "stock": t.stock_info or "", "owner": t.wagon_owner or "", "comment": t.comment or ""}
         color = t.color if hasattr(t, 'color') else "#3b82f6"
-        
-        events.append({
-            "id": t.id,
-            "title": title,
-            "start": t.schedule_date.isoformat(),
-            "allDay": True,
-            "backgroundColor": color, 
-            "borderColor": color,
-            "extendedProps": extendedProps
-        })
-        
+        events.append({"id": t.id, "title": title, "start": t.schedule_date.isoformat(), "allDay": True, "backgroundColor": color, "borderColor": color, "extendedProps": extendedProps})
     return JSONResponse(events)
 
 @router.post("/api/schedule/create")
-async def create_schedule_event(
-    date_str: str = Form(...),
-    service: str = Form(...),
-    destination: str = Form(...),
-    stock: str = Form(None),
-    owner: str = Form(None),
-    color: str = Form("#3b82f6"), # Принимаем цвет
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def create_schedule_event(date_str: str = Form(...), service: str = Form(...), destination: str = Form(...), stock: str = Form(None), owner: str = Form(None), color: str = Form("#3b82f6"), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     dt = datetime.strptime(date_str, "%Y-%m-%d").date()
-    
-    new_train = ScheduledTrain(
-        schedule_date=dt,
-        service_name=service,
-        destination=destination,
-        stock_info=stock,
-        wagon_owner=owner,
-        color=color # Сохраняем цвет
-    )
+    new_train = ScheduledTrain(schedule_date=dt, service_name=service, destination=destination, stock_info=stock, wagon_owner=owner, color=color)
     db.add(new_train)
     await db.commit()
-    
     return {"status": "ok", "id": new_train.id}
 
 @router.post("/api/schedule/{event_id}/move")
-async def move_schedule_event(
-    event_id: int,
-    new_date: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def move_schedule_event(event_id: int, new_date: str = Form(...), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     dt = datetime.strptime(new_date, "%Y-%m-%d").date()
     stmt = update(ScheduledTrain).where(ScheduledTrain.id == event_id).values(schedule_date=dt)
     await db.execute(stmt)
     await db.commit()
-    
     return {"status": "ok"}
 
 @router.delete("/api/schedule/{event_id}")
-async def delete_schedule_event(
-    event_id: int,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def delete_schedule_event(event_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     stmt = select(ScheduledTrain).where(ScheduledTrain.id == event_id)
     res = await db.execute(stmt)
     obj = res.scalar_one_or_none()
-    
     if obj:
         await db.delete(obj)
         await db.commit()
-    
     return {"status": "ok"}
 
-# ==========================================
-# === 🔗 УПРАВЛЕНИЕ ССЫЛКАМИ (SHARING) ===
-# ==========================================
-
 @router.get("/api/schedule/links")
-async def get_share_links(
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def get_share_links(db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     stmt = select(ScheduleShareLink).order_by(ScheduleShareLink.created_at.desc())
     res = await db.execute(stmt)
     links = res.scalars().all()
     return links
 
 @router.post("/api/schedule/links/create")
-async def create_share_link(
-    name: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def create_share_link(name: str = Form(...), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     token = secrets.token_urlsafe(16)
     new_link = ScheduleShareLink(name=name, token=token)
     db.add(new_link)
     await db.commit()
-    
     return {"status": "ok", "token": token, "link": f"/schedule/share/{token}"}
 
 @router.delete("/api/schedule/links/{link_id}")
-async def delete_share_link(
-    link_id: int,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def delete_share_link(link_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     stmt = select(ScheduleShareLink).where(ScheduleShareLink.id == link_id)
     res = await db.execute(stmt)
     link = res.scalar_one_or_none()
-    
     if link:
         await db.delete(link)
         await db.commit()
-        
     return {"status": "ok"}
-    
+
 @router.get("/companies")
 async def admin_companies(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_required)):
     companies_res = await db.execute(select(Company).order_by(Company.created_at.desc()).options(selectinload(Company.users)))
