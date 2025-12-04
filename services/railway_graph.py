@@ -60,7 +60,7 @@ class RailwayGraph:
 
         logger.info(f"✅ Граф построен! Узлов: {self.graph.number_of_nodes()}, Связей: {self.graph.number_of_edges()}")
 
-    def get_shortest_path(self, code_start: str, code_end: str) -> list[str]:
+    def get_shortest_path(self, code_start: str, code_end: str) -> list[dict]:
         """Ищет путь между двумя кодами станций."""
         if not self.graph:
             return []
@@ -78,13 +78,13 @@ class RailwayGraph:
                         # Алгоритм кратчайшего пути
                         path_codes = nx.shortest_path(self.graph, source=u, target=v)
                         
-                        # Превращаем коды обратно в имена
-                        path_names = []
+                        # Превращаем коды в [{'code': '...', 'name': '...'}]
+                        path_details = []
                         for code in path_codes:
                             name = self.graph.nodes[code].get('name', code)
-                            path_names.append(name)
+                            path_details.append({'code': code, 'name': name})
                         
-                        return path_names
+                        return path_details
                     except nx.NetworkXNoPath:
                         continue
         

@@ -316,7 +316,16 @@ class RailwaySection(Base):
     # Используем JSONB, так как это массив объектов, и по нему можно искать
     stations_list: Mapped[list[dict]] = mapped_column(JSONB) 
 
-    # Индекс для быстрого поиска: содержит ли участок конкретную станцию
-    __table_args__ = (
-        Index('ix_stations_list_gin', 'stations_list', postgresql_using='gin'),
-    )
+        # Индекс для быстрого поиска: содержит ли участок конкретную станцию
+
+        __table_args__ = (
+
+            Index('ix_stations_list_gin', 'stations_list', postgresql_using='gin'),
+
+        )
+
+    
+
+    
+
+    

@@ -5,7 +5,7 @@ import logging
 from sqlalchemy import select, ARRAY, exc, func, Index, UniqueConstraint, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer
+from sqlalchemy import String, Integer, Float
 from sqlalchemy.dialects.postgresql import JSONB
 
 # --- Импорты сессии ---
@@ -17,6 +17,18 @@ class TariffBase(DeclarativeBase):
     pass
 
 # --- МОДЕЛИ ---
+
+class StationCoordinate(TariffBase):
+    """
+    Кэш координат станций по коду ЕСР.
+    Заполняется один раз скриптом-сидером.
+    """
+    __tablename__ = 'station_coordinates'
+    
+    code: Mapped[str] = mapped_column(String(6), primary_key=True, index=True) # Код ЕСР (6 цифр)
+    lat: Mapped[float] = mapped_column(Float)
+    lon: Mapped[float] = mapped_column(Float)
+    name: Mapped[str | None] = mapped_column(String) # Для справки
 
 class TariffStation(TariffBase):
     __tablename__ = 'tariff_stations'
@@ -198,6 +210,31 @@ async def _find_stations_between(code_a: str, code_b: str, session: AsyncSession
     logger.warning(f"   ❌ Участок {code_a}-{code_b} не найден в Книге 1.")
     return []
 
+async def _get_coords_bulk_from_db(codes: list[str], session: AsyncSession) -> dict:
+    """Ищет координаты для списка кодов станций."""
+    if not codes:
+        return {}
+    
+    # Коды могут быть 5 или 6 знаков. В StationCoordinate они должны быть 6.
+    # zfill(6) добавит нули слева если нужно.
+    unique_codes = list(set(codes))
+    padded_codes = [c.strip().zfill(6) for c in unique_codes]
+
+    stmt = select(StationCoordinate).where(StationCoordinate.code.in_(padded_codes))
+    res = await session.execute(stmt)
+    
+    # Создаем словарь "код из БД" -> [lat, lon]
+    db_coords_map = {row.code: [row.lat, row.lon] for row in res.scalars()}
+
+    # Теперь нужно смаппить обратно на оригинальные коды (5 или 6 знаков)
+    final_map = {}
+    for original_code in unique_codes:
+        padded_code = original_code.strip().zfill(6)
+        if padded_code in db_coords_map:
+            final_map[original_code] = db_coords_map[padded_code]
+    
+    return final_map
+
 # --- ГЛАВНАЯ ФУНКЦИЯ ---
 
 async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
@@ -254,58 +291,74 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             if best_route:
                 distance_int = int(min_total_distance)
                 
-                # === 🔥 ИМПОРТ ПЕРЕНЕСЕН СЮДА (Разрыв цикла) ===
+                # --- ИМПОРТ ГРАФА ---
                 from services.railway_graph import railway_graph 
-                # ===============================================
-
-                # === 🔥 НОВАЯ ЛОГИКА ПОСТРОЕНИЯ ПУТИ ЧЕРЕЗ ГРАФ ===
-                full_path_names = []
                 
-                # У нас есть ключевые точки маршрута: Start -> (TP_A -> TP_B) -> End
+                # --- ПОСТРОЕНИЕ ДЕТАЛЬНОГО МАРШРУТА ---
+                full_path_details = []
                 
-                # 1. Путь: Start -> TP_A (или сразу End, если нет ТП)
+                # 1. Путь: Start -> TP_A
                 tpa_code = best_route.get('tpa_code') or info_b['station_code']
-                
                 path_segment_1 = railway_graph.get_shortest_path(info_a['station_code'], tpa_code)
                 
                 if path_segment_1:
-                    full_path_names.extend(path_segment_1)
+                    full_path_details.extend(path_segment_1)
                 else:
-                    full_path_names.append(info_a['station_name'])
+                    full_path_details.append({'code': info_a['station_code'], 'name': info_a['station_name']})
 
                 # 2. Путь: TP_A -> TP_B (если они разные)
                 tpb_code = best_route.get('tpb_code')
                 if tpa_code and tpb_code and tpa_code != tpb_code:
                     path_segment_2 = railway_graph.get_shortest_path(tpa_code, tpb_code)
                     if path_segment_2:
-                        # Исключаем первый элемент, чтобы не дублировать (он = tpa)
-                        full_path_names.extend(path_segment_2[1:])
+                        full_path_details.extend(path_segment_2[1:]) # Исключаем дубль tpa
                 
                 # 3. Путь: TP_B -> End
                 if tpb_code and tpb_code != info_b['station_code']:
                     path_segment_3 = railway_graph.get_shortest_path(tpb_code, info_b['station_code'])
                     if path_segment_3:
-                        full_path_names.extend(path_segment_3[1:])
-                
-                # Финальная очистка от дублей имен подряд
-                clean_path = []
-                for name in full_path_names:
-                    if not clean_path or clean_path[-1] != name:
-                        clean_path.append(name)
-                
-                # Если граф не нашел путь (разрыв в данных), вставляем хотя бы ключевые точки
-                if len(clean_path) < 2:
-                    clean_path = [
-                        info_a['station_name'], 
-                        best_route.get('tpa_name'), 
-                        best_route.get('tpb_name'), 
-                        info_b['station_name']
-                    ]
-                    # Убираем None и дубли
-                    clean_path = list(dict.fromkeys([x for x in clean_path if x]))
+                        full_path_details.extend(path_segment_3[1:]) # Исключаем дубль tpb
 
-                best_route['detailed_path'] = clean_path
-                logger.info(f"✅ [Graph] Маршрут построен: {len(clean_path)} станций.")
+                # 4. Очистка пути от последовательных дублей
+                clean_path_details = []
+                last_code = None
+                for station in full_path_details:
+                    if station['code'] != last_code:
+                        clean_path_details.append(station)
+                        last_code = station['code']
+                
+                # Если граф ничего не нашел, используем ключевые точки
+                if len(clean_path_details) < 2:
+                    key_points = [
+                        {'code': info_a['station_code'], 'name': info_a['station_name']},
+                        {'code': best_route.get('tpa_code'), 'name': best_route.get('tpa_name')},
+                        {'code': best_route.get('tpb_code'), 'name': best_route.get('tpb_name')},
+                        {'code': info_b['station_code'], 'name': info_b['station_name']}
+                    ]
+                    clean_path_details = list({d['code']: d for d in key_points if d.get('code') and d.get('name')}.values())
+
+                # --- ПОЛУЧЕНИЕ КООРДИНАТ ---
+                path_codes = [station['code'] for station in clean_path_details]
+                coords_map = await _get_coords_bulk_from_db(path_codes, session)
+                
+                path_with_coords = []
+                for station in clean_path_details:
+                    coords = coords_map.get(station['code'])
+                    # Добавляем в путь только станции с координатами
+                    if coords:
+                        path_with_coords.append({
+                            'name': station['name'],
+                            'lat': coords[0],
+                            'lon': coords[1]
+                        })
+                
+                # В старый ключ для обратной совместимости (если где-то используется)
+                # кладем просто список имен.
+                best_route['detailed_path'] = [st['name'] for st in clean_path_details]
+                # В новый ключ кладем обогащенные данные для карты.
+                best_route['detailed_path_with_coords'] = path_with_coords
+                
+                logger.info(f"✅ [Graph] Маршрут построен: {len(path_with_coords)} станций с координатами.")
                 
                 return {
                     'distance': distance_int,
