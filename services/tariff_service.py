@@ -10,7 +10,6 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # --- Импорты сессии ---
 from db import TariffSessionLocal
-from services.railway_graph import railway_graph
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +254,10 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             if best_route:
                 distance_int = int(min_total_distance)
                 
+                # === 🔥 ИМПОРТ ПЕРЕНЕСЕН СЮДА (Разрыв цикла) ===
+                from services.railway_graph import railway_graph 
+                # ===============================================
+
                 # === 🔥 НОВАЯ ЛОГИКА ПОСТРОЕНИЯ ПУТИ ЧЕРЕЗ ГРАФ ===
                 full_path_names = []
                 
