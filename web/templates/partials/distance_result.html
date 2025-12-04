@@ -89,122 +89,122 @@
 
 <script>
     (function() {
-        console.log("Инициализация скрипта карты...");
-
-        // Проверка наличия Leaflet
-        if (typeof L === 'undefined') {
-            console.error("Leaflet не загружен! Убедитесь, что он подключен в base.html");
-            document.getElementById('map-container').innerHTML = '<div class="flex items-center justify-center h-full text-slate-400">Ошибка загрузки карты</div>';
-            return;
-        }
-
-        // Генерируем уникальный ID, чтобы избежать конфликтов при повторных запросах
+        console.log("Запуск скрипта карты...");
         const mapId = 'map-' + Math.random().toString(36).substr(2, 9);
         const container = document.getElementById('map-container');
         
-        // Очищаем и создаем новый div
-        container.innerHTML = `<div id="${mapId}" class="h-full w-full z-0" style="min-height: 320px;"></div>`;
+        // Убедимся, что контейнер имеет высоту
+        container.innerHTML = `<div id="${mapId}" class="h-full w-full z-0" style="min-height: 350px;"></div>`;
 
-        // Безопасное получение имен станций (экранируем кавычки)
-        const stationA = "{{ result.info_a.station_name | replace('"', '\"') }}";
-        const stationB = "{{ result.info_b.station_name | replace('"', '\"') }}";
+        // 🔥 ВАЖНО: Получаем полный список станций из Python
+        // | tojson превращает Python-список ['Ст1', 'Ст2'] в JS-массив ["Ст1", "Ст2"]
+        const pathData = {{ result.route_details.detailed_path | tojson }};
+        const stationStart = "{{ result.info_a.station_name }}";
+        const stationEnd = "{{ result.info_b.station_name }}";
 
-        // Функция поиска координат (Nominatim OSM)
+        console.log("Маршрут точек:", pathData.length);
+
+        // Функция поиска координат
         async function getCoords(query) {
             try {
-                // Сначала пробуем "Станция railway station"
-                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' railway station')}&limit=1`;
-                const response = await fetch(url, { headers: { 'User-Agent': 'LogistrailApp/1.0' } });
-                const data = await response.json();
+                // Сначала пробуем "станция railway station"
+                let url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' railway station')}&limit=1`;
+                let res = await fetch(url, { headers: { 'User-Agent': 'LogistrailApp/1.0' } });
+                let data = await res.json();
                 
-                if (data && data.length > 0) {
-                    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-                }
+                if (data.length > 0) return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
                 
-                // Если не нашли, пробуем просто название
-                console.warn(`Не найдено "railway station" для ${query}, пробую общий поиск...`);
-                const url2 = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-                const response2 = await fetch(url2, { headers: { 'User-Agent': 'LogistrailApp/1.0' } });
-                const data2 = await response2.json();
+                // Если не нашли, ищем просто название
+                url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+                res = await fetch(url, { headers: { 'User-Agent': 'LogistrailApp/1.0' } });
+                data = await res.json();
                 
-                return (data2 && data2.length > 0) ? [parseFloat(data2[0].lat), parseFloat(data2[0].lon)] : null;
+                return (data.length > 0) ? [parseFloat(data[0].lat), parseFloat(data[0].lon)] : null;
             } catch (e) {
-                console.error("Ошибка геокодирования:", e);
+                console.error("Geo error:", e);
                 return null;
             }
         }
 
         async function initMap() {
-            try {
-                // Создаем карту (центр - Россия)
-                const map = L.map(mapId).setView([55.75, 37.61], 3);
+            if (typeof L === 'undefined') return;
 
-                // Убираем префикс "Leaflet", оставляя только копирайт
-                map.attributionControl.setPrefix(false);
+            const map = L.map(mapId).setView([55.75, 37.61], 3);
+            map.attributionControl.setPrefix(false);
 
-                // Добавляем слой OSM
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap contributors',
-                    maxZoom: 18
-                }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 18
+            }).addTo(map);
 
-                // Ищем координаты параллельно
-                const [coordsA, coordsB] = await Promise.all([getCoords(stationA), getCoords(stationB)]);
-                
-                const bounds = [];
-
-                // Маркер А
-                if (coordsA) {
-                    const iconA = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='background-color: #3b82f6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);'></div>",
-                        iconSize: [12, 12],
-                        iconAnchor: [6, 6]
+            const latLngs = [];
+            
+            // Чтобы не перегружать Nominatim и не ждать вечность, берем не каждую точку,
+            // а прореживаем массив.
+            // Всегда берем: первую, последнюю, и каждую 5-ю между ними.
+            const pointsToProcess = [];
+            
+            for (let i = 0; i < pathData.length; i++) {
+                if (i === 0 || i === pathData.length - 1 || i % 5 === 0) {
+                    pointsToProcess.push({
+                        name: pathData[i],
+                        type: (i === 0) ? 'start' : (i === pathData.length - 1) ? 'end' : 'transit'
                     });
-                    
-                    L.marker(coordsA, {icon: iconA}).addTo(map)
-                        .bindPopup(`<b>A: ${stationA}</b>`);
-                    bounds.push(coordsA);
-                } else {
-                    console.warn("Координаты для станции А не найдены");
                 }
-
-                // Маркер B
-                if (coordsB) {
-                    const iconB = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: "<div style='background-color: #ef4444; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.3);'></div>",
-                        iconSize: [12, 12],
-                        iconAnchor: [6, 6]
-                    });
-
-                    L.marker(coordsB, {icon: iconB}).addTo(map)
-                        .bindPopup(`<b>B: ${stationB}</b>`);
-                    bounds.push(coordsB);
-                } else {
-                    console.warn("Координаты для станции B не найдены");
-                }
-
-                // Масштабируем и рисуем линию
-                if (bounds.length > 0) {
-                    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 10 });
-                }
-                
-                if (bounds.length === 2) {
-                    L.polyline(bounds, { color: '#3b82f6', weight: 4, opacity: 0.8, dashArray: '10, 10' }).addTo(map);
-                }
-                
-                // Исправляем рендер тайлов (важно для Leaflet внутри скрытых/динамических блоков)
-                setTimeout(() => {
-                    map.invalidateSize();
-                }, 200);
-
-            } catch (err) {
-                console.error("Ошибка при инициализации карты:", err);
             }
+
+            console.log("Будем искать координаты для " + pointsToProcess.length + " точек");
+
+            // Обрабатываем точки последовательно
+            for (let point of pointsToProcess) {
+                const coords = await getCoords(point.name);
+                if (coords) {
+                    latLngs.push(coords);
+                    
+                    let iconColor = '#94a3b8'; // Серый для транзита
+                    let zIndex = 0;
+                    let radius = 4;
+
+                    if (point.type === 'start') { iconColor = '#3b82f6'; zIndex = 100; radius = 7; } // Синий
+                    if (point.type === 'end')   { iconColor = '#ef4444'; zIndex = 100; radius = 7; } // Красный
+
+                    const icon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style='background-color: ${iconColor}; width: ${radius*2}px; height: ${radius*2}px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);'></div>`,
+                        iconSize: [radius*2, radius*2],
+                        iconAnchor: [radius, radius]
+                    });
+
+                    // Маркеры ставим только для начала, конца и важных узлов, 
+                    // чтобы не засорять карту сотней точек
+                    if (point.type !== 'transit' || pathData.length < 15) {
+                         L.marker(coords, {icon: icon, zIndexOffset: zIndex})
+                        .addTo(map)
+                        .bindPopup(`<b>${point.name}</b>`);
+                    } else {
+                        // Для транзитных просто маленькие кружочки без попапов (или вообще без маркеров, только линия)
+                        L.circleMarker(coords, {
+                            radius: 3,
+                            color: 'white',
+                            weight: 1,
+                            fillColor: '#64748b',
+                            fillOpacity: 0.8
+                        }).addTo(map);
+                    }
+                }
+            }
+
+            if (latLngs.length > 0) {
+                // Рисуем линию через все найденные точки
+                if (latLngs.length > 1) {
+                    L.polyline(latLngs, { color: '#3b82f6', weight: 4, opacity: 0.8, dashArray: '5, 10' }).addTo(map);
+                }
+                map.fitBounds(latLngs, { padding: [50, 50], maxZoom: 10 });
+            }
+            
+            setTimeout(() => map.invalidateSize(), 200);
         }
 
-        // Запуск с небольшой задержкой, чтобы DOM успел обновиться
         setTimeout(initMap, 100);
     })();
 </script>

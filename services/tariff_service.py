@@ -215,16 +215,25 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             if not info_a or not info_b:
                 return None
             
-            logger.info(f"[Tariff Debug] A Info: Name={info_a.get('station_name')}, TPs={len(info_a.get('transit_points', []))}")
-            logger.info(f"[Tariff Debug] B Info: Name={info_b.get('station_name')}, TPs={len(info_b.get('transit_points', []))}")
-            
+            # Если станции совпадают
             if info_a['station_name'].lower() == info_b['station_name'].lower():
-                return {'distance': 0, 'info_a': info_a, 'info_b': info_b, 'route_details': {'tpa_name': info_a['station_name'], 'tpb_name': info_a['station_name'], 'distance_a_to_tpa': 0, 'distance_tpa_to_tpb': 0, 'distance_tpb_to_b': 0, 'detailed_path': [info_a['station_name']]}}
+                return {
+                    'distance': 0, 
+                    'info_a': info_a, 
+                    'info_b': info_b, 
+                    'route_details': {
+                        'tpa_name': info_a['station_name'], 
+                        'tpb_name': info_a['station_name'], 
+                        'distance_a_to_tpa': 0, 
+                        'distance_tpa_to_tpb': 0, 
+                        'distance_tpb_to_b': 0, 
+                        'detailed_path': [info_a['station_name']] # Путь из 1 точки
+                    }
+                }
 
             # --- Определение ТП ---
             tps_a = info_a.get('transit_points', [])
             operations_a = info_a.get('operations') or ""
-            # Добавляем саму станцию как ТП, если у неё нет ТП или она сама ТП
             if not tps_a or ('ТП' in operations_a and not tps_a):
                  tps_a = [{'name': info_a['station_name'], 'code': info_a['station_code'], 'distance': 0}]
             
@@ -237,10 +246,11 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             best_route = None 
             route_found = False
 
+            # Перебор всех комбинаций ТП
             for tp_a in tps_a:
                 for tp_b in tps_b:
                     
-                    # Если ТП совпадают
+                    # 1. Если ТП совпадают (маршрут внутри одной дороги или рядом)
                     if tp_a['name'] == tp_b['name']:
                         current_dist = tp_a['distance'] + tp_b['distance']
                         if current_dist < min_total_distance:
@@ -249,15 +259,15 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                             best_route = {
                                 'distance_a_to_tpa': tp_a['distance'],
                                 'tpa_name': tp_a['name'],
-                                'tpa_code': tp_a['code'], # ✅ Сохраняем код для поиска пути
+                                'tpa_code': tp_a['code'], # Код важен для детализации
                                 'distance_tpa_to_tpb': 0, 
                                 'tpb_name': tp_b['name'],
-                                'tpb_code': tp_b['code'], # ✅ Сохраняем код для поиска пути
+                                'tpb_code': tp_b['code'], 
                                 'distance_tpb_to_b': tp_b['distance'],
                             }
                         continue 
                         
-                    # Ищем в матрице
+                    # 2. Ищем расстояние между ТП в матрице
                     transit_dist = await _get_matrix_distance_from_db(tp_a['name'], tp_b['name'], session)
                     
                     if transit_dist is not None:
@@ -270,21 +280,22 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                             best_route = {
                                 'distance_a_to_tpa': tp_a['distance'],
                                 'tpa_name': tp_a['name'],
-                                'tpa_code': tp_a['code'], # ✅ Важно
+                                'tpa_code': tp_a['code'],
                                 'distance_tpa_to_tpb': transit_dist,
                                 'tpb_name': tp_b['name'],
-                                'tpb_code': tp_b['code'], # ✅ Важно
+                                'tpb_code': tp_b['code'],
                                 'distance_tpb_to_b': tp_b['distance'],
                             }
 
             if route_found and best_route is not None:
                 distance_int = int(min_total_distance)
                 
-                # --- 🔥 СБОРКА ДЕТАЛЬНОГО МАРШРУТА ---
+                # --- 🔥 ВСТАВКА: СБОРКА ДЕТАЛЬНОГО МАРШРУТА ---
+                # Без этого блока detailed_path не появится!
+                
                 full_path_names = []
                 
                 # 1. Сегмент: Старт -> ТП А
-                # Ищем путь от начальной станции до первого ТП (если это разные станции)
                 code_start = info_a['station_code']
                 code_tpa = best_route['tpa_code']
                 
@@ -292,25 +303,20 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                 if segment_1:
                     full_path_names.extend([s['n'] for s in segment_1])
                 else:
+                    # Если не нашли, добавляем крайние точки
                     full_path_names.append(info_a['station_name'])
                     if best_route['tpa_name'] != info_a['station_name']:
                         full_path_names.append(best_route['tpa_name'])
 
                 # 2. Сегмент: ТП А -> ТП Б (Магистраль)
-                # Это самый сложный участок (междорожный). 
-                # Книга 1 редко содержит длинные маршруты между дорогами.
-                # Поэтому здесь мы просто оставляем прямую линию между ТП, 
-                # либо пытаемся найти, если повезет.
                 code_tpb = best_route['tpb_code']
                 
                 if code_tpa != code_tpb:
-                    # Пробуем найти, вдруг это один участок
                     segment_2 = await _find_stations_between(code_tpa, code_tpb, session)
                     if segment_2:
-                        # Пропускаем первый элемент, так как он дублирует конец предыдущего
+                        # Пропускаем первый элемент (дубль)
                         full_path_names.extend([s['n'] for s in segment_2[1:]])
                     else:
-                        # Если не нашли, просто добавляем точку ТП Б
                         full_path_names.append(best_route['tpb_name'])
 
                 # 3. Сегмент: ТП Б -> Конец
@@ -318,21 +324,22 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                 segment_3 = await _find_stations_between(code_tpb, code_end, session)
                 
                 if segment_3:
-                    # Пропускаем первый элемент (дубль ТП Б)
                     for s in segment_3:
-                        if s['n'] not in full_path_names: # Избегаем дублей имен подряд
+                        if not full_path_names or s['n'] != full_path_names[-1]: 
                             full_path_names.append(s['n'])
                 else:
                     if info_b['station_name'] not in full_path_names:
                         full_path_names.append(info_b['station_name'])
 
-                # Очистка дубликатов подряд (на всякий случай)
+                # Финальная очистка от повторов подряд
                 clean_path = []
                 for name in full_path_names:
                     if not clean_path or clean_path[-1] != name:
                         clean_path.append(name)
 
+                # Сохраняем в результат
                 best_route['detailed_path'] = clean_path
+                # -----------------------------------------------
                 
                 logger.info(f"✅ [Tariff] Маршрут построен: {len(clean_path)} точек.")
                 
