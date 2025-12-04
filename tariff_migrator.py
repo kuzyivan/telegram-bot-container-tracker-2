@@ -246,11 +246,10 @@ async def main_migrate():
         
     engine = create_async_engine(TARIFF_DB_URL)
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all) # Создаем если нет (лучше дропнуть вручную если надо чистую)
-        # Если нужна полная очистка перед загрузкой:
-        log.info("Очистка таблиц перед загрузкой...")
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        # Если нужно пересоздать таблицы с нуля (осторожно, удалит данные!):
+        # log.info("Очистка таблиц перед загрузкой...")
+        # await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all) 
     
     Session = async_sessionmaker(engine, expire_on_commit=False)
     
@@ -270,8 +269,9 @@ async def main_migrate():
     if all_stations:
         full_stations = pd.concat(all_stations).drop_duplicates(subset=['station_code'])
         async with Session() as session:
-            # Batch insert
-            batch_size = 5000
+            # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+            batch_size = 1000  # Было 5000. Уменьшаем, чтобы не превысить лимит параметров asyncpg
+            # -------------------------
             total = len(full_stations)
             for start in range(0, total, batch_size):
                 end = min(start + batch_size, total)
@@ -285,14 +285,17 @@ async def main_migrate():
                         'operations': row['operations'],
                         'transit_points': parse_transit_points_for_db(row['transit_points_raw'])
                     })
-                await session.execute(pg_insert(TariffStation).values(values).on_conflict_do_nothing())
+                # Используем on_conflict_do_update или do_nothing, чтобы не падать на дублях при повторном запуске
+                insert_stmt = pg_insert(TariffStation).values(values)
+                do_nothing_stmt = insert_stmt.on_conflict_do_nothing(index_elements=['code'])
+                
+                await session.execute(do_nothing_stmt)
                 await session.commit()
                 log.info(f"Станции: обработано {end}/{total}")
 
     # 2. Матрицы
     log.info("--- Загрузка Матриц ---")
     matrix_files = glob.glob(os.path.join(data_dir, '3-*.csv'))
-    # Исключаем не-матрицы
     matrix_files = [f for f in matrix_files if "Вводные" not in f and "Общие" not in f]
     
     combined_dfs = []
@@ -302,38 +305,38 @@ async def main_migrate():
     
     if not combined_dfs:
         log.error("Нет данных матриц для загрузки.")
+        await engine.dispose()
         return
 
     full_matrix = pd.concat(combined_dfs, ignore_index=True)
     
-    # Создаем симметричные маршруты (B -> A)
     log.info("Генерация обратных маршрутов...")
     reversed_matrix = full_matrix.rename(columns={'station_a': 'station_b', 'station_b': 'station_a'})
     full_matrix = pd.concat([full_matrix, reversed_matrix], ignore_index=True)
     
-    # Удаляем дубликаты
     full_matrix.drop_duplicates(subset=['station_a', 'station_b'], inplace=True)
     
     total_routes = len(full_matrix)
     log.info(f"Всего маршрутов для загрузки: {total_routes}")
     
     async with Session() as session:
-        batch_size = 5000 # Безопасный размер
+        # --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+        batch_size = 1000 # Также уменьшаем для матриц (было 5000)
+        # -------------------------
         for start in range(0, total_routes, batch_size):
             end = min(start + batch_size, total_routes)
             batch = full_matrix.iloc[start:end]
             records = batch.to_dict(orient='records')
             
-            stmt = pg_insert(TariffMatrix).values(records).on_conflict_do_nothing(
+            insert_stmt = pg_insert(TariffMatrix).values(records)
+            do_nothing_stmt = insert_stmt.on_conflict_do_nothing(
                 index_elements=['station_a', 'station_b']
             )
-            await session.execute(stmt)
+            
+            await session.execute(do_nothing_stmt)
             await session.commit()
-            if start % 50000 == 0:
+            if start % 10000 == 0:
                 log.info(f"Матрица: загружено {end}/{total_routes}")
 
     log.info("🎉 Миграция успешно завершена!")
     await engine.dispose()
-
-if __name__ == "__main__":
-    asyncio.run(main_migrate())
