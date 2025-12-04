@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # --- Импорты сессии ---
 from db import TariffSessionLocal
+from services.railway_graph import railway_graph
 
 logger = logging.getLogger(__name__)
 
@@ -252,40 +253,59 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                             }
 
             if best_route:
-                # --- ДЕТАЛИЗАЦИЯ ---
+                distance_int = int(min_total_distance)
+                
+                # === 🔥 НОВАЯ ЛОГИКА ПОСТРОЕНИЯ ПУТИ ЧЕРЕЗ ГРАФ ===
                 full_path_names = []
                 
-                # Сегмент 1: Старт -> ТП А
-                seg1 = await _find_stations_between(info_a['station_code'], best_route['tpa_code'], session)
-                if seg1: full_path_names.extend([s['n'] for s in seg1])
-                else: 
-                    full_path_names.append(info_a['station_name'])
-                    if best_route['tpa_name'] != info_a['station_name']: full_path_names.append(best_route['tpa_name'])
-
-                # Сегмент 2: ТП А -> ТП Б
-                if best_route['tpa_code'] != best_route['tpb_code']:
-                    seg2 = await _find_stations_between(best_route['tpa_code'], best_route['tpb_code'], session)
-                    if seg2: full_path_names.extend([s['n'] for s in seg2[1:]])
-                    else: full_path_names.append(best_route['tpb_name'])
-
-                # Сегмент 3: ТП Б -> Конец
-                seg3 = await _find_stations_between(best_route['tpb_code'], info_b['station_code'], session)
-                if seg3:
-                    for s in seg3:
-                        if not full_path_names or s['n'] != full_path_names[-1]: full_path_names.append(s['n'])
-                else:
-                    if info_b['station_name'] not in full_path_names: full_path_names.append(info_b['station_name'])
-
-                # Очистка
-                clean = []
-                for n in full_path_names:
-                    if not clean or clean[-1] != n: clean.append(n)
+                # У нас есть ключевые точки маршрута: Start -> (TP_A -> TP_B) -> End
                 
-                best_route['detailed_path'] = clean
-                logger.info(f"✅ Финальный путь: {len(clean)} точек.")
+                # 1. Путь: Start -> TP_A (или сразу End, если нет ТП)
+                tpa_code = best_route.get('tpa_code') or info_b['station_code']
+                
+                path_segment_1 = railway_graph.get_shortest_path(info_a['station_code'], tpa_code)
+                
+                if path_segment_1:
+                    full_path_names.extend(path_segment_1)
+                else:
+                    full_path_names.append(info_a['station_name'])
+
+                # 2. Путь: TP_A -> TP_B (если они разные)
+                tpb_code = best_route.get('tpb_code')
+                if tpa_code and tpb_code and tpa_code != tpb_code:
+                    path_segment_2 = railway_graph.get_shortest_path(tpa_code, tpb_code)
+                    if path_segment_2:
+                        # Исключаем первый элемент, чтобы не дублировать (он = tpa)
+                        full_path_names.extend(path_segment_2[1:])
+                
+                # 3. Путь: TP_B -> End
+                if tpb_code and tpb_code != info_b['station_code']:
+                    path_segment_3 = railway_graph.get_shortest_path(tpb_code, info_b['station_code'])
+                    if path_segment_3:
+                        full_path_names.extend(path_segment_3[1:])
+                
+                # Финальная очистка от дублей имен подряд
+                clean_path = []
+                for name in full_path_names:
+                    if not clean_path or clean_path[-1] != name:
+                        clean_path.append(name)
+                
+                # Если граф не нашел путь (разрыв в данных), вставляем хотя бы ключевые точки
+                if len(clean_path) < 2:
+                    clean_path = [
+                        info_a['station_name'], 
+                        best_route.get('tpa_name'), 
+                        best_route.get('tpb_name'), 
+                        info_b['station_name']
+                    ]
+                    # Убираем None и дубли
+                    clean_path = list(dict.fromkeys([x for x in clean_path if x]))
+
+                best_route['detailed_path'] = clean_path
+                logger.info(f"✅ [Graph] Маршрут построен: {len(clean_path)} станций.")
                 
                 return {
-                    'distance': int(min_total_distance),
+                    'distance': distance_int,
                     'info_a': info_a,
                     'info_b': info_b,
                     'route_details': best_route 

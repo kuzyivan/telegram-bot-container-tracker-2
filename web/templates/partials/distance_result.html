@@ -107,15 +107,16 @@
         // Функция поиска координат
         async function getCoords(query) {
             try {
-                // Сначала пробуем "станция railway station"
-                let url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' railway station')}&limit=1`;
+                // Добавляем countrycodes=ru, чтобы не искать Белогорск в Крыму (ua/ru dispute) или за границей
+                // Добавляем railway station явно
+                let url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ' railway station')}&countrycodes=ru&limit=1`;
                 let res = await fetch(url, { headers: { 'User-Agent': 'LogistrailApp/1.0' } });
                 let data = await res.json();
                 
                 if (data.length > 0) return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
                 
-                // Если не нашли, ищем просто название
-                url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+                // Fallback: пробуем без "railway station", но все еще в России
+                url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ru&limit=1`;
                 res = await fetch(url, { headers: { 'User-Agent': 'LogistrailApp/1.0' } });
                 data = await res.json();
                 

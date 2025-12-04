@@ -46,3 +46,5 @@ python-multipart==0.0.9
 
 python-jose[cryptography]
 passlib[bcrypt]
+
+networkx

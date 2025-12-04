@@ -8,11 +8,28 @@ from fastapi.responses import RedirectResponse
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from web.routers import public, admin, auth # <-- Добавили auth
-from web.auth import login_required # <-- Импортируем функцию защиты
-from web.routers import public, admin, auth, client # <--- Добавили client
+from contextlib import asynccontextmanager
+from services.railway_graph import railway_graph # <-- Импорт
 
-app = FastAPI(title="Logistrail Tracker")
+from web.routers import public, admin, auth, client # <--- Добавили client
+from db import init_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запуск
+    await init_db()
+    
+    # 🔥 Строим граф дорог
+    try:
+        await railway_graph.build_graph()
+    except Exception as e:
+        print(f"Ошибка построения графа: {e}")
+        
+    yield
+    # Завершение...
+
+app = FastAPI(title="Logistrail Tracker", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
