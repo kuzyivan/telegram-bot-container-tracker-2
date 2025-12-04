@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import select, or_, desc, and_, not_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink
+from models import Tracking, Train, User, UserRole, ScheduledTrain, ScheduleShareLink
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from web.auth import get_current_user
@@ -40,7 +40,7 @@ def normalize_search_input(text: str) -> list[str]:
     if not text:
         return []
     text = text.upper().strip()
-    items = re.split(r'[,\s;\n]+', text)
+    items = re.split(r'[,\\s;\n]+', text)
     valid_items = []
     for item in items:
         if re.fullmatch(r'[A-Z]{3}U\d{7}', item) or re.fullmatch(r'\d{8}', item):
@@ -94,25 +94,31 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
 
 # --- Роуты ---
 
+# --- 1. ГЛАВНАЯ СТРАНИЦА (ТЕПЕРЬ ЭТО ПОИСК) ---
 @router.get("/", response_class=HTMLResponse)
-async def landing_page(request: Request, user: Optional[User] = Depends(get_current_user)):
+async def read_root(request: Request, user: Optional[User] = Depends(get_current_user)):
     """
-    Главная страница - Лендинг.
-    """
-    return templates.TemplateResponse("landing.html", {
-        "request": request,
-        "user": user  # Передаем юзера, чтобы показывать кнопку "Личный кабинет" или "Войти"
-    })
-
-# 2. СТРАНИЦА ПОИСКА (Новый маршрут)
-@router.get("/track", response_class=HTMLResponse)
-async def track_page(request: Request, user: Optional[User] = Depends(get_current_user)):
-    """
-    Отдельная страница с формой поиска (бывшая главная).
+    Главная страница теперь снова "Поиск контейнера".
+    Доступна всем (и гостям, и зарегистрированным).
     """
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "user": user 
+    })
+
+# --- 2. ЛЕНДИНГ (ТОЛЬКО ДЛЯ АДМИНА) ---
+@router.get("/landing", response_class=HTMLResponse)
+async def landing_page_hidden(request: Request, user: Optional[User] = Depends(get_current_user)):
+    """
+    Лендинг доступен только администраторам.
+    Остальных редиректим на главную.
+    """
+    if not user or user.role != UserRole.ADMIN:
+        return RedirectResponse("/")
+        
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "user": user
     })
 
 @router.post("/contact_form")
@@ -127,30 +133,31 @@ async def handle_contact_form(
     Отправляет данные администратору в Telegram.
     """
     text = (
-        f"📩 **Новая заявка с сайта!**\n\n"
-        f"👤 **Имя:** {name}\n"
-        f"📞 **Телефон:** {phone}\n"
-        f"💬 **Сообщение:** {message or 'Не указано'}"
+        f"\ud83d\udce8 **Новая заявка с сайта!**\n\n"
+        f"\ud83d\udc64 **Имя:** {name}\n"
+        f"\ud83d\udcde **Телефон:** {phone}\n"
+        f"\ud83d\udcac **Сообщение:** {message or 'Не указано'}"
     )
     
     # Отправляем в Telegram админу
     await notify_admin(text, silent=False, parse_mode="Markdown")
     
     # Возвращаем фрагмент HTML (HTMX заменит форму на это сообщение)
-    return HTMLResponse("""
-        <div class="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-6 rounded-xl text-center animate-fade-in border border-green-200 dark:border-green-800">
-            <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            <h3 class="text-xl font-bold mb-2">Спасибо!</h3>
+    return HTMLResponse(
+        """
+        <div class=\"bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-6 rounded-xl text-center animate-fade-in border border-green-200 dark:border-green-800">
+            <svg class=\"w-12 h-12 mx-auto mb-3\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg>
+            <h3 class=\"text-xl font-bold mb-2\">Спасибо!</h3>
             <p>Ваша заявка принята. Мы свяжемся с вами в ближайшее время.</p>
         </div>
-    """)
+        """)
 
 
 @router.post("/search")
 async def search_handler(
     request: Request, 
     q: str = Form(""), 
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_get_db)
 ):
     search_terms = normalize_search_input(q)
     if not search_terms:
@@ -198,7 +205,7 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
     stmt = select(Train).where(Train.last_operation_date.isnot(None))\
         .where(Train.last_operation.not_ilike("%(39)%"))\
         .where(Train.last_operation.not_ilike("%(49)%"))\
-        .where(not_(and_(func.lower(Train.destination_station) == func.lower(Train.last_known_station), Train.last_operation.ilike("%выгрузка%"), Train.last_operation_date < five_days_ago)))\
+        .where(not_(and_(func.lower(Train.destination_station) == func.lower(Train.last_known_station), Train.last_operation.ilike("%выгрузка%"), Train.last_operation_date < five_days_ago)))
         .order_by(desc(Train.terminal_train_number)).limit(10)
     result = await db.execute(stmt)
     trains = result.scalars().all()
@@ -304,14 +311,14 @@ async def get_shared_schedule_events(
         }
         
         # ✅ ИСПРАВЛЕНИЕ: Берем реальный цвет из базы
-        color = t.color if hasattr(t, 'color') else "#3b82f6"
+        color = t.color if hasattr(t, 'color') else "#3b82f6" # Передаем правильный цвет
         
         events.append({
             "id": t.id,
             "title": title,
             "start": t.schedule_date.isoformat(),
             "allDay": True,
-            "backgroundColor": color, # Передаем правильный цвет
+            "backgroundColor": color, 
             "borderColor": color,
             "extendedProps": extendedProps
         })
