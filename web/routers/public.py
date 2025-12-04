@@ -363,3 +363,56 @@ async def distance_calculation(
         return templates.TemplateResponse("partials/distance_result.html", {
             "request": request, "error": f"Ошибка расчета: {e}"
         })
+
+@router.post("/tracking/recalc/{tracking_id}", response_class=HTMLResponse)
+async def recalculate_distance_for_row(tracking_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Принудительный пересчет расстояния по Тарифному руководству.
+    Обновляет запись в БД и возвращает красивый HTML для ячейки таблицы.
+    """
+    # 1. Ищем запись
+    stmt = select(Tracking).where(Tracking.id == tracking_id)
+    result = await db.execute(stmt)
+    track = result.scalar_one_or_none()
+    
+    if not track:
+        return "Ошибка"
+
+    # 2. Получаем станции для расчета
+    station_from = track.current_station 
+    station_to = track.to_station
+    
+    new_distance = None
+    error_msg = None
+
+    if station_from and station_to:
+        # 3. Вызываем наш калькулятор
+        calc_result = await get_tariff_distance(station_from, station_to)
+        
+        if calc_result and calc_result.get('distance'):
+            new_distance = calc_result['distance']
+            
+            # 4. Обновляем БД
+            track.km_left = new_distance
+            
+            await db.commit()
+        else:
+            error_msg = "Не рассчитано"
+    else:
+        error_msg = "Нет станций"
+
+    # 5. Возвращаем HTML фрагмент для замены в таблице
+    if new_distance is not None:
+        return f"""
+        <div class="flex flex-col items-center animate-fade-in">
+            <span class="text-green-600 font-bold text-lg">{new_distance} км</span>
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider">Тариф (10-01)</span>
+        </div>
+        """
+    else:
+        return f"""
+        <div class="text-red-500 text-xs">
+            {error_msg or 'Сбой'}
+            <button hx-post="/tracking/recalc/{track.id}" hx-swap="innerHTML" hx-target="closest td" class="ml-1 text-blue-500 hover:underline">↻</button>
+        </div>
+        """
