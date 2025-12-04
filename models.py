@@ -312,20 +312,18 @@ class RailwaySection(Base):
     # Имя файла или дороги (для группировки)
     source_file: Mapped[str | None] = mapped_column(String)
     
-    # Самое важное: упорядоченный список станций
-    # Используем JSONB, так как это массив объектов, и по нему можно искать
-    stations_list: Mapped[list[dict]] = mapped_column(JSONB) 
-
+        # Самое важное: упорядоченный список станций
+    
+        # Используем JSONB, так как это массив объектов, и по нему можно искать
+    
+        stations_list: Mapped[list[dict]] = mapped_column(JSONB) 
+    
+    
+    
         # Индекс для быстрого поиска: содержит ли участок конкретную станцию
-
+    
         __table_args__ = (
-
+    
             Index('ix_stations_list_gin', 'stations_list', postgresql_using='gin'),
-
+    
         )
-
-    
-
-    
-
-    
