@@ -314,46 +314,45 @@ async def get_shared_schedule_events(
             "backgroundColor": color, # Передаем правильный цвет
             "borderColor": color,
             "extendedProps": extendedProps
-                })
-                
-            return events
+        })
         
-        # --- 🆕 НОВЫЕ РОУТЫ ДЛЯ РАСЧЕТА РАССТОЯНИЯ ---
+    return events
+
+# --- 🆕 НОВЫЕ РОУТЫ ДЛЯ РАСЧЕТА РАССТОЯНИЯ ---
+
+@router.get("/distance", response_class=HTMLResponse)
+async def distance_page(request: Request, user: Optional[User] = Depends(get_current_user)):
+    """Страница калькулятора."""
+    return templates.TemplateResponse("distance.html", {
+        "request": request, 
+        "user": user 
+    })
+
+@router.post("/distance/calc")
+async def distance_calculation(
+    request: Request, 
+    station_from: str = Form(...), 
+    station_to: str = Form(...)
+):
+    """
+    Обработчик расчета (HTMX).
+    """
+    if not station_from or not station_to:
+        return templates.TemplateResponse("partials/distance_result.html", {
+            "request": request, "error": "Заполните обе станции."
+        })
+
+    try:
+        # Вызываем твой сервис расчета
+        result = await get_tariff_distance(station_from, station_to)
         
-        @router.get("/distance", response_class=HTMLResponse)
-        async def distance_page(request: Request, user: Optional[User] = Depends(get_current_user)):
-            """Страница калькулятора."""
-            return templates.TemplateResponse("distance.html", {
-                "request": request, 
-                "user": user 
-            })
-        
-        @router.post("/distance/calc")
-        async def distance_calculation(
-            request: Request, 
-            station_from: str = Form(...), 
-            station_to: str = Form(...)
-        ):
-            """
-            Обработчик расчета (HTMX).
-            """
-            if not station_from or not station_to:
-                return templates.TemplateResponse("partials/distance_result.html", {
-                    "request": request, "error": "Заполните обе станции."
-                })
-        
-            try:
-                # Вызываем твой сервис расчета
-                result = await get_tariff_distance(station_from, station_to)
-                
-                return templates.TemplateResponse("partials/distance_result.html", {
-                    "request": request, 
-                    "result": result,
-                    "station_from_raw": station_from,
-                    "station_to_raw": station_to
-                })
-            except Exception as e:
-                return templates.TemplateResponse("partials/distance_result.html", {
-                    "request": request, "error": f"Ошибка расчета: {e}"
-                })
-        
+        return templates.TemplateResponse("partials/distance_result.html", {
+            "request": request, 
+            "result": result,
+            "station_from_raw": station_from,
+            "station_to_raw": station_to
+        })
+    except Exception as e:
+        return templates.TemplateResponse("partials/distance_result.html", {
+            "request": request, "error": f"Ошибка расчета: {e}"
+        })
