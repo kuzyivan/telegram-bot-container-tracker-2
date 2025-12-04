@@ -139,9 +139,12 @@
                 // Создаем карту (центр - Россия)
                 const map = L.map(mapId).setView([55.75, 37.61], 3);
 
+                // Убираем префикс "Leaflet", оставляя только копирайт
+                map.attributionControl.setPrefix(false);
+
                 // Добавляем слой OSM
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '&copy; OpenStreetMap',
+                    attribution: '&copy; OpenStreetMap contributors',
                     maxZoom: 18
                 }).addTo(map);
 
