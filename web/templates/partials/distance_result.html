@@ -89,89 +89,70 @@
 
 <script>
     (function() {
-        if (typeof L === 'undefined') {
-            console.error("Leaflet не загружен. Карта не будет отображена.");
+        console.log("Запуск быстрой карты...");
+        const mapId = 'map-' + Math.random().toString(36).substr(2, 9);
+        const container = document.getElementById('map-container');
+        container.innerHTML = `<div id="${mapId}" class="h-full w-full z-0" style="min-height: 350px;"></div>`;
+
+        // Получаем готовые координаты с бэкенда!
+        const pathData = {{ result.route_details.detailed_path_coords | tojson }};
+        
+        console.log("Точек с координатами:", pathData ? pathData.length : 0);
+
+        if (typeof L === 'undefined' || !pathData || pathData.length === 0) {
+            container.innerHTML = '<div class="flex items-center justify-center h-full text-slate-400">Нет координат для отображения карты</div>';
             return;
         }
 
-        const mapId = 'map-' + Math.random().toString(36).substr(2, 9);
-        const container = document.getElementById('map-container');
-        if (!container) return;
+        const map = L.map(mapId).setView([55.75, 37.61], 3);
+        map.attributionControl.setPrefix(false);
 
-        container.innerHTML = `<div id="${mapId}" class="h-full w-full z-0" style="min-height: 350px;"></div>`;
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 18
+        }).addTo(map);
 
-        // --- Получаем маршрут с координатами из Python ---
-        const pathWithCoords = {{ result.route_details.detailed_path_with_coords | tojson }};
-        console.log(`Маршрут получен: ${pathWithCoords.length} точек с координатами.`);
+        const latLngs = [];
 
-        // Функция getCoords() больше не нужна.
-
-        function initMap() {
-            const map = L.map(mapId).setView([55.75, 37.61], 3);
-            map.attributionControl.setPrefix(false);
-
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap',
-                maxZoom: 18
-            }).addTo(map);
-
-            const allLatLngs = pathWithCoords
-                .filter(p => p.lat && p.lon)
-                .map(p => [p.lat, p.lon]);
-
-            if (allLatLngs.length === 0) {
-                console.log("Нет координат для отображения маршрута.");
-                return;
-            }
-            
-            // --- Упрощение маркеров для отображения ---
-            let pointsToDisplay = [];
-            // Если точек мало, показываем все. Если много - прореживаем.
-            const isDense = pathWithCoords.length > 20;
-            const step = isDense ? Math.floor(pathWithCoords.length / 15) : 1;
-
-            pathWithCoords.forEach((point, i) => {
-                const isStart = i === 0;
-                const isEnd = i === pathWithCoords.length - 1;
-                if (isStart || isEnd || i % step === 0) {
-                    pointsToDisplay.push({ ...point, type: isStart ? 'start' : (isEnd ? 'end' : 'transit') });
-                }
-            });
-            console.log(`Будет отображено ${pointsToDisplay.length} маркеров.`);
-
-            // --- Отрисовка маркеров ---
-            pointsToDisplay.forEach(point => {
-                if (!point.lat || !point.lon) return;
-
+        // Проходим по всем точкам
+        pathData.forEach((point, index) => {
+            if (point.lat && point.lon) {
                 const coords = [point.lat, point.lon];
-                let iconColor = '#94a3b8', radius = 4, zIndex = 0;
-
-                if (point.type === 'start') { iconColor = '#3b82f6'; radius = 7; zIndex = 100; }
-                if (point.type === 'end')   { iconColor = '#ef4444'; radius = 7; zIndex = 100; }
+                latLngs.push(coords);
                 
-                const icon = L.divIcon({
-                    className: 'custom-div-icon',
-                    html: `<div style='background-color: ${iconColor}; width: ${radius*2}px; height: ${radius*2}px; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);'></div>`,
-                    iconSize: [radius*2, radius*2],
-                    iconAnchor: [radius, radius]
-                });
-
-                const marker = L.marker(coords, { icon: icon, zIndexOffset: zIndex }).addTo(map);
-                if (point.type !== 'transit' || !isDense) {
-                    marker.bindPopup(`<b>${point.name}</b>`);
+                // Стиль маркера
+                const isStart = (index === 0);
+                const isEnd = (index === pathData.length - 1);
+                
+                // Рисуем маркеры только для начала, конца и крупных узлов (если точек мало)
+                // Или просто кружочки
+                
+                if (isStart || isEnd) {
+                    const color = isStart ? '#3b82f6' : '#ef4444';
+                    const icon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div style='background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);'></div>`,
+                        iconSize: [14, 14],
+                        iconAnchor: [7, 7]
+                    });
+                    L.marker(coords, {icon: icon, zIndexOffset: 1000}).addTo(map).bindPopup(`<b>${point.name}</b>`);
+                } else if (pathData.length < 50) {
+                    // Если точек не очень много, можно нарисовать маленькие промежуточные
+                    L.circleMarker(coords, {
+                        radius: 3, color: 'white', weight: 1, fillColor: '#64748b', fillOpacity: 0.8
+                    }).addTo(map);
                 }
-            });
-
-            // --- Отрисовка линии и центрирование ---
-            if (allLatLngs.length > 1) {
-                L.polyline(allLatLngs, { color: '#3b82f6', weight: 4, opacity: 0.8, dashArray: '5, 10' }).addTo(map);
             }
-            map.fitBounds(allLatLngs, { padding: [50, 50], maxZoom: 10, animate: true });
-            
-            setTimeout(() => map.invalidateSize(), 200);
-        }
+        });
 
-        setTimeout(initMap, 100);
+        if (latLngs.length > 0) {
+            // Рисуем линию
+            L.polyline(latLngs, { color: '#3b82f6', weight: 4, opacity: 0.8 }).addTo(map);
+            // Центрируем
+            map.fitBounds(latLngs, { padding: [50, 50] });
+        }
+        
+        setTimeout(() => map.invalidateSize(), 200);
     })();
 </script>
 {% endif %}
