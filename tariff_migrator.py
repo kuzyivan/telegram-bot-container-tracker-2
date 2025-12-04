@@ -7,7 +7,7 @@ import numpy as np
 import sys
 import glob
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer, ARRAY, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,24 +18,20 @@ from io import StringIO
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
-# Добавляем корень проекта в sys.path, чтобы найти zdtarif_bot/data
+# Добавляем корень проекта в sys.path
 current_file_path = os.path.abspath(__file__)
 project_root_dir = os.path.dirname(current_file_path)
 sys.path.insert(0, project_root_dir)
 
-# Загружаем переменные окружения (особенно TARIFF_DATABASE_URL)
 load_dotenv()
 TARIFF_DB_URL = os.getenv("TARIFF_DATABASE_URL")
 
-# --- 2. Определение ORM Моделей для новой БД ---
+# --- 2. Определение ORM Моделей ---
 
 class Base(DeclarativeBase):
     pass
 
 class TariffStation(Base):
-    '''
-    Таблица для хранения данных из 2-РП.csv.
-    '''
     __tablename__ = 'tariff_stations'
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, index=True) 
@@ -49,9 +45,6 @@ class TariffStation(Base):
     )
 
 class TariffMatrix(Base):
-    '''
-    Таблица для хранения данных из 3-*.csv.
-    '''
     __tablename__ = 'tariff_matrix'
     id: Mapped[int] = mapped_column(primary_key=True)
     station_a: Mapped[str] = mapped_column(String, index=True)
@@ -62,400 +55,285 @@ class TariffMatrix(Base):
         UniqueConstraint('station_a', 'station_b', name='uq_station_pair'),
     )
 
-# --- 3. Вспомогательные функции парсинга ---
+# --- 3. Вспомогательные функции ---
 
 def parse_transit_points_for_db(tp_string: str) -> list[str]:
-    '''
-    Парсит строку транзитных пунктов из 2-РП.csv и возвращает список строк.
-    '''
     if not isinstance(tp_string, str) or not tp_string:
         return []
-    
     pattern = re.compile(r'(\d{6})\s(.*?)\s-\s(\d+)км')
     matches = pattern.findall(tp_string)
-    
     transit_points_str = []
     for match in matches:
         transit_points_str.append(f"{match[0]}:{match[1].strip()}:{int(match[2])}")
-        
     return transit_points_str
 
 def load_kniga_2_rp(filepath: str) -> pd.DataFrame | None:
-    '''
-    Загружает 2-РП.csv из zdtarif_bot/data
-    '''
     try:
+        # Пытаемся найти начало данных, пропуская шапку
+        # Обычно шапка занимает 5-7 строк, ищем строку где есть цифры в первой колонке
+        with open(filepath, 'r', encoding='cp1251') as f:
+            lines = f.readlines()
+        
+        start_row = 0
+        for i, line in enumerate(lines[:20]):
+            if "Код станции" in line or "Наименование" in line:
+                start_row = i + 1
+                break
+        
+        # Если не нашли заголовки, берем хардкод 6
+        if start_row == 0: start_row = 6
+
         df = pd.read_csv(
             filepath,
-            skiprows=6, # Пропускаем заголовки
-            names=[
-                'num', 'station_name', 'operations', 'railway', 
-                'transit_points_raw', 'station_code'
-            ],
+            skiprows=start_row,
+            names=['num', 'station_name', 'operations', 'railway', 'transit_points_raw', 'station_code'],
             encoding='cp1251',
-            dtype={'station_code': str} 
+            dtype={'station_code': str},
+            on_bad_lines='skip' # Пропускаем битые строки
         )
         df['station_name'] = df['station_name'].str.strip()
         df['station_code'] = df['station_code'].str.strip()
-        df['railway'] = df['railway'].str.strip()
-        df['operations'] = df['operations'].str.strip()
-
+        
         df.dropna(subset=['station_name', 'station_code'], inplace=True)
-        
-        # --- 🐞 ИСПРАВЛЕНИЕ: Удаляем дубликаты по КОДУ, а не по ИМЕНИ 🐞 ---
         df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
-        # --- 🏁 КОНЕЦ ИСПРАВЛЕНИЯ 🏁 ---
         
-        log.info(f"✅ Файл {os.path.basename(filepath)} загружен, {len(df)} УНИКАЛЬНЫХ станций (по коду).")
+        log.info(f"✅ Файл станций {os.path.basename(filepath)}: загружено {len(df)} записей.")
         return df
-    except FileNotFoundError:
-        log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
-        return None
     except Exception as e:
-        log.error(f"❌ Ошибка при загрузке {filepath}: {e}", exc_info=True)
+        log.error(f"❌ Ошибка при загрузке станций {filepath}: {e}", exc_info=True)
         return None
 
 def load_kniga_3_matrix(filepath: str) -> pd.DataFrame | None:
     '''
-    Загружает матрицу (3-*.csv) и преобразует ее в "длинный" формат,
-    корректно считывая многострочные заголовки и объединяя многострочные названия станций.
+    Улучшенная функция загрузки матрицы.
     '''
     try:
-        # 1. Читаем весь файл в строки
         with open(filepath, 'r', encoding='cp1251') as f:
             lines = f.readlines()
 
-        # 2. Находим, где начинаются заголовки (station_b) и где основная таблица
+        # 1. Поиск границ заголовка и данных
         header_start_line = -1
         data_start_line = -1
         
         for i, line in enumerate(lines):
-            # "Конечный пункт маршрута"
             if "Конечный пункт маршрута" in line and header_start_line == -1:
                 header_start_line = i + 1 
-            
-            # "№ п/п"
-            if "№ п/п" in line and "Начальный пункт маршрута" in line:
+            # Ищем строку, где начинаются данные. Обычно она содержит "№ п/п"
+            if "№ п/п" in line and "Начальный пункт" in line:
                 data_start_line = i
                 break
         
         if header_start_line == -1 or data_start_line == -1:
-            log.error(f"❌ Не удалось найти 'Конечный пункт' или '№ п/п' в {filepath}.")
+            log.error(f"⚠️ Странный формат файла {filepath}. Не найдены маркеры начала.")
             return None
 
-        # 3. Собираем карту заголовков (station_b)
+        # 2. Парсинг названий станций назначения (Горизонтальный заголовок)
+        # Они разбросаны вертикально над основной таблицей
         header_lines = lines[header_start_line:data_start_line]
         header_cols = {}
         
         for line in header_lines:
             cleaned_line = line.rstrip(',\n')
             cols = cleaned_line.split(',')
-            
+            # Первые 2 колонки - это описание строк, пропускаем
             for col_idx in range(2, len(cols)): 
-                if col_idx not in header_cols:
-                    header_cols[col_idx] = []
-                
-                cell_value = cols[col_idx].strip()
-                if cell_value:
-                    header_cols[col_idx].append(cell_value)
+                val = cols[col_idx].strip()
+                if val:
+                    if col_idx not in header_cols: header_cols[col_idx] = []
+                    header_cols[col_idx].append(val)
         
-        header_map = {}
-        col_count = 1
-        for col_idx in sorted(header_cols.keys()):
-            full_name = " ".join(header_cols[col_idx])
-            full_name = re.sub(r'\s+', ' ', full_name).strip()
-            if full_name:
-                header_map[str(col_count)] = full_name
-                col_count += 1
-                
-        if not header_map:
-             log.error(f"❌ Не удалось собрать карту заголовков (station_b) из {filepath}.")
+        # Собираем карту { "Номер колонки в CSV": "Полное имя станции" }
+        # Важно: Pandas read_csv при чтении DATA SECTION даст колонкам имена '1', '2', '3' и т.д.
+        # Нам нужно сопоставить порядковый номер колонки данных с именем.
+        
+        # Находим первую колонку с данными в строке заголовка данных
+        # Строка data_start_line выглядит как: "№ п/п,Нач.пункт,1,2,3,4..."
+        data_header_row = lines[data_start_line].strip().split(',')
+        
+        # Карта: ключ - имя колонки в DataFrame ('1', '2'...), значение - Имя станции
+        column_name_to_station_map = {}
+        
+        # Индексы в data_header_row сдвинуты относительно header_cols на то же значение
+        for col_idx, station_name_parts in header_cols.items():
+            if col_idx < len(data_header_row):
+                col_name_in_df = data_header_row[col_idx].strip() # Это будет '1', '2', '5' и т.д.
+                full_name = " ".join(station_name_parts)
+                full_name = re.sub(r'\s+', ' ', full_name).strip()
+                column_name_to_station_map[col_name_in_df] = full_name
+
+        if not column_name_to_station_map:
+             log.error(f"❌ Не удалось собрать карту заголовков для {filepath}.")
              return None
         
-        log.info(f"Собрана карта из {len(header_map)} заголовков (station_b).")
+        log.info(f"Файл {os.path.basename(filepath)}: найдено {len(column_name_to_station_map)} целевых станций.")
 
-        # 4. Читаем основную таблицу (начиная с "№ п/п")
-        data_csv_lines = lines[data_start_line:]
+        # 3. Чтение данных
+        # Считываем всё, начиная со строки заголовка данных
+        data_io = StringIO("".join(lines[data_start_line:]))
         
-        # Удаляем мусорные строки (продолжения заголовка)
-        if len(data_csv_lines) > 3:
-             # Индексы 1 и 2 в data_csv_lines (т.е. строки 643 и 644 в оригинале)
-             del data_csv_lines[1:3] 
+        df = pd.read_csv(data_io, header=0, encoding='cp1251', on_bad_lines='skip')
         
-        data_io = StringIO("".join(data_csv_lines))
+        # Переименуем первые колонки для удобства
+        df.rename(columns={df.columns[0]: 'num_pp', df.columns[1]: 'station_a'}, inplace=True)
 
-        df = pd.read_csv(
-            data_io, 
-            header=0, 
-            encoding='cp1251'
-        )
-
-        # 5. Переименовываем первые две колонки
-        df.rename(columns={
-            df.columns[0]: 'num_pp',
-            df.columns[1]: 'station_a'
-        }, inplace=True)
-
-        # --- НОВЫЙ ШАГ 5: Объединение строк с перенесенным названием станции ---
-        
-        log.info("Начинаю объединение многострочных названий станций...")
-        
-        # Заполняем все пустые ячейки (которые не NaN, а просто пустые строки) None
+        # 4. "Склеивание" разорванных названий станций отправления (вертикальных)
+        # Если num_pp пустой, значит это продолжение названия предыдущей станции
         df = df.replace({np.nan: None})
-        
         rows_to_drop = []
-        # Итерируем с конца, чтобы объединять "вверх"
-        for i in range(len(df) - 1, 0, -1):
-            # Проверяем, пуста ли колонка 'num_pp' (это признак переноса)
-            if df.iloc[i]['num_pp'] is None:
-                # Берем текущее название станции (перенос)
-                current_station_part = str(df.iloc[i]['station_a']).strip()
+        
+        for i in range(len(df)):
+            # Если это первая строка, пропускаем
+            if i == 0: continue
+            
+            curr_num = df.iloc[i]['num_pp']
+            curr_name = str(df.iloc[i]['station_a'] or '').strip()
+            
+            # Если нет номера, но есть текст в station_a - это продолжение предыдущей
+            if not curr_num and curr_name:
+                prev_idx = i - 1
+                # Ищем "родителя" выше
+                while prev_idx in rows_to_drop and prev_idx >= 0:
+                    prev_idx -= 1
                 
-                # Берем название станции из предыдущей строки (где должен быть номер)
-                prev_station_name = str(df.iloc[i-1]['station_a']).strip()
-                
-                # Объединяем: полное имя + пробел + часть переноса
-                new_station_name = f"{prev_station_name} {current_station_part}".strip()
-                
-                # Записываем объединенное название в строку с номером (i-1)
-                df.iloc[i-1, df.columns.get_loc('station_a')] = new_station_name
-                
-                # Отмечаем строку переноса (i) для удаления
+                if prev_idx >= 0:
+                    prev_name = str(df.iloc[prev_idx]['station_a']).strip()
+                    df.iloc[prev_idx, 1] = f"{prev_name} {curr_name}".strip()
+                    rows_to_drop.append(i)
+            # Если и номера нет, и имени нет - мусор
+            elif not curr_num and not curr_name:
                 rows_to_drop.append(i)
 
-        # Удаляем строки переноса
         df.drop(df.index[rows_to_drop], inplace=True)
-        log.info(f"Объединено и удалено {len(rows_to_drop)} строк-переносов.")
         
-        # Очищаем колонку с номерами (для порядка, теперь она не нужна)
-        df.dropna(subset=['station_a'], inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        
-        # --- КОНЕЦ НОВОГО ШАГА 5 ---
-
-        # 6. "Плавим" (melt) DataFrame
-        col_station_b_numeric = [col for col in df.columns if col not in ['num_pp', 'station_a']]
+        # 5. Преобразование в длинный формат (Melt)
+        # Оставляем только те колонки, которые есть в нашей карте станций
+        valid_value_vars = [c for c in df.columns if c in column_name_to_station_map]
         
         df_long = df.melt(
             id_vars=['station_a'], 
-            value_vars=col_station_b_numeric, 
-            var_name='station_b_num', 
+            value_vars=valid_value_vars, 
+            var_name='station_b_key', 
             value_name='distance'
         )
         
-        # 7. Очистка
-        df_long['station_a'] = df_long['station_a'].astype(str).str.strip()
-        df_long['station_b_num'] = df_long['station_b_num'].astype(str).str.strip()
-        
-        # 8. Очищаем от нечисловых значений и преобразуем в int
+        # 6. Очистка и маппинг
         df_long = df_long[pd.to_numeric(df_long['distance'], errors='coerce').notna()]
         df_long['distance'] = df_long['distance'].astype(int)
-        
-        # 9. Удаляем маршруты с 0 км
         df_long = df_long[df_long['distance'] > 0]
         
-        # 10. *** ГЛАВНЫЙ ФИКС: Заменяем '1', '2' на имена ***
-        df_long['station_b'] = df_long['station_b_num'].map(header_map)
+        df_long['station_a'] = df_long['station_a'].astype(str).str.strip()
+        # Мапим код колонки ('1', '2') на реальное имя ('Москва...')
+        df_long['station_b'] = df_long['station_b_key'].map(column_name_to_station_map)
         
-        # 11. Проверяем, что все заменилось
-        if df_long['station_b'].isnull().any():
-            missing_keys = df_long[df_long['station_b'].isnull()]['station_b_num'].unique()
-            log.warning(f"⚠️ В {filepath} не найдены имена для station_b ключей: {missing_keys[:10]}...")
-            df_long.dropna(subset=['station_b'], inplace=True)
-
-        # 12. Удаляем дубликаты и ненужный столбец
-        df_long = df_long[['station_a', 'station_b', 'distance']]
-        df_long.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
+        df_long.dropna(subset=['station_b', 'station_a'], inplace=True)
         
-        log.info(f"✅ Матрица {os.path.basename(filepath)} загружена, {len(df_long)} УНИКАЛЬНЫХ маршрутов.")
-        return df_long
+        # Убираем лишнее
+        final_df = df_long[['station_a', 'station_b', 'distance']].copy()
         
-    except FileNotFoundError:
-        log.error(f"❌ Ошибка: Не найден файл '{filepath}'.")
-        return None
+        log.info(f"✅ {os.path.basename(filepath)} обработан: {len(final_df)} маршрутов.")
+        return final_df
+        
     except Exception as e:
-        log.error(f"❌ Ошибка при обработке матрицы {filepath}: {e}", exc_info=True)
+        log.error(f"❌ Критическая ошибка в {filepath}: {e}", exc_info=True)
         return None
 
-# --- 4. Основная функция миграции (ИСПРАВЛЕННАЯ ЛОГИКА) ---
+# --- 4. Основная логика ---
 
 async def main_migrate():
-    '''
-    Главная функция. Подключается, создает таблицы, загружает данные.
-    '''
     if not TARIFF_DB_URL:
-        log.error("❌ TARIFF_DATABASE_URL не найдена в .env файле. Миграция отменена.")
+        log.error("❌ TARIFF_DATABASE_URL не задан.")
         return
         
-    log.info(f"Подключение к новой базе данных тарифов: {TARIFF_DB_URL.split('@')[-1]}")
-    
-    # 1. Создаем движок и таблицы
     engine = create_async_engine(TARIFF_DB_URL)
     async with engine.begin() as conn:
-        log.info("Очистка существующих таблиц (если есть)...")
+        await conn.run_sync(Base.metadata.create_all) # Создаем если нет (лучше дропнуть вручную если надо чистую)
+        # Если нужна полная очистка перед загрузкой:
+        log.info("Очистка таблиц перед загрузкой...")
         await conn.run_sync(Base.metadata.drop_all)
-        log.info("Создание новых таблиц (tariff_stations, tariff_matrix)...")
         await conn.run_sync(Base.metadata.create_all)
     
     Session = async_sessionmaker(engine, expire_on_commit=False)
     
-    # Ищем папку с данными
-    data_dir_path = os.path.join(project_root_dir, 'zdtarif_bot', 'data')
-    if not os.path.exists(data_dir_path):
-        data_dir_path = os.path.join(project_root_dir, 'data')
-        if not os.path.exists(data_dir_path):
-             log.error(f"❌ Не могу найти папку 'data' или 'zdtarif_bot/data' в {project_root_dir}")
-             return
-    
-    log.info(f"Использую папку с данными: {data_dir_path}")
+    # Путь к данным
+    data_dir = os.path.join(project_root_dir, 'zdtarif_bot', 'data')
+    if not os.path.exists(data_dir):
+        data_dir = os.path.join(project_root_dir, 'data') # Fallback
 
-    # 2. Миграция станций (только 2-РП*.csv)
-    log.info("--- 1/2: Начинаю миграцию Станций (только 2-РП*.csv) ---")
+    # 1. Станции
+    log.info("--- Загрузка Станций ---")
+    station_files = glob.glob(os.path.join(data_dir, '2-РП*.csv'))
+    all_stations = []
+    for f in station_files:
+        df = load_kniga_2_rp(f)
+        if df is not None: all_stations.append(df)
     
-    station_files = glob.glob(os.path.join(data_dir_path, '2-РП*.csv'))
-    log.info(f"Найдены файлы станций (2-РП): {[os.path.basename(f) for f in station_files]}")
-    
-    all_stations_dfs = []
-    for filepath in station_files:
-        df = load_kniga_2_rp(filepath)
-        if df is not None:
-            all_stations_dfs.append(df)
+    if all_stations:
+        full_stations = pd.concat(all_stations).drop_duplicates(subset=['station_code'])
+        async with Session() as session:
+            # Batch insert
+            batch_size = 5000
+            total = len(full_stations)
+            for start in range(0, total, batch_size):
+                end = min(start + batch_size, total)
+                batch = full_stations.iloc[start:end]
+                values = []
+                for _, row in batch.iterrows():
+                    values.append({
+                        'name': row['station_name'],
+                        'code': row['station_code'],
+                        'railway': row['railway'],
+                        'operations': row['operations'],
+                        'transit_points': parse_transit_points_for_db(row['transit_points_raw'])
+                    })
+                await session.execute(pg_insert(TariffStation).values(values).on_conflict_do_nothing())
+                await session.commit()
+                log.info(f"Станции: обработано {end}/{total}")
 
-    if not all_stations_dfs:
-        log.error("❌ Ни один файл станций (2-РП*.csv) не загружен. Миграция станций провалена.")
-        return
-        
-    # Объединяем все DF и удаляем дубликаты
-    stations_df = pd.concat(all_stations_dfs, ignore_index=True)
-    stations_df.drop_duplicates(subset=['station_code'], keep='first', inplace=True)
+    # 2. Матрицы
+    log.info("--- Загрузка Матриц ---")
+    matrix_files = glob.glob(os.path.join(data_dir, '3-*.csv'))
+    # Исключаем не-матрицы
+    matrix_files = [f for f in matrix_files if "Вводные" not in f and "Общие" not in f]
     
-    log.info(f"Всего найдено {len(stations_df)} УНИКАЛЬНЫХ станций во всех файлах.")
+    combined_dfs = []
+    for f in matrix_files:
+        df = load_kniga_3_matrix(f)
+        if df is not None: combined_dfs.append(df)
     
-    stations_df = stations_df.where(pd.notnull(stations_df), None)
-
-    async with Session() as session:
-        async with session.begin():
-            stations_to_add = []
-            for _, row in stations_df.iterrows():
-                stations_to_add.append(
-                    TariffStation(
-                        name=row['station_name'],
-                        code=row['station_code'],
-                        railway=row['railway'],
-                        operations=row['operations'],
-                        transit_points=parse_transit_points_for_db(row['transit_points_raw'])
-                    )
-                )
-            log.info(f"Добавляю {len(stations_to_add)} станций в базу...")
-            session.add_all(stations_to_add)
-        await session.commit()
-    log.info("✅ Миграция станций завершена.")
-
-
-    # --- 3. Миграция Матриц: СБОР, СИММЕТРИЯ И МАССОВАЯ ВСТАВКА (ИСПРАВЛЕНО) ---
-    log.info("--- 2/2: Начинаю миграцию Матриц (все 3-*.csv) ---")
-    
-    all_matrix_files = glob.glob(os.path.join(data_dir_path, '3-*.csv'))
-    
-    files_to_exclude = [
-        '3-Вводные положения.csv',
-        '3-Общие положения.csv'
-    ]
-    
-    matrix_files_to_process = []
-    for f_path in all_matrix_files:
-        f_name = os.path.basename(f_path)
-        if f_name not in files_to_exclude:
-            matrix_files_to_process.append(f_path)
-        else:
-            log.warning(f"Файл {f_name} исключен из обработки, т.к. не является матрицей.")
-            
-    log.info(f"Найдены файлы матриц для обработки: {[os.path.basename(f) for f in matrix_files_to_process]}")
-
-
-    all_routes_dfs = []
-    
-    # 1. Сбор всех маршрутов в один список
-    for filepath in matrix_files_to_process: 
-        log.info(f"--- Сборка маршрутов из: {os.path.basename(filepath)} ---")
-        matrix_df = load_kniga_3_matrix(filepath)
-        if matrix_df is not None and not matrix_df.empty:
-            all_routes_dfs.append(matrix_df)
-        else:
-            # ⚠️ Важный лог: Файл 3-2 Рос.csv пропущен из-за ошибки в load_kniga_3_matrix
-            log.warning(f"Файл {os.path.basename(filepath)} пропущен (пустой или ошибка загрузки).") 
-
-    if not all_routes_dfs:
-        log.warning("⚠️ Не найдено маршрутов для вставки. Миграция матриц завершена без данных.")
-        await engine.dispose()
+    if not combined_dfs:
+        log.error("Нет данных матриц для загрузки.")
         return
 
-    # Объединяем все маршруты из всех файлов
-    combined_routes_df = pd.concat(all_routes_dfs, ignore_index=True)
+    full_matrix = pd.concat(combined_dfs, ignore_index=True)
     
-    # 2. Удаляем дубликаты (A, B) перед созданием симметричных пар
-    combined_routes_df.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
-    log.info(f"Всего УНИКАЛЬНЫХ маршрутов (A->B) собрано: {len(combined_routes_df)}")
-
-    # 3. Создание симметричных пар (B -> A)
-    # Копируем DF, меняем колонки и добавляем
-    reversed_routes_df = combined_routes_df.rename(columns={'station_a': 'station_b_temp', 
-                                                            'station_b': 'station_a'}).copy()
-    reversed_routes_df.rename(columns={'station_b_temp': 'station_b'}, inplace=True)
-
-    # Объединяем прямые и обратные маршруты
-    final_routes_df = pd.concat([combined_routes_df, reversed_routes_df], ignore_index=True)
+    # Создаем симметричные маршруты (B -> A)
+    log.info("Генерация обратных маршрутов...")
+    reversed_matrix = full_matrix.rename(columns={'station_a': 'station_b', 'station_b': 'station_a'})
+    full_matrix = pd.concat([full_matrix, reversed_matrix], ignore_index=True)
     
-    # 4. Удаляем дубликаты (A, B) ещё раз, теперь включая симметричные
-    final_routes_df.drop_duplicates(subset=['station_a', 'station_b'], keep='first', inplace=True)
-
-    total_routes_to_add = len(final_routes_df)
-    log.info(f"Всего маршрутов для вставки (включая симметричные): {total_routes_to_add}")
+    # Удаляем дубликаты
+    full_matrix.drop_duplicates(subset=['station_a', 'station_b'], inplace=True)
     
-    # 5. Массовая вставка С ПАКЕТИРОВАНИЕМ (FIXED)
+    total_routes = len(full_matrix)
+    log.info(f"Всего маршрутов для загрузки: {total_routes}")
+    
     async with Session() as session:
-        
-        # --- ИСПРАВЛЕНИЕ: Пакетная вставка для обхода лимита 32767 аргументов ---
-        BATCH_SIZE = 5000  # Выбираем безопасный размер пакета, чтобы 5000 * 3 < 32767
-        num_batches = (total_routes_to_add + BATCH_SIZE - 1) // BATCH_SIZE
-        
-        log.info(f"Начинаю пакетную вставку {total_routes_to_add} маршрутов в {num_batches} пакетах...")
-        
-        for i in range(num_batches):
-            start_index = i * BATCH_SIZE
-            end_index = min((i + 1) * BATCH_SIZE, total_routes_to_add)
+        batch_size = 5000 # Безопасный размер
+        for start in range(0, total_routes, batch_size):
+            end = min(start + batch_size, total_routes)
+            batch = full_matrix.iloc[start:end]
+            records = batch.to_dict(orient='records')
             
-            batch_df = final_routes_df.iloc[start_index:end_index]
-            routes_to_insert = batch_df.to_dict(orient='records')
-            
-            try:
-                async with session.begin():
-                    # Вставляем данные, используя ON CONFLICT DO NOTHING
-                    stmt = pg_insert(TariffMatrix).values(routes_to_insert).on_conflict_do_nothing(
-                        index_elements=['station_a', 'station_b']
-                    )
-                    await session.execute(stmt)
-                    log.info(f"   -> Пакет {i+1}/{num_batches} успешно вставлен (маршрутов: {len(batch_df)}).")
-                    
-            except Exception as e:
-                log.error(f"❌ Критическая ошибка при вставке пакета {i+1}: {e}", exc_info=True)
-                # Продолжаем, чтобы сохранить как можно больше данных
-                
-    log.info("✅ Миграция матриц завершена.")
+            stmt = pg_insert(TariffMatrix).values(records).on_conflict_do_nothing(
+                index_elements=['station_a', 'station_b']
+            )
+            await session.execute(stmt)
+            await session.commit()
+            if start % 50000 == 0:
+                log.info(f"Матрица: загружено {end}/{total_routes}")
 
-    log.info("🎉🎉🎉 == МИГРАЦИЯ ТАРИФНОЙ БАЗЫ УСПЕШНО ЗАВЕРШЕНА! ==")
-    
+    log.info("🎉 Миграция успешно завершена!")
     await engine.dispose()
 
-
 if __name__ == "__main__":
-    env_path = os.path.join(project_root_dir, '.env')
-    if os.path.exists(env_path):
-        log.info(f"Загружаю .env из {env_path}")
-        load_dotenv(dotenv_path=env_path)
-    else:
-        log.warning(f"Файл .env не найден в {project_root_dir}, использую переменные окружения системы.")
-        
-    TARIFF_DB_URL = os.getenv("TARIFF_DATABASE_URL")
-    
     asyncio.run(main_migrate())
