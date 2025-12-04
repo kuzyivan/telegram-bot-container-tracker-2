@@ -13,6 +13,7 @@ from services.railway_graph import railway_graph # <-- Импорт
 
 from web.routers import public, admin, auth, client # <--- Добавили client
 from db import init_db
+from web.auth import login_required
 
 
 @asynccontextmanager
