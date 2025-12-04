@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from sqlalchemy import select, or_, desc, and_, not_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,7 @@ from models import Tracking, Train, User, ScheduledTrain, ScheduleShareLink
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from web.auth import get_current_user
+from utils.notify import notify_admin  # Импортируем функцию уведомления админа
 
 router = APIRouter()
 
@@ -92,16 +93,46 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
 
 # --- Роуты ---
 
-@router.get("/")
-async def read_root(
-    request: Request, 
-    user: Optional[User] = Depends(get_current_user)
-):
-    """Отображает главную страницу поиска."""
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "user": user 
+@router.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request, user: User = Depends(get_current_user)):
+    """
+    Главная страница - Лендинг.
+    """
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "user": user  # Передаем юзера, чтобы показывать кнопку "Личный кабинет" или "Войти"
     })
+
+@router.post("/contact_form")
+async def handle_contact_form(
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(...),
+    message: str = Form(None)
+):
+    """
+    Обработка формы обратной связи.
+    Отправляет данные администратору в Telegram.
+    """
+    text = (
+        f"📩 **Новая заявка с сайта!**\n\n"
+        f"👤 **Имя:** {name}\n"
+        f"📞 **Телефон:** {phone}\n"
+        f"💬 **Сообщение:** {message or 'Не указано'}"
+    )
+    
+    # Отправляем в Telegram админу
+    await notify_admin(text, silent=False, parse_mode="Markdown")
+    
+    # Возвращаем фрагмент HTML (HTMX заменит форму на это сообщение)
+    return HTMLResponse("""
+        <div class="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-6 rounded-xl text-center animate-fade-in border border-green-200 dark:border-green-800">
+            <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <h3 class="text-xl font-bold mb-2">Спасибо!</h3>
+            <p>Ваша заявка принята. Мы свяжемся с вами в ближайшее время.</p>
+        </div>
+    """)
+
 
 @router.post("/search")
 async def search_handler(

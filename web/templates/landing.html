@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A-Terminal | Логистический оператор будущего</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: { 500: '#2563eb', 600: '#1d4ed8', 900: '#1e3a8a' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); }
+        .dark .glass { background: rgba(30, 41, 59, 0.7); }
+        .hero-bg {
+            background-image: url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-1.2.1&auto=format&fit=crop&w=2850&q=80');
+            background-size: cover;
+            background-position: center;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+
+    <header class="fixed w-full z-50 transition-all duration-300 glass border-b border-slate-200/50 dark:border-slate-700/50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="bg-brand-600 text-white p-2 rounded-lg shadow-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <span class="font-bold text-2xl tracking-tight text-slate-900 dark:text-white">A-Terminal</span>
+            </div>
+            
+            <nav class="hidden md:flex gap-8 font-medium text-sm">
+                <a href="#about" class="hover:text-brand-500 transition">О терминале</a>
+                <a href="#services" class="hover:text-brand-500 transition">Услуги</a>
+                <a href="#tech" class="hover:text-brand-500 transition">Технологии</a>
+                <a href="#contacts" class="hover:text-brand-500 transition">Контакты</a>
+            </nav>
+
+            <div class="flex items-center gap-4">
+                {% if user %}
+                    <a href="{{ '/admin/dashboard' if user.role == 'admin' else '/client/dashboard' }}" class="text-sm font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 px-4 py-2 rounded-full transition">
+                        Личный кабинет
+                    </a>
+                {% else %}
+                    <a href="/login" class="text-sm font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 px-5 py-2.5 rounded-full transition shadow-lg">
+                        Войти
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <section class="relative min-h-screen flex items-center pt-20 overflow-hidden">
+        <div class="absolute inset-0 hero-bg">
+            <div class="absolute inset-0 bg-gradient-to-r from-slate-900/90 to-slate-900/40"></div>
+        </div>
+        
+        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div class="animate-fade-in-up">
+                <div class="inline-flex items-center gap-2 bg-brand-600/20 text-brand-300 border border-brand-500/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-6">
+                    <span class="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
+                    Работаем 24/7
+                </div>
+                <h1 class="text-5xl md:text-7xl font-extrabold text-white leading-tight mb-6">
+                    Логистика <br>
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">нового уровня</span>
+                </h1>
+                <p class="text-lg text-slate-300 mb-8 max-w-xl leading-relaxed">
+                    Современный терминальный комплекс полного цикла. Прием, хранение и отправка контейнерных поездов с использованием передовых IT-технологий.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <a href="#contacts" class="px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold shadow-xl shadow-brand-600/20 transition transform hover:-translate-y-1 text-center">
+                        Оставить заявку
+                    </a>
+                    <a href="/login" class="px-8 py-4 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white border border-white/20 rounded-xl font-bold transition text-center">
+                        Отследить груз
+                    </a>
+                </div>
+            </div>
+            
+            <div class="hidden lg:block relative">
+                <div class="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-400 rounded-2xl blur opacity-30 animate-pulse"></div>
+                <div class="relative bg-slate-900/80 backdrop-blur-xl p-6 rounded-2xl border border-slate-700/50 shadow-2xl">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-white font-bold">Статус терминала</h3>
+                        <span class="text-green-400 text-xs flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-400"></span> Online</span>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                            <span class="text-slate-400 text-sm">Обработано TEU</span>
+                            <span class="text-white font-mono font-bold">12,450</span>
+                        </div>
+                        <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                            <span class="text-slate-400 text-sm">Поездов в пути</span>
+                            <span class="text-blue-400 font-mono font-bold">8</span>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-white/10">
+                            <p class="text-xs text-slate-500 mb-2">Последняя операция</p>
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded bg-blue-500/20 flex items-center justify-center text-blue-400">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                </div>
+                                <div>
+                                    <p class="text-white text-sm font-medium">Поезд №2045 прибыл</p>
+                                    <p class="text-slate-500 text-xs">10 минут назад</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" class="py-24 bg-white dark:bg-slate-900">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white mb-4">Инфраструктура и возможности</h2>
+                <p class="text-slate-500 dark:text-slate-400">Мы объединили физическую инфраструктуру с цифровыми сервисами для максимальной эффективности.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="md:col-span-2 bg-slate-50 dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 hover:shadow-lg transition group">
+                    <div class="bg-blue-100 dark:bg-blue-900/30 w-12 h-12 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-6 group-hover:scale-110 transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Собственный терминал</h3>
+                    <p class="text-slate-500 dark:text-slate-400 leading-relaxed">
+                        Обширная площадь для хранения контейнеров, оснащенная современной ричстакерной техникой. Удобные подъездные пути и круглосуточная охрана.
+                    </p>
+                </div>
+
+                <div class="bg-slate-50 dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 hover:shadow-lg transition group">
+                    <div class="bg-green-100 dark:bg-green-900/30 w-12 h-12 rounded-xl flex items-center justify-center text-green-600 dark:text-green-400 mb-6 group-hover:scale-110 transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">Скорость обработки</h3>
+                    <p class="text-slate-500 dark:text-slate-400">
+                        Минимальное время простоя. Оформление документов и погрузка день в день.
+                    </p>
+                </div>
+
+                <div class="bg-slate-50 dark:bg-slate-800 p-8 rounded-3xl border border-slate-100 dark:border-slate-700 hover:shadow-lg transition group">
+                    <div class="bg-purple-100 dark:bg-purple-900/30 w-12 h-12 rounded-xl flex items-center justify-center text-purple-600 dark:text-purple-400 mb-6 group-hover:scale-110 transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-3">IT-Экосистема</h3>
+                    <p class="text-slate-500 dark:text-slate-400">
+                        Личный кабинет клиента, Telegram-бот для трекинга и автоматические уведомления о статусах.
+                    </p>
+                </div>
+
+                <div class="md:col-span-2 bg-slate-900 p-8 rounded-3xl border border-slate-700 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 w-64 h-64 bg-brand-600/20 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                    <div class="relative z-10">
+                        <h3 class="text-xl font-bold text-white mb-3">Ж/Д перевозки</h3>
+                        <p class="text-slate-300 mb-6">
+                            Регулярные контейнерные поезда по ключевым направлениям России. Гарантированные квоты и отправка по расписанию.
+                        </p>
+                        <div class="flex gap-3">
+                            <span class="px-3 py-1 bg-white/10 rounded-lg text-xs text-white border border-white/10">Москва</span>
+                            <span class="px-3 py-1 bg-white/10 rounded-lg text-xs text-white border border-white/10">Новосибирск</span>
+                            <span class="px-3 py-1 bg-white/10 rounded-lg text-xs text-white border border-white/10">Екатеринбург</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contacts" class="py-24 bg-slate-50 dark:bg-slate-900 relative">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 md:p-12 border border-slate-100 dark:border-slate-700">
+                <div class="text-center mb-10">
+                    <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white mb-4">Станьте нашим партнером</h2>
+                    <p class="text-slate-500 dark:text-slate-400">Оставьте заявку, и мы подготовим индивидуальное предложение по логистике.</p>
+                </div>
+
+                <form hx-post="/contact_form" hx-swap="outerHTML" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Ваше имя</label>
+                            <input type="text" name="name" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-brand-500 outline-none transition text-slate-900 dark:text-white" placeholder="Иван Иванов">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Телефон</label>
+                            <input type="tel" name="phone" required class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-brand-500 outline-none transition text-slate-900 dark:text-white" placeholder="+7 (999) 000-00-00">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Сообщение (необязательно)</label>
+                        <textarea name="message" rows="3" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-brand-500 outline-none transition text-slate-900 dark:text-white" placeholder="Хочу узнать тарифы на хранение..."></textarea>
+                    </div>
+                    <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-brand-600/20 transition transform active:scale-95">
+                        Отправить заявку
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-slate-900 text-slate-400 py-12 border-t border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex items-center gap-2">
+                <div class="bg-slate-800 p-2 rounded-lg">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <span class="font-bold text-white text-lg">A-Terminal</span>
+            </div>
+            <div class="text-sm">
+                &copy; 2025 A-Terminal. Все права защищены.
+            </div>
+            <div class="flex gap-6">
+                <a href="#" class="hover:text-white transition">Telegram</a>
+                <a href="#" class="hover:text-white transition">WhatsApp</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>
