@@ -1,0 +1,83 @@
+{% if error %}
+<div class="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-2xl p-6 text-center animate-shake">
+    <div class="inline-flex items-center justify-center w-12 h-12 bg-red-100 dark:bg-red-800 rounded-full text-red-600 dark:text-red-300 mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+    </div>
+    <h3 class="text-lg font-bold text-red-700 dark:text-red-400 mb-1">Не удалось рассчитать</h3>
+    <p class="text-red-600 dark:text-red-300 text-sm">{{ error }}</p>
+    {% if station_from_raw or station_to_raw %}
+    <p class="text-xs text-slate-400 mt-2">Проверьте написание: "{{ station_from_raw }}" -> "{{ station_to_raw }}"</p>
+    {% endif %}
+</div>
+
+{% elif result %}
+<div class="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden animate-slide-up">
+    
+    <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white flex justify-between items-center">
+        <div>
+            <p class="text-blue-100 text-xs font-bold uppercase tracking-wider mb-1">Тарифное расстояние</p>
+            <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-extrabold">{{ result.distance }}</span>
+                <span class="text-lg font-medium opacity-80">км</span>
+            </div>
+        </div>
+        <div class="bg-white/20 backdrop-blur-md p-2 rounded-xl">
+            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
+        </div>
+    </div>
+
+    <div class="p-8">
+        <div class="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            
+            <div class="absolute top-6 left-0 w-full h-1 bg-slate-100 dark:bg-slate-700 hidden md:block z-0"></div>
+
+            <div class="relative z-10 flex flex-col items-center text-center w-full md:w-1/3">
+                <div class="w-12 h-12 bg-white dark:bg-slate-800 border-4 border-green-500 rounded-full flex items-center justify-center shadow-sm mb-3">
+                    <span class="font-bold text-green-600 dark:text-green-400">A</span>
+                </div>
+                <h3 class="font-bold text-slate-900 dark:text-white text-lg leading-tight">{{ result.info_a.station_name }}</h3>
+                <p class="text-xs font-mono text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded mt-1">{{ result.info_a.station_code }}</p>
+                <p class="text-xs text-slate-500 mt-1">{{ result.info_a.railway }}</p>
+            </div>
+
+            <div class="relative z-10 flex flex-col items-center w-full md:w-1/3 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-200 dark:border-slate-600 md:mt-12">
+                <p class="text-xs font-bold text-slate-400 uppercase mb-2">Детализация пути</p>
+                
+                {% set route = result.route_details %}
+                <div class="w-full space-y-2 text-sm">
+                    <div class="flex justify-between items-center text-slate-600 dark:text-slate-300">
+                        <span>{{ result.info_a.station_name }} ➝ {{ route.tpa_name }}</span>
+                        <span class="font-mono font-bold">{{ route.distance_a_to_tpa }} км</span>
+                    </div>
+                    
+                    {% if route.distance_tpa_to_tpb > 0 %}
+                    <div class="flex justify-between items-center text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
+                        <span>{{ route.tpa_name }} ➝ {{ route.tpb_name }}</span>
+                        <span class="font-mono font-bold">{{ route.distance_tpa_to_tpb }} км</span>
+                    </div>
+                    {% endif %}
+
+                    <div class="flex justify-between items-center text-slate-600 dark:text-slate-300">
+                        <span>{{ route.tpb_name }} ➝ {{ result.info_b.station_name }}</span>
+                        <span class="font-mono font-bold">{{ route.distance_tpb_to_b }} км</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="relative z-10 flex flex-col items-center text-center w-full md:w-1/3">
+                <div class="w-12 h-12 bg-white dark:bg-slate-800 border-4 border-red-500 rounded-full flex items-center justify-center shadow-sm mb-3">
+                    <span class="font-bold text-red-600 dark:text-red-400">B</span>
+                </div>
+                <h3 class="font-bold text-slate-900 dark:text-white text-lg leading-tight">{{ result.info_b.station_name }}</h3>
+                <p class="text-xs font-mono text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded mt-1">{{ result.info_b.station_code }}</p>
+                <p class="text-xs text-slate-500 mt-1">{{ result.info_b.railway }}</p>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="text-center py-8 text-slate-400">
+    Нет данных.
+</div>
+{% endif %}
