@@ -94,13 +94,24 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
 # --- Роуты ---
 
 @router.get("/", response_class=HTMLResponse)
-async def landing_page(request: Request, user: User = Depends(get_current_user)):
+async def landing_page(request: Request, user: Optional[User] = Depends(get_current_user)):
     """
     Главная страница - Лендинг.
     """
     return templates.TemplateResponse("landing.html", {
         "request": request,
         "user": user  # Передаем юзера, чтобы показывать кнопку "Личный кабинет" или "Войти"
+    })
+
+# 2. СТРАНИЦА ПОИСКА (Новый маршрут)
+@router.get("/track", response_class=HTMLResponse)
+async def track_page(request: Request, user: Optional[User] = Depends(get_current_user)):
+    """
+    Отдельная страница с формой поиска (бывшая главная).
+    """
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "user": user 
     })
 
 @router.post("/contact_form")
