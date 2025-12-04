@@ -2,7 +2,7 @@
 import asyncio
 import re
 import logging
-from sqlalchemy import select, ARRAY, exc, func, Index, UniqueConstraint, text
+from sqlalchemy import select, ARRAY, exc, func, Index, UniqueConstraint, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Integer
@@ -13,7 +13,6 @@ from db import TariffSessionLocal
 
 logger = logging.getLogger(__name__)
 
-# --- Определение Base ---
 class TariffBase(DeclarativeBase):
     pass
 
@@ -44,9 +43,6 @@ class TariffMatrix(TariffBase):
     )
 
 class RailwaySection(TariffBase):
-    """
-    Хранит последовательность станций участка (из Книги 1).
-    """
     __tablename__ = 'railway_sections'
     id: Mapped[int] = mapped_column(primary_key=True)
     node_start_code: Mapped[str | None] = mapped_column(String(6), index=True)
@@ -62,14 +58,12 @@ class RailwaySection(TariffBase):
 
 def _normalize_station_name_for_db(name: str) -> str:
     cleaned_name = re.sub(r'\s*\([^)]*\)\s*$', '', name).strip()
-    # Вставляем пробел между буквой и цифрой (ТОМСК1 -> ТОМСК 1)
     cleaned_name = re.sub(r'([А-ЯЁA-Z])(\d)', r'\1 \2', cleaned_name)
     return cleaned_name if cleaned_name else name.strip()
 
 def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
     transit_points = []
-    if not tp_strings:
-        return []
+    if not tp_strings: return []
     for tp_str in tp_strings:
         try:
             parts = tp_str.split(':')
@@ -84,15 +78,11 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
 
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     cleaned_name = _normalize_station_name_for_db(station_name)
-    
     search_variants = {cleaned_name}
-    if " 2" in cleaned_name:
-        search_variants.add(cleaned_name.replace(" 2", " II"))
-    if " 1" in cleaned_name:
-        search_variants.add(cleaned_name.replace(" 1", " I"))
+    if " 2" in cleaned_name: search_variants.add(cleaned_name.replace(" 2", " II"))
+    if " 1" in cleaned_name: search_variants.add(cleaned_name.replace(" 1", " I"))
     
     search_variants_lower = [v.lower() for v in search_variants]
-    
     stmt = select(TariffStation).where(func.lower(TariffStation.name).in_(search_variants_lower))
     result = await session.execute(stmt)
     all_stations = result.scalars().all()
@@ -102,17 +92,14 @@ async def _get_station_info_from_db(station_name: str, session: AsyncSession) ->
         result_fallback = await session.execute(stmt_startswith)
         all_stations = result_fallback.scalars().all()
 
-    if not all_stations:
-        return None 
+    if not all_stations: return None 
 
     tp_station = None
     for station in all_stations:
         if station.operations and 'ТП' in station.operations:
             tp_station = station
             break 
-    
-    if not tp_station:
-        tp_station = all_stations[0]
+    if not tp_station: tp_station = all_stations[0]
 
     return {
         'station_name': tp_station.name,
@@ -131,80 +118,90 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
         TariffMatrix.station_b.ilike(f"{tp_b_clean}%")
     ).limit(1)
     
-    stmt_ba = select(TariffMatrix.distance).where(
-        TariffMatrix.station_a.ilike(f"{tp_b_clean}%"),
-        TariffMatrix.station_b.ilike(f"{tp_a_clean}%")
-    ).limit(1)
-
     try:
         result_ab = await session.execute(stmt_ab)
         distance = result_ab.scalar_one_or_none()
         if distance is not None: return distance
 
+        stmt_ba = select(TariffMatrix.distance).where(
+            TariffMatrix.station_a.ilike(f"{tp_b_clean}%"),
+            TariffMatrix.station_b.ilike(f"{tp_a_clean}%")
+        ).limit(1)
+        
         result_ba = await session.execute(stmt_ba)
-        distance_ba = result_ba.scalar_one_or_none()
-        if distance_ba is not None: return distance_ba
+        return result_ba.scalar_one_or_none()
             
-    except exc.OperationalError as e:
-        logger.error(f"Ошибка подключения к БД тарифов: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка БД (Матрица): {e}")
         return None
-    return None
 
-# --- 🆕 ПОИСК ДЕТАЛЬНОГО МАРШРУТА (Книга 1) ---
+# --- 🆕 "УМНЫЙ" ПОИСК МАРШРУТА ---
 
 async def _find_stations_between(code_a: str, code_b: str, session: AsyncSession) -> list[dict]:
     """
-    Ищет в railway_sections сегмент, содержащий оба кода станций.
+    Ищет сегмент. Пробует точный код (6 знаков) и короткий (5 знаков).
     """
-    if code_a == code_b:
-        return []
+    if code_a == code_b: return []
 
-    # ✅ ИСПРАВЛЕНО: Используем CAST(... AS jsonb) вместо ::jsonb, чтобы избежать ошибки парсинга
-    sql = text("""
-        SELECT stations_list 
-        FROM railway_sections 
-        WHERE stations_list @> CAST(:json_a AS jsonb) 
-          AND stations_list @> CAST(:json_b AS jsonb)
-        LIMIT 1
-    """)
+    # Генерация вариантов кодов (6 цифр и 5 цифр)
+    # Если код 123456 -> пробуем 123456 и 12345
+    # Если код 12345 -> пробуем 12345
+    variants_a = [code_a]
+    if len(code_a) == 6: variants_a.append(code_a[:-1])
     
-    json_a = f'[{{"c": "{code_a}"}}]'
-    json_b = f'[{{"c": "{code_b}"}}]'
+    variants_b = [code_b]
+    if len(code_b) == 6: variants_b.append(code_b[:-1])
+
+    logger.info(f"🔎 Поиск участка {code_a} -> {code_b}. Варианты A: {variants_a}, B: {variants_b}")
+
+    # Строим SQL с OR условиями для JSON
+    # Нам нужно найти строку, где (stations_list содержит A1 ИЛИ A2) И (stations_list содержит B1 ИЛИ B2)
     
-    try:
-        result = await session.execute(sql, {"json_a": json_a, "json_b": json_b})
-        row = result.scalar_one_or_none()
-        
-        if row:
-            full_list = row # Список словарей [{'c':..., 'n':...}]
+    # Чтобы не усложнять SQL, сделаем цикл по вариантам (их всего 1-2, это быстро)
+    for ca in variants_a:
+        for cb in variants_b:
+            sql = text("""
+                SELECT stations_list 
+                FROM railway_sections 
+                WHERE stations_list @> CAST(:json_a AS jsonb) 
+                  AND stations_list @> CAST(:json_b AS jsonb)
+                LIMIT 1
+            """)
             
-            idx_a = -1
-            idx_b = -1
+            json_a = f'[{{"c": "{ca}"}}]'
+            json_b = f'[{{"c": "{cb}"}}]'
             
-            for i, st in enumerate(full_list):
-                if st['c'] == code_a: idx_a = i
-                if st['c'] == code_b: idx_b = i
-            
-            if idx_a != -1 and idx_b != -1:
-                # Если A раньше B -> прямой порядок
-                if idx_a < idx_b:
-                    return full_list[idx_a : idx_b+1]
-                # Если B раньше A -> обратный порядок (разворачиваем)
-                else:
-                    segment = full_list[idx_b : idx_a+1]
-                    return segment[::-1]
+            try:
+                result = await session.execute(sql, {"json_a": json_a, "json_b": json_b})
+                row = result.scalar_one_or_none()
+                
+                if row:
+                    logger.info(f"   ✅ Найдено совпадение по паре {ca}-{cb}!")
+                    full_list = row 
                     
-    except Exception as e:
-        logger.error(f"Ошибка поиска детального маршрута для {code_a}-{code_b}: {e}")
-        
+                    idx_a = -1
+                    idx_b = -1
+                    
+                    for i, st in enumerate(full_list):
+                        if st['c'] == ca: idx_a = i
+                        if st['c'] == cb: idx_b = i
+                    
+                    if idx_a != -1 and idx_b != -1:
+                        if idx_a < idx_b:
+                            return full_list[idx_a : idx_b+1]
+                        else:
+                            segment = full_list[idx_b : idx_a+1]
+                            return segment[::-1]
+            except Exception as e:
+                logger.error(f"SQL Error: {e}")
+
+    logger.warning(f"   ❌ Участок {code_a}-{code_b} не найден в Книге 1.")
     return []
 
-# --- ГЛАВНАЯ ФУНКЦИЯ РАСЧЕТА ---
+# --- ГЛАВНАЯ ФУНКЦИЯ ---
 
 async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
-    if not TariffSessionLocal:
-        logger.error("[Tariff] TARIFF_DATABASE_URL не настроен.")
-        return None
+    if not TariffSessionLocal: return None
 
     try:
         async with TariffSessionLocal() as session:
@@ -212,149 +209,92 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
             info_a = await _get_station_info_from_db(from_station_name, session)
             info_b = await _get_station_info_from_db(to_station_name, session)
 
-            if not info_a or not info_b:
-                return None
+            if not info_a or not info_b: return None
             
-            # Если станции совпадают
+            # Совпадение станций
             if info_a['station_name'].lower() == info_b['station_name'].lower():
                 return {
-                    'distance': 0, 
-                    'info_a': info_a, 
-                    'info_b': info_b, 
-                    'route_details': {
-                        'tpa_name': info_a['station_name'], 
-                        'tpb_name': info_a['station_name'], 
-                        'distance_a_to_tpa': 0, 
-                        'distance_tpa_to_tpb': 0, 
-                        'distance_tpb_to_b': 0, 
-                        'detailed_path': [info_a['station_name']] # Путь из 1 точки
-                    }
+                    'distance': 0, 'info_a': info_a, 'info_b': info_b, 
+                    'route_details': {'tpa_name': info_a['station_name'], 'tpb_name': info_a['station_name'], 'detailed_path': [info_a['station_name']]}
                 }
 
-            # --- Определение ТП ---
-            tps_a = info_a.get('transit_points', [])
-            operations_a = info_a.get('operations') or ""
-            if not tps_a or ('ТП' in operations_a and not tps_a):
-                 tps_a = [{'name': info_a['station_name'], 'code': info_a['station_code'], 'distance': 0}]
-            
-            tps_b = info_b.get('transit_points', [])
-            operations_b = info_b.get('operations') or ""
-            if not tps_b or ('ТП' in operations_b and not tps_b):
-                tps_b = [{'name': info_b['station_name'], 'code': info_b['station_code'], 'distance': 0}]
+            # ТП
+            tps_a = info_a.get('transit_points') or [{'name': info_a['station_name'], 'code': info_a['station_code'], 'distance': 0}]
+            tps_b = info_b.get('transit_points') or [{'name': info_b['station_name'], 'code': info_b['station_code'], 'distance': 0}]
 
             min_total_distance = float('inf')
             best_route = None 
-            route_found = False
 
-            # Перебор всех комбинаций ТП
             for tp_a in tps_a:
                 for tp_b in tps_b:
-                    
-                    # 1. Если ТП совпадают (маршрут внутри одной дороги или рядом)
+                    # 1. ТП совпадают
                     if tp_a['name'] == tp_b['name']:
-                        current_dist = tp_a['distance'] + tp_b['distance']
-                        if current_dist < min_total_distance:
-                            min_total_distance = current_dist
-                            route_found = True
+                        dist = tp_a['distance'] + tp_b['distance']
+                        if dist < min_total_distance:
+                            min_total_distance = dist
                             best_route = {
-                                'distance_a_to_tpa': tp_a['distance'],
-                                'tpa_name': tp_a['name'],
-                                'tpa_code': tp_a['code'], # Код важен для детализации
-                                'distance_tpa_to_tpb': 0, 
-                                'tpb_name': tp_b['name'],
-                                'tpb_code': tp_b['code'], 
-                                'distance_tpb_to_b': tp_b['distance'],
+                                'tpa_name': tp_a['name'], 'tpa_code': tp_a['code'], 'distance_a_to_tpa': tp_a['distance'],
+                                'tpb_name': tp_b['name'], 'tpb_code': tp_b['code'], 'distance_tpb_to_b': tp_b['distance'],
+                                'distance_tpa_to_tpb': 0
                             }
                         continue 
                         
-                    # 2. Ищем расстояние между ТП в матрице
+                    # 2. Матрица
                     transit_dist = await _get_matrix_distance_from_db(tp_a['name'], tp_b['name'], session)
-                    
                     if transit_dist is not None:
-                        total_distance = tp_a['distance'] + transit_dist + tp_b['distance']
-                        
-                        if total_distance < min_total_distance:
-                            min_total_distance = total_distance
-                            route_found = True
-                            
+                        total = tp_a['distance'] + transit_dist + tp_b['distance']
+                        if total < min_total_distance:
+                            min_total_distance = total
                             best_route = {
-                                'distance_a_to_tpa': tp_a['distance'],
-                                'tpa_name': tp_a['name'],
-                                'tpa_code': tp_a['code'],
-                                'distance_tpa_to_tpb': transit_dist,
-                                'tpb_name': tp_b['name'],
-                                'tpb_code': tp_b['code'],
-                                'distance_tpb_to_b': tp_b['distance'],
+                                'tpa_name': tp_a['name'], 'tpa_code': tp_a['code'], 'distance_a_to_tpa': tp_a['distance'],
+                                'tpb_name': tp_b['name'], 'tpb_code': tp_b['code'], 'distance_tpb_to_b': tp_b['distance'],
+                                'distance_tpa_to_tpb': transit_dist
                             }
 
-            if route_found and best_route is not None:
-                distance_int = int(min_total_distance)
-                
-                # --- 🔥 ВСТАВКА: СБОРКА ДЕТАЛЬНОГО МАРШРУТА ---
-                # Без этого блока detailed_path не появится!
-                
+            if best_route:
+                # --- ДЕТАЛИЗАЦИЯ ---
                 full_path_names = []
                 
-                # 1. Сегмент: Старт -> ТП А
-                code_start = info_a['station_code']
-                code_tpa = best_route['tpa_code']
-                
-                segment_1 = await _find_stations_between(code_start, code_tpa, session)
-                if segment_1:
-                    full_path_names.extend([s['n'] for s in segment_1])
-                else:
-                    # Если не нашли, добавляем крайние точки
+                # Сегмент 1: Старт -> ТП А
+                seg1 = await _find_stations_between(info_a['station_code'], best_route['tpa_code'], session)
+                if seg1: full_path_names.extend([s['n'] for s in seg1])
+                else: 
                     full_path_names.append(info_a['station_name'])
-                    if best_route['tpa_name'] != info_a['station_name']:
-                        full_path_names.append(best_route['tpa_name'])
+                    if best_route['tpa_name'] != info_a['station_name']: full_path_names.append(best_route['tpa_name'])
 
-                # 2. Сегмент: ТП А -> ТП Б (Магистраль)
-                code_tpb = best_route['tpb_code']
-                
-                if code_tpa != code_tpb:
-                    segment_2 = await _find_stations_between(code_tpa, code_tpb, session)
-                    if segment_2:
-                        # Пропускаем первый элемент (дубль)
-                        full_path_names.extend([s['n'] for s in segment_2[1:]])
-                    else:
-                        full_path_names.append(best_route['tpb_name'])
+                # Сегмент 2: ТП А -> ТП Б
+                if best_route['tpa_code'] != best_route['tpb_code']:
+                    seg2 = await _find_stations_between(best_route['tpa_code'], best_route['tpb_code'], session)
+                    if seg2: full_path_names.extend([s['n'] for s in seg2[1:]])
+                    else: full_path_names.append(best_route['tpb_name'])
 
-                # 3. Сегмент: ТП Б -> Конец
-                code_end = info_b['station_code']
-                segment_3 = await _find_stations_between(code_tpb, code_end, session)
-                
-                if segment_3:
-                    for s in segment_3:
-                        if not full_path_names or s['n'] != full_path_names[-1]: 
-                            full_path_names.append(s['n'])
+                # Сегмент 3: ТП Б -> Конец
+                seg3 = await _find_stations_between(best_route['tpb_code'], info_b['station_code'], session)
+                if seg3:
+                    for s in seg3:
+                        if not full_path_names or s['n'] != full_path_names[-1]: full_path_names.append(s['n'])
                 else:
-                    if info_b['station_name'] not in full_path_names:
-                        full_path_names.append(info_b['station_name'])
+                    if info_b['station_name'] not in full_path_names: full_path_names.append(info_b['station_name'])
 
-                # Финальная очистка от повторов подряд
-                clean_path = []
-                for name in full_path_names:
-                    if not clean_path or clean_path[-1] != name:
-                        clean_path.append(name)
-
-                # Сохраняем в результат
-                best_route['detailed_path'] = clean_path
-                # -----------------------------------------------
+                # Очистка
+                clean = []
+                for n in full_path_names:
+                    if not clean or clean[-1] != n: clean.append(n)
                 
-                logger.info(f"✅ [Tariff] Маршрут построен: {len(clean_path)} точек.")
+                best_route['detailed_path'] = clean
+                logger.info(f"✅ Финальный путь: {len(clean)} точек.")
                 
                 return {
-                    'distance': distance_int,
+                    'distance': int(min_total_distance),
                     'info_a': info_a,
                     'info_b': info_b,
                     'route_details': best_route 
                 }
-            else:
-                logger.info(f"[Tariff] Маршрут не найден в матрице.")
-                return None
+
+            return None
 
     except Exception as e:
-        logger.error(f"❌ [Tariff] Ошибка при расчете: {e}", exc_info=True)
+        logger.error(f"Error: {e}", exc_info=True)
         return None
 
 async def find_stations_by_name(station_name: str) -> list[dict]:
