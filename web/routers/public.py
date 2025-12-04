@@ -205,7 +205,7 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
     stmt = select(Train).where(Train.last_operation_date.isnot(None))\
         .where(Train.last_operation.not_ilike("%(39)%"))\
         .where(Train.last_operation.not_ilike("%(49)%"))\
-        .where(not_(and_(func.lower(Train.destination_station) == func.lower(Train.last_known_station), Train.last_operation.ilike("%выгрузка%"), Train.last_operation_date < five_days_ago)))\\
+        .where(not_(and_(func.lower(Train.destination_station) == func.lower(Train.last_known_station), Train.last_operation.ilike("%выгрузка%"), Train.last_operation_date < five_days_ago)))\
         .order_by(desc(Train.terminal_train_number)).limit(10)
     result = await db.execute(stmt)
     trains = result.scalars().all()
