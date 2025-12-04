@@ -365,54 +365,52 @@ async def distance_calculation(
         })
 
 @router.post("/tracking/recalc/{tracking_id}", response_class=HTMLResponse)
-async def recalculate_distance_for_row(tracking_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+async def recalculate_distance_for_row(tracking_id: int, request: Request):
     """
-    Принудительный пересчет расстояния по Тарифному руководству.
-    Обновляет запись в БД и возвращает красивый HTML для ячейки таблицы.
+    Пересчитывает расстояние и СОХРАНЯЕТ его в базу данных.
     """
-    # 1. Ищем запись
-    stmt = select(Tracking).where(Tracking.id == tracking_id)
-    result = await db.execute(stmt)
-    track = result.scalar_one_or_none()
-    
-    if not track:
-        return "Ошибка"
+    # Создаем сессию (используй свой способ получения сессии, если он отличается)
+    async with SessionLocal() as session:
+        # 1. Ищем запись
+        stmt = select(Tracking).where(Tracking.id == tracking_id)
+        result = await session.execute(stmt)
+        track = result.scalar_one_or_none()
+        
+        if not track:
+            return HTMLResponse('<span class="text-red-500">Ошибка ID</span>')
 
-    # 2. Получаем станции для расчета
-    station_from = track.current_station 
-    station_to = track.to_station
-    
-    new_distance = None
-    error_msg = None
+        # 2. Берем станции
+        # ВАЖНО: Проверь, что в БД поля называются именно current_station и dest_station
+        st_from = track.current_station
+        st_to = track.to_station
+        
+        if not st_from or not st_to:
+            return HTMLResponse('<span class="text-red-500">Нет станций</span>')
 
-    if station_from and station_to:
-        # 3. Вызываем наш калькулятор
-        calc_result = await get_tariff_distance(station_from, station_to)
+        # 3. Считаем (используем твой новый быстрый граф)
+        calc_result = await get_tariff_distance(st_from, st_to)
         
         if calc_result and calc_result.get('distance'):
-            new_distance = calc_result['distance']
+            dist = calc_result['distance']
             
-            # 4. Обновляем БД
-            track.km_left = new_distance
+            # 4. СОХРАНЯЕМ В БАЗУ (Перезаписываем старое кривое значение)
+            track.km_left = dist 
+            # Если есть поле calc_distance_left, лучше писать туда:
+            # track.calc_distance_left = dist
             
-            await db.commit()
+            await session.commit()
+            
+            # 5. Возвращаем красивую цифру
+            return HTMLResponse(f"""
+                <div id="dist-{track.id}" class="flex flex-col items-center animate-pulse">
+                    <span class="text-green-600 font-bold text-lg">{dist} км</span>
+                    <span class="text-[10px] text-slate-500">Обновлено (10-01)</span>
+                </div>
+            """)
         else:
-            error_msg = "Не рассчитано"
-    else:
-        error_msg = "Нет станций"
-
-    # 5. Возвращаем HTML фрагмент для замены в таблице
-    if new_distance is not None:
-        return f"""
-        <div class="flex flex-col items-center animate-fade-in">
-            <span class="text-green-600 font-bold text-lg">{new_distance} км</span>
-            <span class="text-[10px] text-slate-400 uppercase tracking-wider">Тариф (10-01)</span>
-        </div>
-        """
-    else:
-        return f"""
-        <div class="text-red-500 text-xs">
-            {error_msg or 'Сбой'}
-            <button hx-post="/tracking/recalc/{track.id}" hx-swap="innerHTML" hx-target="closest td" class="ml-1 text-blue-500 hover:underline">↻</button>
-        </div>
-        """
+            return HTMLResponse(f"""
+                <div id="dist-{track.id}" class="text-red-500 text-xs flex flex-col">
+                    <span>Не нашел маршрут</span>
+                    <span class="text-[9px] opacity-70">{st_from} -> {st_to}</span>
+                </div>
+            """)
