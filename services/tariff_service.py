@@ -1,65 +1,19 @@
 # services/tariff_service.py
 import asyncio
 import re
-from sqlalchemy import select, ARRAY, exc, func, Index, UniqueConstraint
+from sqlalchemy import select, exc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-# ✅ ИСПРАВЛЕНИЕ: Импортируем Base и DeclarativeBase для корректного наследования
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer
 from logger import get_logger
 
-# --- Импортируем базовый класс Base из db_base ---
-# (Предполагаем, что Base определен в db_base.py или импортирован в db.py)
-# Если Base действительно определен в db_base.py:
-from db_base import Base
-# Если Base определен в models.py (через db_base.py)
-# from models import Base 
+# --- Импортируем модели из центрального файла models.py ---
+from models import TariffStation, TariffMatrix, RailwaySection
 
-# В целях самодостаточности, используем Base из db_base.py, как предполагает структура проекта
-# Если db_base.py недоступен, мы можем объявить его здесь как DeclarativeBase (но это нарушит DRY)
-
-# Для данного контекста, мы переопределим класс Base для локальных моделей, чтобы избежать конфликтов импорта, 
-# используя DeclarativeBase, который уже импортируется.
-class TariffBase(DeclarativeBase): 
-    pass
-    
 # --- Импортируем новую сессию для тарифов ---
 from db import TariffSessionLocal 
 
 logger = get_logger(__name__) 
 
-# --- Определение ORM Моделей для работы с БД тарифов (обновлены для TariffBase) ---
-
-class TariffStation(TariffBase):
-    '''
-    Таблица для хранения данных из 2-РП.csv.
-    '''
-    __tablename__ = 'tariff_stations'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String, index=True) 
-    code: Mapped[str] = mapped_column(String(6), index=True, unique=True) 
-    railway: Mapped[str | None] = mapped_column(String)
-    operations: Mapped[str | None] = mapped_column(String)
-    # Используем list[str] как Map для данных ТП, см. migrator
-    transit_points: Mapped[list[str] | None] = mapped_column(ARRAY(String)) 
-
-    __table_args__ = (
-        Index('ix_tariff_stations_name_code', 'name', 'code'),
-    )
-
-class TariffMatrix(TariffBase):
-    '''
-    Таблица для хранения данных из 3-*.csv.
-    '''
-    __tablename__ = 'tariff_matrix'
-    id: Mapped[int] = mapped_column(primary_key=True)
-    station_a: Mapped[str] = mapped_column(String, index=True)
-    station_b: Mapped[str] = mapped_column(String, index=True)
-    distance: Mapped[int] = mapped_column(Integer)
-
-    __table_args__ = (
-        UniqueConstraint('station_a', 'station_b', name='uq_station_pair'),
-    )
+# --- Модели ORM теперь в models.py ---
 
 
 # --- Вспомогательные функции (асинхронные) ---
@@ -178,6 +132,54 @@ async def _get_matrix_distance_from_db(tp_a_name: str, tp_b_name: str, session: 
         
     return None
 
+async def _find_stations_between(code_a: str, code_b: str, session: AsyncSession) -> list[dict]:
+    """
+    Ищет в railway_sections сегмент, содержащий обе станции, 
+    и возвращает список станций между ними (включая начальную и конечную).
+    """
+    if code_a == code_b:
+        return []
+
+    # Используем JSONB оператор @> (contains) для поиска.
+    # Нам нужен массив, который содержит ОБА объекта: {"c": code_a} И {"c": code_b}
+    sql = text("""
+        SELECT stations_list 
+        FROM railway_sections 
+        WHERE stations_list @> :json_a::jsonb AND stations_list @> :json_b::jsonb
+        LIMIT 1
+    """)
+    
+    json_a = f'[{{"c": "{code_a}"}}]'
+    json_b = f'[{{"c": "{code_b}"}}]'
+    
+    try:
+        result = await session.execute(sql, {"json_a": json_a, "json_b": json_b})
+        full_list = result.scalar_one_or_none()
+        
+        if full_list:
+            # Нашли полный список станций. Теперь нужно найти индексы и вырезать нужный кусок.
+            idx_a = -1
+            idx_b = -1
+            
+            for i, station in enumerate(full_list):
+                if station.get('c') == code_a:
+                    idx_a = i
+                if station.get('c') == code_b:
+                    idx_b = i
+            
+            if idx_a != -1 and idx_b != -1:
+                # Определяем правильный порядок и возвращаем срез
+                if idx_a < idx_b:
+                    return full_list[idx_a : idx_b + 1]
+                else:
+                    # Если порядок обратный, разворачиваем список
+                    return full_list[idx_b : idx_a + 1][::-1]
+                    
+    except Exception as e:
+        logger.error(f"Ошибка поиска детального маршрута для {code_a}-{code_b}: {e}")
+        
+    return []
+
 # --- Основная функция (полностью асинхронная) ---
 
 async def get_tariff_distance(from_station_name: str, to_station_name: str) -> dict | None:
@@ -206,44 +208,39 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                      logger.warning(f"[Tariff] Станция назначения '{to_station_name}' не найдена.")
                 return None
             
-            logger.info(f"[Tariff Debug] A Info: Name={info_a.get('station_name')}, TPs={info_a.get('transit_points')}")
-            logger.info(f"[Tariff Debug] B Info: Name={info_b.get('station_name')}, TPs={info_b.get('transit_points')}")
-            
             if info_a['station_name'].lower() == info_b['station_name'].lower():
-                # Станции совпадают
-                return {'distance': 0, 'info_a': info_a, 'info_b': info_b, 'route_details': {'tpa_name': info_a['station_name'], 'tpb_name': info_a['station_name'], 'distance_a_to_tpa': 0, 'distance_tpa_to_tpb': 0, 'distance_tpb_to_b': 0}}
-
+                return {
+                    'distance': 0, 
+                    'info_a': info_a, 
+                    'info_b': info_b, 
+                    'route_details': {
+                        'tpa_name': info_a['station_name'], 'tpa_code': info_a['station_code'],
+                        'tpb_name': info_a['station_name'], 'tpb_code': info_a['station_code'],
+                        'distance_a_to_tpa': 0, 'distance_tpa_to_tpb': 0, 'distance_tpb_to_b': 0,
+                        'detailed_path': [info_a['station_name']]
+                    }
+                }
 
             # --- Определение ТП ---
-            tps_a = info_a.get('transit_points', [])
-            operations_a = info_a.get('operations') or ""
-            if not tps_a or ('ТП' in operations_a and not tps_a):
-                 tps_a = [{'name': info_a['station_name'], 'distance': 0}]
+            # Если у станции нет ТП, она сама является ТП
+            tps_a = info_a.get('transit_points', []) or [{'code': info_a['station_code'], 'name': info_a['station_name'], 'distance': 0}]
+            tps_b = info_b.get('transit_points', []) or [{'code': info_b['station_code'], 'name': info_b['station_name'], 'distance': 0}]
             
-            tps_b = info_b.get('transit_points', [])
-            operations_b = info_b.get('operations') or ""
-            if not tps_b or ('ТП' in operations_b and not tps_b):
-                tps_b = [{'name': info_b['station_name'], 'distance': 0}]
-            # --- Конец определения ТП ---
-
-
             min_total_distance = float('inf')
             best_route = None 
-            route_found = False
 
             for tp_a in tps_a:
                 for tp_b in tps_b:
                     
-                    # Пропускаем, если ТП совпадают и это не расчет самого себя
                     if tp_a['name'] == tp_b['name']:
-                        if tp_a['distance'] + tp_b['distance'] < min_total_distance:
-                            min_total_distance = tp_a['distance'] + tp_b['distance']
-                            route_found = True
+                        # Расстояние от А до ТП и от ТП до Б
+                        total_distance = tp_a['distance'] + tp_b['distance']
+                        if total_distance < min_total_distance:
+                            min_total_distance = total_distance
                             best_route = {
-                                'distance_a_to_tpa': tp_a['distance'],
-                                'tpa_name': tp_a['name'],
+                                'distance_a_to_tpa': tp_a['distance'], 'tpa_name': tp_a['name'], 'tpa_code': tp_a['code'],
                                 'distance_tpa_to_tpb': 0, 
-                                'tpb_name': tp_b['name'],
+                                'tpb_name': tp_b['name'], 'tpb_code': tp_b['code'],
                                 'distance_tpb_to_b': tp_b['distance'],
                             }
                         continue 
@@ -255,19 +252,52 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                         
                         if total_distance < min_total_distance:
                             min_total_distance = total_distance
-                            route_found = True
-                            
                             best_route = {
-                                'distance_a_to_tpa': tp_a['distance'],
-                                'tpa_name': tp_a['name'],
+                                'distance_a_to_tpa': tp_a['distance'], 'tpa_name': tp_a['name'], 'tpa_code': tp_a['code'],
                                 'distance_tpa_to_tpb': transit_dist,
-                                'tpb_name': tp_b['name'],
+                                'tpb_name': tp_b['name'], 'tpb_code': tp_b['code'],
                                 'distance_tpb_to_b': tp_b['distance'],
                             }
 
-            if route_found and best_route is not None:
+            if best_route:
                 distance_int = int(min_total_distance)
-                logger.info(f"✅ [Tariff] Расстояние получено (SQL): {from_station_name} -> {to_station_name} = {distance_int} км. ТП: {best_route['tpa_name']} -> {best_route['tpb_name']}")
+                
+                # --- 🔥 Сборка детального маршрута ---
+                detailed_path = []
+                
+                # 1. Участок от станции А до ТП А
+                segment1 = await _find_stations_between(info_a['station_code'], best_route['tpa_code'], session)
+                if segment1:
+                    detailed_path.extend([s['n'] for s in segment1])
+                else:
+                    detailed_path.append(info_a['station_name'])
+                    if info_a['station_name'] != best_route['tpa_name']:
+                        detailed_path.append(best_route['tpa_name'])
+
+                # 2. Участок между ТП (если они разные)
+                if best_route['tpa_code'] != best_route['tpb_code']:
+                    # Пытаемся найти прямой путь между ТП
+                    segment2 = await _find_stations_between(best_route['tpa_code'], best_route['tpb_code'], session)
+                    if segment2:
+                        # Добавляем все станции, кроме первой (которая уже есть)
+                        detailed_path.extend([s['n'] for s in segment2[1:]])
+                    elif best_route['tpb_name'] not in detailed_path:
+                         detailed_path.append(best_route['tpb_name'])
+                
+                # 3. Участок от ТП Б до станции Б
+                segment3 = await _find_stations_between(best_route['tpb_code'], info_b['station_code'], session)
+                if segment3:
+                    # Добавляем все, кроме первой (ТП Б)
+                    detailed_path.extend([s['n'] for s in segment3[1:] if s['n'] not in detailed_path])
+                elif info_b['station_name'] not in detailed_path:
+                    detailed_path.append(info_b['station_name'])
+                
+                # Удаляем дубликаты, сохраняя порядок
+                final_path = list(dict.fromkeys(detailed_path))
+                best_route['detailed_path'] = final_path
+                # --- 🔥 Конец сборки ---
+
+                logger.info(f"✅ [Tariff] Расстояние: {distance_int} км. Маршрут: {' -> '.join(final_path)}")
                 
                 return {
                     'distance': distance_int,
@@ -276,7 +306,7 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                     'route_details': best_route 
                 }
             else:
-                logger.info(f"[Tariff] Маршрут (ТП) не найден в матрице для {from_station_name} -> {to_station_name}.")
+                logger.warning(f"[Tariff] Маршрут (ТП) не найден в матрице для {from_station_name} -> {to_station_name}.")
                 return None
 
     except Exception as e:
