@@ -129,47 +129,57 @@ async def upsert_train_on_upload(
 async def update_train_status_from_tracking_data(
     terminal_train_number: str, 
     tracking_data: Tracking,
-    session: AsyncSession # <--- ✅ Принимаем сессию
+    session: AsyncSession
 ) -> bool:
     """
     Обновляет запись Train данными из последней дислокации (Tracking).
-    ВЫПОЛНЯЕТ ЛОГИКУ ПРОВЕРКИ СТАНЦИИ ПЕРЕГРУЗА.
+    ВЫПОЛНЯЕТ ЛОГИКУ ПРОВЕРКИ СТАНЦИИ ПЕРЕГРУЗА И ЗАЩИТУ ОТ 'ЧУЖИХ' РЕЙСОВ.
     """
     if not tracking_data:
         return False
         
     try:
-        # --- ✅ Шаг 1: Получаем текущие данные поезда (в той же сессии) ---
+        # --- Шаг 1: Получаем текущие данные поезда ---
         train = await get_train_details(terminal_train_number, session)
         if not train:
-            # Если поезда нет, но дислокация есть, создадим его
             logger.warning(f"[TrainTable] Поезд {terminal_train_number} не найден в Train, создаю новую запись...")
             train = Train(terminal_train_number=terminal_train_number)
             session.add(train)
-            await session.flush() # Получаем ID
+            await session.flush()
 
-        # --- ✅ НОВАЯ ЛОГИКА (ЗАПРОС 1): ПРОВЕРКА "ДОСТАВЛЕН" ---
+        # 🔥 ЗАЩИТА 1: ПРОВЕРКА НАПРАВЛЕНИЯ (NEW) 🔥
+        # Если у поезда уже задана станция назначения, а в новой дислокации она ДРУГАЯ,
+        # значит этот контейнер уехал в новый рейс. Игнорируем обновление поезда.
+        if train.destination_station and tracking_data.to_station:
+            train_dest = train.destination_station.strip().lower()
+            track_dest = tracking_data.to_station.strip().lower()
+            
+            # Сравниваем назначения. Если не совпадают — это "левый" рейс.
+            # (Добавляем проверку длины, чтобы избежать ошибок на пустых строках)
+            if len(train_dest) > 2 and len(track_dest) > 2 and train_dest != track_dest:
+                logger.warning(f"[TrainTable] 🛡 ИГНОР ОБНОВЛЕНИЯ для поезда {terminal_train_number}: "
+                               f"Назначение поезда '{train.destination_station}' != Назначение контейнера '{tracking_data.to_station}'. "
+                               f"Похоже на следующий рейс.")
+                return False
+
+        # --- Шаг 2 (Существующая логика): ПРОВЕРКА "ДОСТАВЛЕН" ---
         if (train.last_known_station and 
             train.destination_station and 
             train.last_operation):
             
-            # Сравниваем "селятино" (из БД) с "селятино (181102)" (из дислокации)
             dest_station_norm = train.destination_station.lower().strip()
-            last_station_norm = train.last_known_station.lower()
+            last_station_norm = train.last_known_station.lower().strip()
             
             # Ищем "выгрузка"
             is_unloaded = "выгрузка" in train.last_operation.lower()
 
+            # Если поезд уже на станции назначения и выгружен
             if (dest_station_norm in last_station_norm) and is_unloaded:
-                
-                # Проверяем, что новая операция не новее (на всякий случай)
-                if tracking_data.operation_date and train.last_operation_date and tracking_data.operation_date <= train.last_operation_date:
-                    logger.info(f"[TrainTable] Поезд {terminal_train_number} уже доставлен. Обновление дислокации ({tracking_data.operation}) пропущено.")
-                    return False # НЕ ОБНОВЛЯЕМ
-                else:
-                    logger.warning(f"[TrainTable] Поезд {terminal_train_number} был доставлен, но пришла БОЛЕЕ НОВАЯ дислокация. Обновляю...")
+                # Мы не обновляем статус, если поезд уже завершен
+                logger.info(f"[TrainTable] Поезд {terminal_train_number} уже финализирован (Выгрузка на назначении). Обновление пропущено.")
+                return False
 
-        # --- ✅ Шаг 2: Собираем основные данные для обновления ---
+        # --- Шаг 3: Собираем данные для обновления (без изменений) ---
         update_data = {
             "rzd_train_number": tracking_data.train_number,
             "last_known_station": tracking_data.current_station,
@@ -178,14 +188,14 @@ async def update_train_status_from_tracking_data(
             "last_operation_date": tracking_data.operation_date,
             "km_remaining": tracking_data.km_left,
             "eta_days": tracking_data.forecast_days,
-            "destination_station": tracking_data.to_station,
+            "destination_station": tracking_data.to_station, # Обновит назначение, только если оно было пустым (см. Защиту 1)
         }
         
         if tracking_data.trip_start_datetime:
             start_dt = tracking_data.trip_start_datetime
             update_data["departure_date"] = start_dt.date() if isinstance(start_dt, datetime) else start_dt
 
-        # --- ✅ Шаг 3: ЛОГИКА ПЕРЕГРУЗА (без изменений) ---
+        # --- Логика перегруза (без изменений) ---
         if (train.overload_station_name and 
             not train.overload_date and 
             tracking_data.current_station):
@@ -194,17 +204,13 @@ async def update_train_status_from_tracking_data(
             current_station = tracking_data.current_station.lower()
             
             if admin_station in current_station:
-                logger.info(f"✅ [Перегруз] Станция совпала! Поезд {terminal_train_number} достиг {train.overload_station_name}.")
                 update_data["overload_date"] = tracking_data.operation_date
-            else:
-                logger.debug(f"[Перегруз] Поезд {terminal_train_number} еще не на станции '{admin_station}' (сейчас на '{current_station}')")
 
-        # --- ✅ Шаг 4: Обновляем БД ---
+        # --- Шаг 4: Обновляем БД ---
         for key, value in update_data.items():
             setattr(train, key, value)
         setattr(train, 'updated_at', func.now())
         
-        logger.info(f"[TrainTable] Обновлен статус поезда {terminal_train_number} (РЖД: {tracking_data.train_number})")
         return True
             
     except Exception as e:

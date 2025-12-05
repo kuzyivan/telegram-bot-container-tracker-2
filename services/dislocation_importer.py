@@ -327,44 +327,47 @@ async def process_dislocation_file(filepath: str):
                 new_operation_date = row_data.get('operation_date') 
                 
                 if existing_entry:
-                    # =====================================================
-                    # 🔥 ЛОГИКА "ЗАМОРОЗКИ" (Фильтр завершенного рейса) 🔥
-                    # =====================================================
-                    
-                    # Проверяем текущее состояние в БД
+                    # --- ЛОГИКА ОПРЕДЕЛЕНИЯ "ЗАВЕРШЕННОСТИ" ---
                     db_curr_station = (existing_entry.current_station or "").strip().lower()
                     db_dest_station = (existing_entry.to_station or "").strip().lower()
                     db_operation = (existing_entry.operation or "").strip().lower()
                     
-                    # Флаг: контейнер УЖЕ выгружен на станции назначения
                     is_already_completed = False
-                    if db_curr_station and db_dest_station:
-                         # Если станции совпадают И операция содержит "выгрузка"
-                         if db_curr_station == db_dest_station and "выгрузка" in db_operation:
+                    # Если станции совпадают И операция похожа на финал
+                    if db_curr_station and db_dest_station and db_curr_station == db_dest_station:
+                         if any(x in db_operation for x in ['выгрузка', 'раскредитование', 'выдача']):
                              is_already_completed = True
 
+                    # Если рейс завершен, проверяем, не начался ли НОВЫЙ
                     if is_already_completed:
-                        # Проверяем, не является ли новая строка началом НОВОГО рейса
-                        new_waybill = row_data.get('waybill')
-                        new_dest = row_data.get('to_station')
+                        new_waybill = str(row_data.get('waybill') or "").strip()
+                        old_waybill = str(existing_entry.waybill or "").strip()
+                        new_dest = str(row_data.get('to_station') or "").strip().lower()
                         
+                        # Даты начала рейса
+                        new_start_date = row_data.get('trip_start_datetime')
+                        old_start_date = existing_entry.trip_start_datetime
+
                         is_new_trip = False
                         
-                        # Если изменилась накладная -> Новый рейс
-                        if new_waybill and existing_entry.waybill and new_waybill != existing_entry.waybill:
+                        # 1. Сменилась накладная
+                        if new_waybill and old_waybill and new_waybill != old_waybill:
                             is_new_trip = True
                             
-                        # Если изменилась станция назначения -> Новый рейс
-                        elif new_dest and existing_entry.to_station and new_dest != existing_entry.to_station:
+                        # 2. Сменилась станция назначения
+                        elif new_dest and db_dest_station and new_dest != db_dest_station:
                             is_new_trip = True
-                            
-                        # Если это НЕ новый рейс, а "хвост" старого (Вывоз/Завоз) -> ИГНОРИРУЕМ
+                        
+                        # 3. 🔥 НОВОЕ: Дата начала рейса стала новее
+                        elif new_start_date and old_start_date and new_start_date > old_start_date:
+                            is_new_trip = True
+
+                        # Если это не новый рейс -> пропускаем обновление (игнорируем "хвосты" старого)
                         if not is_new_trip:
-                            # logger.debug(f"Пропуск обновления для {container_number}: рейс завершен (Выгрузка на назначении).")
                             continue 
                     
-                    # =====================================================
-                    
+                    # Если мы здесь — значит это либо активный старый рейс, либо уже подтвержденный новый
+                    # Обновляем запись...
                     # --- ЛОГИКА ОБНОВЛЕНИЯ ---
                     current_date = existing_entry.operation_date 
                     
