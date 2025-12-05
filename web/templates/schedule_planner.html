@@ -14,6 +14,11 @@
         </div>
         
         <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-white border border-mono-border rounded-lg shadow-sm">
+                <span class="w-2 h-2 rounded-full bg-mono-black"></span>
+                <span class="text-xs font-bold text-mono-black uppercase tracking-wider">План</span>
+            </div>
+
             <button onclick="openShareModal()" class="flex items-center gap-2 bg-mono-black text-white hover:bg-gray-800 px-4 py-2 rounded-xl text-sm font-bold transition shadow-md active:scale-95">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
                 Поделиться
@@ -36,7 +41,7 @@
             <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg transition-colors duration-300">
                 <div class="flex justify-between items-center">
                     <h3 class="text-lg font-bold text-mono-black flex items-center gap-2" id="modal-title">
-                        Рейс
+                        Поезд
                     </h3>
                     <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1 rounded hover:bg-black/5">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -47,7 +52,9 @@
             <div class="p-6">
                 <form id="createEventForm" class="space-y-5">
                     <input type="hidden" id="eventDate" name="date_str">
-                    <input type="hidden" name="color" id="inpColor" value="#111111"> <div>
+                    <input type="hidden" name="color" id="inpColor" value="#111111">
+                    
+                    <div>
                         <label class="block text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-2">Цвет карточки</label>
                         <div class="flex items-center gap-3">
                             <button type="button" onclick="selectColor('#111111', this)" class="w-8 h-8 rounded-full bg-[#111111] ring-2 ring-offset-2 ring-mono-black transition shadow-sm color-btn"></button>
@@ -86,13 +93,13 @@
             </div>
 
             <div class="bg-mono-bg px-6 py-4 flex flex-row-reverse gap-3 border-t border-mono-border">
-                <button type="button" onclick="submitCreate()" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-mono-black px-6 py-2.5 text-sm font-bold text-white hover:bg-gray-800 transition shadow-md active:scale-95">
+                <button type="button" onclick="submitCreate()" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-mono-black px-6 py-2.5 text-sm font-bold text-white hover:bg-gray-800 focus:outline-none transition transform active:scale-95">
                     Сохранить
                 </button>
-                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden w-full sm:w-auto justify-center rounded-xl bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 text-sm font-bold hover:bg-red-100 transition">
+                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden w-full sm:w-auto justify-center rounded-xl bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 text-sm font-bold hover:bg-red-100 focus:outline-none transition">
                     Удалить
                 </button>
-                <button type="button" onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-white border border-mono-border text-mono-black px-4 py-2.5 text-sm font-bold hover:bg-gray-50 transition">
+                <button type="button" onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-white border border-mono-border text-mono-black px-4 py-2.5 text-sm font-bold hover:bg-gray-50 focus:outline-none transition">
                     Отмена
                 </button>
             </div>
@@ -104,17 +111,28 @@
     <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0 pointer-events-none">
         <div class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-mono-border">
+            
             <div class="bg-white px-6 pt-6 pb-6">
                 <h3 class="text-lg font-bold text-mono-black mb-4">Публичные ссылки</h3>
+                
                 <div class="flex gap-2 mb-6">
                     <input type="text" id="newLinkName" placeholder="Название (например: Партнеры)" 
                            class="flex-1 bg-mono-bg border-transparent rounded-xl px-4 py-2.5 text-sm text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black outline-none transition">
-                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">Создать</button>
+                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">
+                        Создать
+                    </button>
                 </div>
-                <div class="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar" id="linksList"></div>
+                
+                <h4 class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-3">Активные ссылки</h4>
+                <div class="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar" id="linksList">
+                    <p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>
+                </div>
             </div>
+            
             <div class="bg-mono-bg px-6 py-3 flex justify-end border-t border-mono-border">
-                <button onclick="closeShareModal()" class="rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">Закрыть</button>
+                <button onclick="closeShareModal()" class="inline-flex justify-center rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">
+                    Закрыть
+                </button>
             </div>
         </div>
     </div>
@@ -151,11 +169,13 @@
     /* Стили событий (Карточек) */
     .fc-event {
         background-color: #FFFFFF !important;
-        border: 1px solid #E5E5EA !important;
+        /* Убираем рамку здесь, чтобы избежать бага с перерисовкой,
+           добавляем ее внутри eventContent через div */
+        border: none !important;
         border-radius: 6px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02);
         margin-bottom: 4px !important;
-        padding: 0; /* Отступы внутри делаем через div */
+        padding: 0; 
         cursor: pointer;
         transition: transform 0.1s;
     }
@@ -199,28 +219,29 @@
                 updateEventDate(info.event.id, info.event.start);
             },
             
-            // Рендер карточки с цветом
+            // Рендер карточки с цветом (ИСПРАВЛЕННАЯ ВЕРСИЯ)
             eventContent: function(arg) {
                 let props = arg.event.extendedProps || {};
                 // Используем переданный цвет или дефолтный черный
                 let bgColor = arg.event.backgroundColor || '#111111'; 
                 
-                arg.event.setProp('borderColor', 'transparent'); // Убираем дефолтную рамку
+                // ВАЖНО: Убрана строка arg.event.setProp(), которая вызывала зависание!
 
                 let dest = props.dest || arg.event.title;
                 let service = props.service || 'Сервис';
                 let stock = props.stock || '';
 
-                // Цветная полоска слева (border-left)
+                // Рисуем карточку: белая с цветной полоской слева
                 let html = `
-                    <div class="flex flex-col py-1.5 px-2 overflow-hidden bg-white h-full" style="border-left: 3px solid ${bgColor};">
+                    <div class="flex flex-col py-1.5 px-2 overflow-hidden bg-white h-full border border-mono-border rounded-md" 
+                         style="border-left: 4px solid ${bgColor};">
                         <div class="text-[11px] font-bold text-mono-black truncate leading-tight mb-0.5">
                             ${dest}
                         </div>
                         <div class="text-[10px] text-mono-gray truncate leading-tight">
                             ${service}
                         </div>
-                        ${stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-1 pt-1 border-t border-mono-light">${stock}</div>` : ''}
+                        ${stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-1 pt-1 border-t border-mono-bg">${stock}</div>` : ''}
                     </div>
                 `;
                 return { html: html }
@@ -237,8 +258,10 @@
             b.classList.add('ring-transparent');
         });
         document.getElementById('inpColor').value = color;
-        // Окрашиваем хедер модалки в выбранный цвет (для наглядности)
-        document.getElementById('modalHeader').style.borderLeft = `4px solid ${color}`;
+        
+        // Красим хедер модалки в выбранный цвет для наглядности
+        const header = document.getElementById('modalHeader');
+        if(header) header.style.borderLeft = `4px solid ${color}`;
         
         btn.classList.remove('ring-transparent');
         btn.classList.add('ring-mono-black');
@@ -316,11 +339,52 @@
         } catch (e) { console.error(e); }
     }
     
-    // --- Share Logic (оставляем без изменений) ---
+    // --- Share Logic ---
     function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
     function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
-    async function loadLinks() { /* ... старый код ... */ }
-    async function createLink() { /* ... старый код ... */ }
-    async function deleteLink(id) { /* ... старый код ... */ }
+    
+    async function loadLinks() {
+        const list = document.getElementById('linksList');
+        list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>';
+        try {
+            let res = await fetch('/admin/api/schedule/links');
+            let links = await res.json();
+            if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; }
+            let html = '';
+            links.forEach(link => {
+                const fullUrl = window.location.origin + `/schedule/share/${link.token}`;
+                html += `
+                <div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group">
+                    <div class="overflow-hidden mr-3 w-full">
+                        <p class="text-sm font-bold text-mono-black">${link.name}</p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()">
+                            <a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                        </div>
+                    </div>
+                    <button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>`;
+            });
+            list.innerHTML = html;
+        } catch (e) { console.error(e); }
+    }
+    
+    async function createLink() {
+        const nameInput = document.getElementById('newLinkName');
+        const name = nameInput.value.trim();
+        if (!name) return alert("Введите название");
+        const formData = new FormData();
+        formData.append('name', name);
+        try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); }
+    }
+    
+    async function deleteLink(id) {
+        if (!confirm("Удалить ссылку? Доступ по ней будет закрыт.")) return;
+        try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); }
+    }
 </script>
 {% endblock %}
