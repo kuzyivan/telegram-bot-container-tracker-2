@@ -1,3 +1,4 @@
+# web/routers/public.py
 import sys
 import os
 import re
@@ -8,22 +9,23 @@ from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Form
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import select, or_, desc, and_, not_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Добавляем корневую директорию в путь
+# --- Импорты из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import Tracking, Train, User, UserRole, ScheduledTrain, ScheduleShareLink, UserRequest
+from models import Tracking, Train, User, UserRole, ScheduledTrain, ScheduleShareLink
 from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from web.auth import get_current_user
-from utils.notify import notify_admin 
-from services.tariff_service import get_tariff_distance, TariffService
+from utils.notify import notify_admin  # Импортируем функцию уведомления админа
+# ✅ ИСПРАВЛЕНИЕ: Убран импорт несуществующего класса TariffService
+from services.tariff_service import get_tariff_distance
 
-router = APIRouter(tags=["public"])
+router = APIRouter()
 
 current_file = Path(__file__).resolve()
 templates_dir = current_file.parent.parent / "templates"
@@ -36,20 +38,17 @@ async def get_db():
 # --- Вспомогательные функции ---
 
 def normalize_search_input(text: str) -> list[str]:
-    """Очищает ввод пользователя, извлекает номера контейнеров и вагонов."""
     if not text:
         return []
     text = text.upper().strip()
-    items = re.split(r'[,\\s;\n]+', text)
+    items = re.split(r'[,\s;\n]+', text)
     valid_items = []
     for item in items:
-        # Простая валидация: Контейнер (4 буквы + 7 цифр) или Вагон (8 цифр)
         if re.fullmatch(r'[A-Z]{3}U\d{7}', item) or re.fullmatch(r'\d{8}', item):
             valid_items.append(item)
     return list(set(valid_items))
 
 async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking]):
-    """Обогащает данные трекинга (расчет прогресса, прогноз, инфо о поезде)."""
     enriched_data = []
     for item in tracking_items:
         progress_percent = 0
@@ -61,19 +60,11 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
         progress_percent = max(0, min(100, progress_percent))
 
         terminal_train_info = {"number": None, "overload_station": None}
-        
-        # Ищем, с каким поездом терминала связан контейнер
-        tc_res = await db.execute(
-            select(TerminalContainer.train)
-            .where(TerminalContainer.container_number == item.container_number)
-            .order_by(TerminalContainer.created_at.desc())
-            .limit(1)
-        )
+        tc_res = await db.execute(select(TerminalContainer.train).where(TerminalContainer.container_number == item.container_number).order_by(TerminalContainer.created_at.desc()).limit(1))
         train_code = tc_res.scalar_one_or_none()
         
         if train_code:
             terminal_train_info["number"] = train_code
-            # Ищем инфо о перегрузе этого поезда
             t_res = await db.execute(select(Train.overload_station_name).where(Train.terminal_train_number == train_code))
             terminal_train_info["overload_station"] = t_res.scalar_one_or_none()
 
@@ -82,15 +73,13 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
             is_arrived = True
         elif item.current_station and item.to_station and item.current_station.upper() == item.to_station.upper():
             is_arrived = True
-        elif item.operation and "выгрузка" in item.operation.lower():
-            is_arrived = True
 
         forecast_display = "—"
         if item.forecast_days:
             forecast_display = f"{item.forecast_days:.1f}"
         elif km_left > 0:
             try:
-                calc_days = (km_left / 500) + 1 # Примерная скорость
+                calc_days = (km_left / 600) + 1
                 forecast_display = f"{calc_days:.1f}"
             except:
                 pass
@@ -106,61 +95,86 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
 
 # --- Роуты ---
 
+# --- 1. ГЛАВНАЯ СТРАНИЦА (ТЕПЕРЬ ЭТО ПОИСК) ---
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, user: Optional[User] = Depends(get_current_user)):
-    """Главная страница (Поиск)."""
-    return templates.TemplateResponse("index.html", {"request": request, "user": user})
+    """
+    Главная страница теперь снова "Поиск контейнера".
+    Доступна всем (и гостям, и зарегистрированным).
+    """
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "user": user 
+    })
 
+# --- 2. ЛЕНДИНГ (ТОЛЬКО ДЛЯ АДМИНА) ---
 @router.get("/landing", response_class=HTMLResponse)
 async def landing_page_hidden(request: Request, user: Optional[User] = Depends(get_current_user)):
-    """Лендинг (доступен только админу)."""
+    """
+    Лендинг доступен только администраторам.
+    Остальных редиректим на главную.
+    """
     if not user or user.role != UserRole.ADMIN:
         return RedirectResponse("/")
-    return templates.TemplateResponse("landing.html", {"request": request, "user": user})
+        
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "user": user
+    })
 
 @router.post("/contact_form")
-async def handle_contact_form(request: Request, name: str = Form(...), phone: str = Form(...), message: str = Form(None)):
-    """Обработка формы контактов."""
-    text = f"📩 *Заявка с сайта!*\n👤 {name}\n📞 {phone}\n💬 {message or '-'}"
-    try:
-        await notify_admin(text, silent=False, parse_mode="Markdown")
-    except:
-        print("Ошибка отправки уведомления в Telegram")
-        
-    return HTMLResponse("""
-        <div class="bg-green-50 p-6 rounded-xl text-center animate-fade-in border border-green-200">
-            <h3 class="text-xl font-bold mb-2 text-green-800">Спасибо!</h3>
-            <p class="text-green-700">Ваша заявка принята.</p>
+async def handle_contact_form(
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(...),
+    message: str = Form(None)
+):
+    """
+    Обработка формы обратной связи.
+    Отправляет данные администратору в Telegram.
+    """
+    text = (
+        f"📧 **Новая заявка с сайта!**\n\n"
+        f"👤 **Имя:** {name}\n"
+        f"📞 **Телефон:** {phone}\n"
+        f"💬 **Сообщение:** {message or 'Не указано'}"
+    )
+    
+    # Отправляем в Telegram админу
+    await notify_admin(text, silent=False, parse_mode="Markdown")
+    
+    # Возвращаем фрагмент HTML (HTMX заменит форму на это сообщение)
+    return HTMLResponse(
+        """
+        <div class="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-6 rounded-xl text-center animate-fade-in border border-green-200 dark:border-green-800">
+            <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <h3 class="text-xl font-bold mb-2">Спасибо!</h3>
+            <p>Ваша заявка принята. Мы свяжемся с вами в ближайшее время.</p>
         </div>
-    """)
+        """)
+
 
 @router.post("/search")
-async def search_handler(request: Request, q: str = Form(""), db: AsyncSession = Depends(get_db)):
-    """Основной поиск (HTMX)."""
+async def search_handler(
+    request: Request, 
+    q: str = Form(""), 
+    db: AsyncSession = Depends(get_db)
+):
     search_terms = normalize_search_input(q)
     if not search_terms:
         return templates.TemplateResponse("partials/search_results.html", {"request": request, "groups": [], "error": "Введите корректные номера."})
-
-    # Лог запроса
-    try:
-        new_req = UserRequest(query_text=q[:500], ip_address=request.client.host)
-        db.add(new_req)
-        await db.commit()
-    except: pass
 
     containers = [t for t in search_terms if len(t) == 11]
     wagons = [t for t in search_terms if len(t) == 8]
     conditions = []
     if containers: conditions.append(Tracking.container_number.in_(containers))
     if wagons: conditions.append(Tracking.wagon_number.in_(wagons))
-    
     if not conditions:
          return templates.TemplateResponse("partials/search_results.html", {"request": request, "groups": [], "error": "Некорректный формат."})
 
     stmt = select(Tracking).where(or_(*conditions)).order_by(Tracking.operation_date.desc())
     results_raw = (await db.execute(stmt)).scalars().all()
     
-    # Убираем дубли (оставляем свежие)
     unique_map = {}
     for r in results_raw:
         key = r.container_number
@@ -170,7 +184,6 @@ async def search_handler(request: Request, q: str = Form(""), db: AsyncSession =
     
     enriched_results = await enrich_tracking_data(db, final_results)
 
-    # Группировка по поездам
     grouped_structure = []
     train_map = {} 
     for item in enriched_results:
@@ -189,10 +202,9 @@ async def search_handler(request: Request, q: str = Form(""), db: AsyncSession =
 
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
-    """Виджет активных поездов."""
     five_days_ago = datetime.now() - timedelta(days=5)
     
-    # Фильтруем завершенные и архивные поезда
+    # 1. Получаем список поездов из БД
     stmt = select(Train).where(Train.last_operation_date.isnot(None))\
         .where(Train.last_operation.not_ilike("%(39)%"))\
         .where(Train.last_operation.not_ilike("%(49)%"))\
@@ -202,20 +214,33 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
     result = await db.execute(stmt)
     trains = result.scalars().all()
 
-    # Подсчет оставшегося расстояния
+    # 2. 🔥 ПРОХОДИМ ПО СПИСКУ И СЧИТАЕМ РАССТОЯНИЕ 10-01
     for train in trains:
+        # Устанавливаем флаг, что это не расчетное значение (по умолчанию)
+        setattr(train, 'is_calc_1001', False)
+
         if train.last_known_station and train.destination_station:
             try:
+                # Пытаемся рассчитать расстояние по Тарифному справочнику
                 calc_result = await get_tariff_distance(train.last_known_station, train.destination_station)
-                if calc_result and calc_result.get('distance', 0) > 0:
-                    train.km_remaining = calc_result['distance']
-            except: pass
+                
+                if calc_result and calc_result.get('distance') is not None:
+                    dist = calc_result['distance']
+                    
+                    # Если дистанция > 0, подменяем значение для отображения
+                    if dist > 0:
+                        train.km_remaining = dist
+                        # Ставим метку, что значение взято из расчета 10-01
+                        setattr(train, 'is_calc_1001', True)
+                        
+            except Exception as e:
+                # Если ошибка расчета, просто оставляем значение из Excel
+                print(f"Error calculating distance for train {train.terminal_train_number}: {e}")
 
     return templates.TemplateResponse("partials/active_trains.html", {"request": request, "trains": trains})
 
 @router.post("/search/export")
 async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(get_db)):
-    """Экспорт результатов поиска в Excel."""
     search_terms = normalize_search_input(q)
     if not search_terms: return
     containers = [t for t in search_terms if len(t) == 11]
@@ -227,7 +252,6 @@ async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(ge
 
     stmt = select(Tracking).where(or_(*conditions)).order_by(Tracking.operation_date.desc())
     results = (await db.execute(stmt)).scalars().all()
-    
     unique_map = {}
     for r in results:
         key = r.container_number
@@ -245,84 +269,50 @@ async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(ge
             item.operation_date.strftime('%d.%m.%Y %H:%M') if item.operation_date else '',
             item.wagon_number, item.train_index_full, item.km_left, item.forecast_days
         ])
-    
     file_path = await asyncio.to_thread(create_excel_file_from_strings, rows, headers)
     filename = get_vladivostok_filename("Search_Result")
-    
     def iterfile():
         with open(file_path, mode="rb") as file_like:
             yield from file_like
         try: os.remove(file_path)
         except OSError: pass
-        
     return StreamingResponse(iterfile(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
-# --- 📏 КАЛЬКУЛЯТОР РАССТОЯНИЙ ---
-
-@router.get("/distance", response_class=HTMLResponse)
-async def distance_page(request: Request, user: Optional[User] = Depends(get_current_user)):
-    return templates.TemplateResponse("distance.html", {"request": request, "user": user})
-
-@router.post("/distance")
-async def calculate_distance(request: Request, station_a: str = Form(None), station_b: str = Form(None)):
-    """Расчет расстояния через TariffService."""
-    if not station_a or not station_b:
-        return templates.TemplateResponse("partials/distance_result.html", {"request": request, "error": "Заполните обе станции."})
-    try:
-        service = TariffService()
-        result = await service.get_tariff_distance(station_a, station_b)
-        if not result:
-            return templates.TemplateResponse("partials/distance_result.html", {"request": request, "error": "Маршрут не найден."})
-        return templates.TemplateResponse("partials/distance_result.html", {"request": request, "result": result})
-    except Exception as e:
-        return templates.TemplateResponse("partials/distance_result.html", {"request": request, "error": f"Ошибка: {str(e)}"})
-
-@router.post("/tracking/recalc/{container_id}")
-async def recalc_tracking_distance(request: Request, container_id: int, db: AsyncSession = Depends(get_db)):
-    """Пересчет расстояния для конкретного контейнера в выдаче."""
-    stmt = select(Tracking).where(Tracking.id == container_id)
-    track = (await db.execute(stmt)).scalar_one_or_none()
-    
-    if not track or not track.current_station or not track.to_station:
-        return HTMLResponse('<span class="text-xs text-red-500">Нет данных</span>')
-    
-    try:
-        service = TariffService()
-        res = await service.get_tariff_distance(track.current_station, track.to_station)
-        if res and res.get('distance'):
-            dist = res['distance']
-            track.km_left = dist 
-            await db.commit()
-            return HTMLResponse(f"""
-                <div id="dist-{container_id}" class="flex flex-col items-center">
-                    <span class="font-bold text-mono-black text-sm">{dist} км</span>
-                    <span class="text-[9px] text-green-600 font-bold">10-01 (Обновлено)</span>
-                </div>
-            """)
-    except: pass
-    return HTMLResponse('<span class="text-xs text-red-500">Ошибка</span>')
-
 # ==========================================
-# === 🗓 ПУБЛИЧНЫЙ ГРАФИК (SHARE) ===
+# === 🔗 ПУБЛИЧНЫЙ ДОСТУП К ГРАФИКУ ===
 # ==========================================
 
 @router.get("/schedule/share/{token}")
-async def view_shared_schedule_page(request: Request, token: str, db: AsyncSession = Depends(get_db)):
-    """Публичная страница календаря."""
+async def view_shared_schedule_page(
+    request: Request,
+    token: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Публичная страница календаря (Read-Only)."""
     stmt = select(ScheduleShareLink).where(ScheduleShareLink.token == token)
-    link = (await db.execute(stmt)).scalar_one_or_none()
+    res = await db.execute(stmt)
+    link = res.scalar_one_or_none()
     
     if not link:
-        return templates.TemplateResponse("client_no_company.html", {"request": request, "error_message": "Ссылка недействительна."}, status_code=404)
-        
-    return templates.TemplateResponse("public_schedule.html", {"request": request, "token": token, "link_name": link.name})
+        return templates.TemplateResponse("client_no_company.html", {"request": request, "user": None}, status_code=404)
+
+    return templates.TemplateResponse("public_schedule.html", {
+        "request": request, 
+        "token": token,
+        "link_name": link.name
+    })
 
 @router.get("/api/share/{token}/events")
-async def get_shared_schedule_events(token: str, start: str, end: str, db: AsyncSession = Depends(get_db)):
-    """API событий для публичного календаря (восстановлено)."""
-    # 1. Проверка токена
+async def get_shared_schedule_events(
+    token: str,
+    start: str, 
+    end: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Отдает события по токену."""
     stmt_link = select(ScheduleShareLink).where(ScheduleShareLink.token == token)
-    if not (await db.execute(stmt_link)).scalar_one_or_none():
+    res_link = await db.execute(stmt_link)
+    if not res_link.scalar_one_or_none():
         return []
 
     try:
@@ -331,31 +321,128 @@ async def get_shared_schedule_events(token: str, start: str, end: str, db: Async
     except:
         return []
     
-    # 2. Выборка событий
-    stmt = select(ScheduledTrain).where(and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date))
-    trains = (await db.execute(stmt)).scalars().all()
+    stmt = select(ScheduledTrain).where(
+        and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date)
+    )
+    result = await db.execute(stmt)
+    trains = result.scalars().all()
     
     events = []
     for t in trains:
-        # Безопасное получение полей
+        title = f"{t.service_name} -> {t.destination}"
+        
+        # Безопасно получаем новые поля
         overload = getattr(t, 'overload_station', "")
         owner = getattr(t, 'wagon_owner', "")
         bg_color = getattr(t, 'color', '#111111') or '#111111'
 
+        extendedProps = {
+            "service": t.service_name,
+            "dest": t.destination,
+            "stock": t.stock_info or "",
+            "owner": owner or "",       # <--- Передаем
+            "overload": overload or "", # <--- Передаем
+            "comment": t.comment or ""
+        }
+        
         events.append({
             "id": t.id,
-            "title": f"{t.service_name} -> {t.destination}",
+            "title": title,
             "start": t.schedule_date.isoformat(),
             "allDay": True,
             "backgroundColor": bg_color, 
             "borderColor": bg_color,
-            "extendedProps": {
-                "service": t.service_name,
-                "dest": t.destination,
-                "stock": t.stock_info or "",
-                "owner": owner or "",
-                "overload": overload or "",
-                "comment": t.comment or ""
-            }
+            "extendedProps": extendedProps
         })
-    return JSONResponse(events)
+        
+    return events
+
+# --- 🆕 НОВЫЕ РОУТЫ ДЛЯ РАСЧЕТА РАССТОЯНИЯ ---
+
+@router.get("/distance", response_class=HTMLResponse)
+async def distance_page(request: Request, user: Optional[User] = Depends(get_current_user)):
+    """Страница калькулятора."""
+    return templates.TemplateResponse("distance.html", {
+        "request": request, 
+        "user": user 
+    })
+
+@router.post("/distance/calc")
+async def distance_calculation(
+    request: Request, 
+    station_from: str = Form(...), 
+    station_to: str = Form(...)
+):
+    """
+    Обработчик расчета (HTMX).
+    """
+    if not station_from or not station_to:
+        return templates.TemplateResponse("partials/distance_result.html", {
+            "request": request, "error": "Заполните обе станции."
+        })
+
+    try:
+        # Вызываем твой сервис расчета
+        result = await get_tariff_distance(station_from, station_to)
+        
+        return templates.TemplateResponse("partials/distance_result.html", {
+            "request": request, 
+            "result": result,
+            "station_from_raw": station_from,
+            "station_to_raw": station_to
+        })
+    except Exception as e:
+        return templates.TemplateResponse("partials/distance_result.html", {
+            "request": request, "error": f"Ошибка расчета: {e}"
+        })
+
+@router.post("/tracking/recalc/{tracking_id}", response_class=HTMLResponse)
+async def recalculate_distance_for_row(tracking_id: int, request: Request):
+    """
+    Пересчитывает расстояние и СОХРАНЯЕТ его в базу данных.
+    """
+    # Создаем сессию (используй свой способ получения сессии, если он отличается)
+    async with SessionLocal() as session:
+        # 1. Ищем запись
+        stmt = select(Tracking).where(Tracking.id == tracking_id)
+        result = await session.execute(stmt)
+        track = result.scalar_one_or_none()
+        
+        if not track:
+            return HTMLResponse('<span class="text-red-500">Ошибка ID</span>')
+
+        # 2. Берем станции
+        # ВАЖНО: Проверь, что в БД поля называются именно current_station и dest_station
+        st_from = track.current_station
+        st_to = track.to_station
+        
+        if not st_from or not st_to:
+            return HTMLResponse('<span class="text-red-500">Нет станций</span>')
+
+        # 3. Считаем (используем твой новый быстрый граф)
+        calc_result = await get_tariff_distance(st_from, st_to)
+        
+        if calc_result and calc_result.get('distance'):
+            dist = calc_result['distance']
+            
+            # 4. СОХРАНЯЕМ В БАЗУ (Перезаписываем старое кривое значение)
+            track.km_left = dist 
+            # Если есть поле calc_distance_left, лучше писать туда:
+            # track.calc_distance_left = dist
+            
+            await session.commit()
+            
+            # 5. Возвращаем красивую цифру
+            return HTMLResponse(f"""
+                <div id="dist-{track.id}" class="flex flex-col items-center animate-pulse">
+                    <span class="text-green-600 font-bold text-lg">{dist} км</span>
+                    <span class="text-[10px] text-slate-500">Обновлено (10-01)</span>
+                </div>
+            """)
+        else:
+            return HTMLResponse(f"""
+                <div id="dist-{track.id}" class="text-red-500 text-xs flex flex-col">
+                    <span>Не нашел маршрут</span>
+                    <span class="text-[9px] opacity-70">{st_from} -> {st_to}</span>
+                </div>
+            """)
