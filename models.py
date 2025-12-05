@@ -244,8 +244,11 @@ class ScheduledTrain(Base):
     wagon_owner: Mapped[str | None] = mapped_column(String)
     comment: Mapped[str | None] = mapped_column(Text)
     
-    # НОВОЕ ПОЛЕ: Цвет события (HEX код)
-    color: Mapped[str] = mapped_column(String, default="#3b82f6", nullable=False)
+    # Цвет события
+    color: Mapped[str] = mapped_column(String, default="#111111", nullable=False)
+    
+    # ✅ НОВОЕ ПОЛЕ: Станция перегруза
+    overload_station: Mapped[str | None] = mapped_column(String, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

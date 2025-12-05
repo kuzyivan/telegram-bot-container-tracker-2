@@ -1,4 +1,3 @@
-# web/routers/admin.py
 import sys
 import os
 import json
@@ -31,29 +30,30 @@ async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# --- 🔥 НОВАЯ СТАТИСТИКА (V3 + Trend) ---
+# --- 📊 СТАТИСТИКА ДАШБОРДА ---
 async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: date):
     """
-    Собирает статистику и рассчитывает линию тренда.
+    Собирает статистику для дашборда: KPI, графики, тренды.
     """
     
     def filter_date(query, column):
         return query.where(column >= date_from).where(column <= date_to)
 
-    # 1. KPI
+    # 1. KPI: Новые пользователи
     new_users = await session.scalar(filter_date(select(func.count(User.id)), User.created_at)) or 0
     
+    # 2. KPI: Активные поезда (была активность за 45 дней и не выгружены)
     active_trains = await session.scalar(
         select(func.count(Train.id))
         .where(Train.last_operation_date >= (datetime.now() - timedelta(days=45)))
         .where(and_(Train.last_operation.not_ilike('%выгрузка%'), Train.last_operation.isnot(None)))
     ) or 0
 
-    # 2. Всего отправлено
+    # 3. KPI: Всего отправлено контейнеров
     total_sent_stmt = select(func.count(TerminalContainer.id))
     total_sent = await session.scalar(filter_date(total_sent_stmt, TerminalContainer.created_at)) or 0
 
-    # 3. Сроки доставки
+    # 4. KPI: Средний срок доставки
     avg_delivery_stmt = (
         select(func.avg(func.extract('day', Tracking.trip_end_datetime - Tracking.trip_start_datetime)))
         .where(Tracking.trip_end_datetime.isnot(None))
@@ -63,7 +63,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     )
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
-    # 4. 📈 Ритмичность погрузки + ТРЕНД
+    # 5. График: Ритмичность погрузки + Линия тренда
     rhythm_stmt = (
         select(func.date(TerminalContainer.created_at).label('date'), func.count(TerminalContainer.id))
         .where(func.date(TerminalContainer.created_at) >= date_from)
@@ -74,7 +74,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     rhythm_res = await session.execute(rhythm_stmt)
     rhythm_rows = rhythm_res.all()
     
-    # Заполняем пропуски дат нулями (чтобы график был честным)
+    # Заполняем даты с нулевыми значениями
     rhythm_dict = {r.date: r[1] for r in rhythm_rows}
     rhythm_labels = []
     rhythm_values = []
@@ -85,32 +85,27 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         rhythm_values.append(rhythm_dict.get(current, 0))
         current += timedelta(days=1)
 
-    # --- 🧮 Расчет Линейной Регрессии (y = mx + c) ---
+    # Расчет тренда (Линейная регрессия)
     trend_values = []
     n = len(rhythm_values)
     if n > 1:
-        x = list(range(n)) # [0, 1, 2, ...]
+        x = list(range(n))
         y = rhythm_values
-        
-        sum_x = sum(x)
-        sum_y = sum(y)
+        sum_x, sum_y = sum(x), sum(y)
         sum_xy = sum(xi * yi for xi, yi in zip(x, y))
         sum_xx = sum(xi ** 2 for xi in x)
         
         denominator = n * sum_xx - sum_x ** 2
-        
         if denominator != 0:
-            m = (n * sum_xy - sum_x * sum_y) / denominator # Наклон
-            c = (sum_y - m * sum_x) / n                 # Смещение
-            
-            # Генерируем точки линии
-            trend_values = [max(0, round(m * xi + c, 1)) for xi in x] # max(0) чтобы не уходило в минус
+            m = (n * sum_xy - sum_x * sum_y) / denominator
+            c = (sum_y - m * sum_x) / n
+            trend_values = [max(0, round(m * xi + c, 1)) for xi in x]
         else:
             trend_values = [0] * n
     else:
-        trend_values = rhythm_values # Если 1 точка, тренд равен точке
+        trend_values = rhythm_values
 
-    # 5. Клиенты
+    # 6. График: Топ клиентов
     clients_stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label('cnt'))
         .where(func.date(TerminalContainer.created_at) >= date_from)
@@ -125,7 +120,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     clients_labels = [r.client for r in clients_rows]
     clients_values = [r.cnt for r in clients_rows]
 
-    # 6. Запросы
+    # 7. График: Активность запросов (Нагрузка)
     req_stmt = (
         select(func.date(UserRequest.timestamp).label("date"), func.count(UserRequest.id))
         .where(func.date(UserRequest.timestamp) >= date_from)
@@ -145,14 +140,14 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "avg_delivery_days": round(avg_delivery_days, 1),
         "rhythm_labels": json.dumps(rhythm_labels),
         "rhythm_values": json.dumps(rhythm_values),
-        "trend_values": json.dumps(trend_values), # <--- НОВОЕ
+        "trend_values": json.dumps(trend_values),
         "clients_labels": json.dumps(clients_labels),
         "clients_values": json.dumps(clients_values),
         "req_labels": json.dumps(req_labels),
         "req_values": json.dumps(req_values),
     }
 
-# --- РОУТЫ ---
+# --- 🖥️ РОУТЫ СТРАНИЦ ---
 
 @router.get("/dashboard")
 async def dashboard(
@@ -176,6 +171,7 @@ async def dashboard(
 
     stats = await get_dashboard_stats(db, d_from, d_to)
     
+    # Лента последних действий
     feed_stmt = select(UserRequest, User).join(User, UserRequest.user_telegram_id == User.telegram_id, isouter=True).order_by(desc(UserRequest.timestamp)).limit(8)
     feed_res = await db.execute(feed_stmt)
     feed_data = []
@@ -192,10 +188,11 @@ async def dashboard(
         **stats
     })
 
-# ... (остальные роуты schedule_planner, events, links, companies, users без изменений) ...
 @router.get("/schedule_planner")
 async def schedule_planner_page(request: Request, user: User = Depends(admin_required)):
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
+
+# --- 📅 API КАЛЕНДАРЯ (ОБНОВЛЕНО) ---
 
 @router.get("/api/schedule/events")
 async def get_schedule_events(
@@ -205,11 +202,10 @@ async def get_schedule_events(
     user: User = Depends(admin_required)
 ):
     try:
-        # Парсим даты
+        # Парсинг дат от FullCalendar
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
         end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
         
-        # Запрос к БД
         stmt = select(ScheduledTrain).where(
             and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date)
         )
@@ -220,18 +216,19 @@ async def get_schedule_events(
         for t in trains:
             title = f"{t.service_name} -> {t.destination}"
             
-            # --- ВОССТАНОВЛЕНИЕ ЦВЕТА ---
-            # Берем цвет из базы. Если поля нет или оно пустое — ставим дефолтный синий или черный
-            # Используем getattr для безопасности, если модель в памяти старая
-            train_color = getattr(t, 'color', '#111111') 
-            if not train_color:
-                train_color = '#111111' 
+            # --- Безопасное получение полей (если миграция не прошла, не упадем) ---
+            bg_color = getattr(t, 'color', '#111111') 
+            if not bg_color: bg_color = '#111111'
+            
+            overload = getattr(t, 'overload_station', "")
+            owner = getattr(t, 'wagon_owner', "")
 
             extendedProps = {
                 "service": t.service_name,
                 "dest": t.destination,
                 "stock": t.stock_info or "",
-                "owner": t.wagon_owner or "",
+                "owner": owner or "",
+                "overload": overload or "",
                 "comment": t.comment or ""
             }
             
@@ -240,17 +237,17 @@ async def get_schedule_events(
                 "title": title,
                 "start": t.schedule_date.isoformat(),
                 "allDay": True,
-                # Передаем цвет в свойства календаря
-                "backgroundColor": train_color, 
-                "borderColor": train_color,
+                "backgroundColor": bg_color, 
+                "borderColor": bg_color,
                 "extendedProps": extendedProps
             })
             
         return JSONResponse(events)
         
     except Exception as e:
-        print(f"❌ Ошибка API Calendar: {e}")
-        return JSONResponse([], status_code=500)
+        print(f"❌ CRITICAL ERROR in Calendar API: {e}")
+        # Возвращаем пустой список вместо 500 ошибки, чтобы интерфейс не вис
+        return JSONResponse([], status_code=200)
 
 @router.post("/api/schedule/create")
 async def create_schedule_event(
@@ -258,21 +255,24 @@ async def create_schedule_event(
     service: str = Form(...), 
     destination: str = Form(...), 
     stock: str = Form(None), 
-    owner: str = Form(None), 
-    color: str = Form("#111111"), # <--- Принимаем цвет
+    owner: str = Form(None),
+    overload_station: str = Form(None), # <--- Новое поле
+    color: str = Form("#111111"),       # <--- Новое поле
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
 ):
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
-        # Сохраняем цвет в базу
+        
+        # Создаем запись. Важно: эти поля должны быть в models.py
         new_train = ScheduledTrain(
             schedule_date=dt, 
             service_name=service, 
             destination=destination, 
             stock_info=stock, 
-            wagon_owner=owner, 
-            color=color # <--- Важно
+            wagon_owner=owner,
+            overload_station=overload_station, 
+            color=color
         )
         db.add(new_train)
         await db.commit()
@@ -299,6 +299,8 @@ async def delete_schedule_event(event_id: int, db: AsyncSession = Depends(get_db
         await db.commit()
     return {"status": "ok"}
 
+# --- 🔗 SHARE LINKS API ---
+
 @router.get("/api/schedule/links")
 async def get_share_links(db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     stmt = select(ScheduleShareLink).order_by(ScheduleShareLink.created_at.desc())
@@ -323,6 +325,8 @@ async def delete_share_link(link_id: int, db: AsyncSession = Depends(get_db), us
         await db.delete(link)
         await db.commit()
     return {"status": "ok"}
+
+# --- 🏢 УПРАВЛЕНИЕ КОМПАНИЯМИ И ПОЛЬЗОВАТЕЛЯМИ ---
 
 @router.get("/companies")
 async def admin_companies(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_required)):
