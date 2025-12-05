@@ -3,131 +3,96 @@
 {% block title %}Аналитика — Logistrail{% endblock %}
 
 {% block content %}
-
-
-<div class="space-y-8 animate-fade-in pb-10">
+<div class="max-w-7xl mx-auto space-y-8 animate-fade-in pb-12">
     
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-            <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Бизнес-аналитика</h1>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Обзор за выбранный период</p>
+            <h1 class="text-3xl font-bold text-mono-black tracking-tight">Бизнес-аналитика</h1>
+            <p class="text-sm text-mono-gray mt-1">Обзор системы</p>
         </div>
         
-        <form action="/admin/dashboard" method="GET" class="flex flex-wrap items-end gap-3">
-            <div>
-                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">С даты</label>
-                <div class="relative">
-                    <input type="text" name="date_from" value="{{ current_date_from }}" 
-                           class="datepicker block w-36 p-2 pl-9 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-600 cursor-pointer"
-                           placeholder="ДД.ММ.ГГГГ">
-                    <div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    </div>
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">По дату</label>
-                <div class="relative">
-                    <input type="text" name="date_to" value="{{ current_date_to }}" 
-                           class="datepicker block w-36 p-2 pl-9 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-slate-600 cursor-pointer"
-                           placeholder="ДД.ММ.ГГГГ">
-                    <div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    </div>
-                </div>
-            </div>
-            <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-md font-medium h-[38px] mb-[1px]">
-                Применить
+        <form action="/admin/dashboard" method="GET" class="flex items-center bg-white p-1 rounded-xl shadow-sm border border-mono-border">
+            <input type="text" name="date_from" value="{{ current_date_from }}" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Начало">
+            <div class="h-4 w-px bg-mono-border"></div>
+            <input type="text" name="date_to" value="{{ current_date_to }}" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Конец">
+            <button type="submit" class="ml-1 bg-mono-black text-white px-5 py-2 rounded-lg text-sm font-medium shadow-sm hover:bg-gray-800 transition">
+                OK
             </button>
         </form>
     </div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Всего отправлено</p>
-            <div class="mt-2 flex items-end gap-2">
-                <p class="text-3xl font-extrabold text-slate-900 dark:text-white">{{ total_sent }}</p>
-                <p class="text-sm font-medium text-slate-500 mb-1">конт.</p>
-            </div>
-            <div class="mt-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
-                <div class="bg-purple-500 h-1.5 rounded-full" style="width: 100%"></div>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Всего отправлено</p>
+            <div class="mt-2 flex items-baseline gap-2">
+                <p class="text-3xl font-bold text-mono-black">{{ total_sent }}</p>
+                <p class="text-sm text-mono-gray">конт.</p>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Фактич. срок доставки</p>
-            <div class="mt-2 flex items-end gap-2">
-                <p class="text-3xl font-extrabold text-slate-900 dark:text-white">{{ avg_delivery_days }}</p>
-                <p class="text-sm font-medium text-slate-500 mb-1">дней</p>
-            </div>
-            <div class="mt-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
-                <div class="bg-green-500 h-1.5 rounded-full" style="width: 70%"></div>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Ср. срок доставки</p>
+            <div class="mt-2 flex items-baseline gap-2">
+                <p class="text-3xl font-bold text-mono-black">{{ avg_delivery_days }}</p>
+                <p class="text-sm text-mono-gray">дней</p>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Поездов в пути</p>
-            <div class="mt-2 flex items-end gap-2">
-                <p class="text-3xl font-extrabold text-blue-600 dark:text-blue-400">{{ active_trains }}</p>
-                <p class="text-sm font-medium text-slate-500 mb-1">составов</p>
-            </div>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Поездов в пути</p>
+            <p class="mt-2 text-3xl font-bold text-mono-black">{{ active_trains }}</p>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Новые пользователи</p>
-            <div class="mt-2 flex items-end gap-2">
-                <p class="text-3xl font-extrabold text-slate-900 dark:text-white">{{ new_users }}</p>
-            </div>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Новые пользователи</p>
+            <p class="mt-2 text-3xl font-bold text-mono-black">{{ new_users }}</p>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        <div class="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                Ритмичность погрузки (Контейнеров)
-            </h3>
+        <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <h3 class="text-base font-bold text-mono-black mb-6">Ритмичность погрузки</h3>
             <div class="relative h-72 w-full">
                 <canvas id="rhythmChart"></canvas>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">Топ клиентов</h3>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col">
+            <h3 class="text-base font-bold text-mono-black mb-4">Топ клиентов</h3>
             <div class="relative h-64 w-full flex-grow flex items-center justify-center">
                 <canvas id="clientsPieChart"></canvas>
             </div>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-6">Нагрузка на бот (Запросы)</h3>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <h3 class="text-base font-bold text-mono-black mb-6">Нагрузка (Запросы)</h3>
             <div class="relative h-64 w-full">
                 <canvas id="requestsChart"></canvas>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-0 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden">
-            <div class="p-6 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">Последние действия</h3>
+        <div class="bg-white rounded-2xl shadow-card border border-transparent flex flex-col overflow-hidden">
+            <div class="p-6 border-b border-mono-border">
+                <h3 class="text-base font-bold text-mono-black">Последние действия</h3>
             </div>
             <div class="flex-grow overflow-y-auto max-h-[250px]">
                 <table class="w-full text-sm text-left">
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                    <tbody class="divide-y divide-mono-border">
                         {% for item in feed_data %}
-                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                            <td class="px-6 py-3">
+                        <tr class="hover:bg-mono-bg transition">
+                            <td class="px-6 py-3.5">
                                 <div class="flex items-center justify-between mb-1">
-                                    <span class="font-semibold text-slate-900 dark:text-white text-xs">{{ item.username }}</span>
-                                    <span class="text-xs text-slate-400 dark:text-slate-500">{{ item.time }}</span>
+                                    <span class="font-bold text-mono-black text-xs">{{ item.username }}</span>
+                                    <span class="text-[10px] text-mono-gray font-mono">{{ item.time }}</span>
                                 </div>
-                                <p class="text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 rounded px-2 py-1 inline-block truncate max-w-[300px]">
+                                <div class="text-xs text-mono-gray bg-mono-bg rounded px-2 py-1 inline-block truncate max-w-full font-mono">
                                     {{ item.query }}
-                                </p>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -139,24 +104,21 @@
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // Инициализация календарей
     flatpickr(".datepicker", {
         locale: "ru",
-        dateFormat: "Y-m-d", // Формат для отправки на сервер
-        altInput: true,      // Показывать пользователю другой формат
-        altFormat: "d.m.Y",  // Формат для отображения (как в России)
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d.m.Y",
         allowInput: true,
-        disableMobile: "true" // Чтобы на мобильных тоже был наш красивый календарь, а не нативный
+        disableMobile: "true"
     });
 
-    const isDark = document.documentElement.classList.contains('dark');
     Chart.defaults.font.family = "'Inter', sans-serif";
-    Chart.defaults.color = isDark ? '#94a3b8' : '#64748b';
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+    Chart.defaults.color = '#8E8E93'; // mono-gray
+    const gridColor = '#F5F5F7'; // mono-bg
 
-    // --- 1. Line: Rhythm (Погрузка + Тренд) ---
+    // --- 1. Line: Rhythm (Черный градиент) ---
     new Chart(document.getElementById('rhythmChart'), {
         type: 'line',
         data: {
@@ -165,7 +127,7 @@
                 {
                     label: 'Тренд',
                     data: {{ trend_values|safe }},
-                    borderColor: '#f59e0b',
+                    borderColor: '#CCCCCC', // Светло-серый для тренда
                     backgroundColor: 'transparent',
                     borderWidth: 2,
                     borderDash: [5, 5],
@@ -176,17 +138,18 @@
                 {
                     label: 'Контейнеров',
                     data: {{ rhythm_values|safe }},
-                    borderColor: '#3b82f6',
+                    borderColor: '#111111', // Черная линия
                     backgroundColor: (ctx) => {
                         const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 300);
-                        gradient.addColorStop(0, isDark ? 'rgba(59, 130, 246, 0.5)' : 'rgba(59, 130, 246, 0.2)');
-                        gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+                        gradient.addColorStop(0, 'rgba(17, 17, 17, 0.1)'); // Черный прозрачный
+                        gradient.addColorStop(1, 'rgba(17, 17, 17, 0)');
                         return gradient;
                     },
                     fill: true,
                     tension: 0.3,
-                    pointRadius: 3,
-                    pointBackgroundColor: '#3b82f6',
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointBackgroundColor: '#111111',
                     borderWidth: 2,
                     order: 1
                 }
@@ -195,29 +158,31 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: true, labels: { boxHeight: 2, boxWidth: 10 } } },
+            plugins: { legend: { display: false } },
             scales: { 
-                y: { 
-                    beginAtZero: true, 
-                    grid: { color: gridColor, borderDash: [4, 4] },
-                    border: { display: false } 
-                }, 
-                x: { 
-                    grid: { display: false },
-                    border: { display: false } 
-                } 
+                y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, 
+                x: { grid: { display: false }, border: { display: false } } 
             }
         }
     });
 
-    // --- 2. Pie: Clients ---
+    // --- 2. Doughnut: Clients (Монохромная палитра) ---
     new Chart(document.getElementById('clientsPieChart'), {
         type: 'doughnut',
         data: {
             labels: {{ clients_labels|safe }},
             datasets: [{
                 data: {{ clients_values|safe }},
-                backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#0ea5e9'],
+                backgroundColor: [
+                    '#111111', // Black
+                    '#333333',
+                    '#555555',
+                    '#777777',
+                    '#999999',
+                    '#BBBBBB',
+                    '#DDDDDD',
+                    '#EEEEEE'
+                ],
                 borderWidth: 0,
                 hoverOffset: 4
             }]
@@ -225,14 +190,15 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: '75%',
             plugins: { 
-                legend: { position: 'right', labels: { boxWidth: 12, usePointStyle: true, padding: 20 } } 
+                legend: { position: 'right', labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle', padding: 15, font: {size: 11} } } 
             },
             layout: { padding: 0 }
         }
     });
 
-    // --- 3. Bar: Requests ---
+    // --- 3. Bar: Requests (Серые столбики, черный ховер) ---
     new Chart(document.getElementById('requestsChart'), {
         type: 'bar',
         data: {
@@ -240,9 +206,10 @@
             datasets: [{
                 label: 'Запросы',
                 data: {{ req_values|safe }},
-                backgroundColor: '#10b981',
+                backgroundColor: '#2B2B2B', // Темно-серый
+                hoverBackgroundColor: '#111111', // Черный при наведении
                 borderRadius: 4,
-                maxBarThickness: 40
+                maxBarThickness: 30
             }]
         },
         options: {
@@ -250,15 +217,8 @@
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: { 
-                y: { 
-                    beginAtZero: true, 
-                    grid: { color: gridColor, borderDash: [4, 4] }, 
-                    border: { display: false } 
-                }, 
-                x: { 
-                    grid: { display: false },
-                    border: { display: false } 
-                } 
+                y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, 
+                x: { grid: { display: false }, border: { display: false } } 
             }
         }
     });

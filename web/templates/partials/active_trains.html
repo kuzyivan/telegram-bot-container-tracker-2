@@ -1,84 +1,76 @@
-<div class="bg-white rounded-2xl border border-mono-light overflow-hidden animate-fade-in">
-    <div class="bg-mono-light/50 px-6 py-4 border-b border-mono-light flex justify-between items-center">
-        <h3 class="text-lg font-bold text-mono-black flex items-center gap-2">
-            <svg class="w-5 h-5 text-mono-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-            Активные поезда в пути
+<div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden animate-fade-in">
+    <div class="px-6 py-5 border-b border-mono-border flex justify-between items-center bg-white">
+        <h3 class="text-base font-bold text-mono-black flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            Поезда в пути
         </h3>
         <button hx-get="/active_trains" hx-target="#active-trains-block" hx-swap="innerHTML" 
-                class="text-sm text-mono-black hover:opacity-75 font-medium flex items-center gap-1 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                class="text-xs font-bold text-mono-gray hover:text-mono-black flex items-center gap-1 transition uppercase tracking-wider">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
             Обновить
         </button>
     </div>
 
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm text-left">
-            <thead class="bg-mono-light/50 text-mono-gray uppercase font-bold text-xs">
+    <div class="overflow-x-auto w-full">
+        <table class="w-full min-w-[900px] text-sm text-left">
+            <thead class="bg-mono-bg text-mono-gray uppercase font-bold text-[10px] tracking-wider">
                 <tr>
                     <th class="px-6 py-3">Поезд (Терминал)</th>
                     <th class="px-6 py-3">Поезд (РЖД)</th>
                     <th class="px-6 py-3">Назначение</th>
-                    <th class="px-6 py-3">Текущая ст. / Дорога</th>
-                    <th class="px-6 py-3">Операция / Дата</th> 
-                    <th class="px-6 py-3 text-right">Осталось</th> </tr>
+                    <th class="px-6 py-3">Текущая ст.</th>
+                    <th class="px-6 py-3">Операция</th> 
+                    <th class="px-6 py-3 text-right">Осталось</th> 
+                </tr>
             </thead>
-            <tbody class="divide-y divide-mono-light">
+            <tbody class="divide-y divide-mono-border">
                 {% for train in trains %}
-                <tr class="hover:bg-mono-light/50 transition">
-                    <td class="px-6 py-3">
+                <tr class="hover:bg-mono-bg transition group">
+                    <td class="px-6 py-4">
                         <div class="flex flex-col items-start">
-                            <span class="font-mono font-bold text-mono-black bg-mono-light px-2 py-1 rounded whitespace-nowrap mb-1">
+                            <span class="font-mono font-bold text-mono-black text-sm mb-1">
                                 {{ train.terminal_train_number }}
                             </span>
-                            <span class="text-xs text-mono-gray whitespace-nowrap">
-                                Отпр: {{ train.departure_date.strftime('%d.%m.%Y') if train.departure_date else '—' }}
+                            <span class="text-[10px] text-mono-gray font-medium">
+                                {{ train.departure_date.strftime('%d.%m') if train.departure_date else '—' }}
                             </span>
                         </div>
                     </td>
-                    <td class="px-6 py-3 font-mono text-mono-gray">
+                    <td class="px-6 py-4 font-mono text-mono-gray text-xs">
                         {{ train.rzd_train_number or '—' }}
                     </td>
-                    <td class="px-6 py-3 font-medium text-mono-black">
+                    <td class="px-6 py-4 font-medium text-mono-black text-sm">
                         {{ train.destination_station or '—' }}
                     </td>
-                    <td class="px-6 py-3 font-medium text-mono-black">
-                        {{ train.last_known_station or '—' }}
+                    <td class="px-6 py-4">
+                        <span class="text-sm text-mono-black font-medium block">{{ train.last_known_station or '—' }}</span>
                         {% if train.last_known_road %}
-                        <span class="text-xs text-mono-gray font-normal ml-1 whitespace-nowrap">({{ train.last_known_road }})</span>
+                        <span class="text-[10px] text-mono-gray">{{ train.last_known_road }}</span>
                         {% endif %}
                     </td>
-                    <td class="px-6 py-3">
+                    <td class="px-6 py-4">
                         <div class="flex flex-col">
-                            <span class="text-mono-black max-w-[220px] truncate" title="{{ train.last_operation }}">
+                            <span class="text-mono-black text-xs font-medium max-w-[180px] truncate" title="{{ train.last_operation }}">
                                 {{ train.last_operation or '—' }}
                             </span>
-                            <span class="text-xs text-mono-gray mt-1 flex items-center gap-1 whitespace-nowrap">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="text-[10px] text-mono-gray mt-1">
                                 {{ train.last_operation_date.strftime('%d.%m %H:%M') if train.last_operation_date else '—' }}
                             </span>
                         </div>
                     </td>
-                    <td class="px-6 py-3 text-right">
+                    <td class="px-6 py-4 text-right align-middle">
                         {% if train.km_remaining is not none %}
-                            <div class="flex flex-col items-end">
-                                <span class="font-bold {% if train.is_calc_1001 %}text-green-600{% else %}text-mono-black{% endif %}">
-                                    {{ train.km_remaining }} км
-                                </span>
-                                
-                                {% if train.is_calc_1001 %}
-                                    <span class="text-[9px] uppercase font-bold text-green-600/70 bg-green-50 px-1 rounded">10-01</span>
-                                {% else %}
-                                    <span class="text-[9px] text-mono-gray">Excel</span>
-                                {% endif %}
-                            </div>
+                            <span class="inline-block bg-mono-black text-white px-2.5 py-1 rounded text-xs font-bold">
+                                {{ train.km_remaining }} км
+                            </span>
                         {% else %}
-                            —
+                            <span class="text-gray-300 text-xs">—</span>
                         {% endif %}
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6" class="px-6 py-8 text-center text-mono-gray">
+                    <td colspan="6" class="px-6 py-12 text-center text-mono-gray text-sm">
                         Нет данных об активных поездах.
                     </td>
                 </tr>
