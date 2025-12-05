@@ -7,171 +7,143 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <script>
         tailwind.config = {
-            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        mono: { black: '#2B2B2B', gray: '#6F767E', light: '#F2F2F2', white: '#FFFFFF' }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] }
+                }
+            }
         }
     </script>
+
     <style>
-        /* Переопределение переменных FullCalendar для темной темы */
-    .dark {
-        --fc-border-color: rgba(255, 255, 255, 0.08) !important;
-        --fc-page-bg-color: #1e293b !important;
-        --fc-neutral-bg-color: rgba(255, 255, 255, 0.03) !important;
-        --fc-today-bg-color: rgba(59, 130, 246, 0.1) !important;
-    }
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background-color: #F2F2F2; color: #2B2B2B; }
         
-        .fc-event {
-            background-color: #ffffff !important;
-            border: 1px solid #e2e8f0 !important;
-            /* border-left задается динамически в JS */
-            border-radius: 6px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-bottom: 2px !important;
-            cursor: default;
-            transition: transform 0.1s;
+        /* FullCalendar Monochrome Overrides */
+        :root {
+            --fc-border-color: #E2E2E2;
+            --fc-button-text-color: #2B2B2B;
+            --fc-button-bg-color: #FFFFFF;
+            --fc-button-border-color: #E2E2E2;
+            --fc-button-hover-bg-color: #F2F2F2;
+            --fc-button-active-bg-color: #2B2B2B;
+            --fc-button-active-border-color: #2B2B2B;
+            --fc-button-active-text-color: #FFFFFF;
+            --fc-today-bg-color: #FFFFFF;
+            --fc-neutral-bg-color: #FAFAFA;
         }
-        .fc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+
+        .fc-event {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E2E2 !important;
+            /* border-left задается динамически, но база такая */
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            margin-bottom: 4px !important;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .fc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         
         .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
         .fc-event-main { width: 100%; padding: 0; }
-        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #1e293b; }
-        .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-        .fc-button:hover { background-color: #f8fafc !important; }
-        .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
-        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
-        .fc-daygrid-day-number { color: #334155; font-weight: 500; padding: 8px !important; }
-        .fc-day-today { background-color: #f8fafc !important; }
+        
+        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #2B2B2B; }
+        
+        .fc-button { 
+            border-radius: 10px !important; 
+            font-weight: 600 !important; 
+            text-transform: capitalize !important; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+            padding: 0.5em 1em !important;
+        }
+        
+        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #6F767E; padding: 12px 0 !important; }
+        .fc-daygrid-day-number { color: #2B2B2B; font-weight: 600; padding: 8px !important; }
 
-        /* Dark mode overrides */
-        .dark .fc-event {
-            background-color: #1e293b !important;
-            border-color: #334155 !important;
-        }
-        .dark .fc-toolbar-title { color: #e2e8f0 !important; }
-        .dark .fc-button {
-            background-color: #334155 !important;
-            color: #cbd5e1 !important;
-            border-color: #475569 !important;
-        }
-        .dark .fc-button:hover { background-color: #475569 !important; }
-        .dark .fc-button-active {
-            background-color: #2563eb !important;
-            color: white !important;
-            border-color: #2563eb !important;
-        }
-        .dark .fc-col-header-cell-cushion { color: #94a3b8 !important; }
-        .dark .fc-daygrid-day-number { color: #cbd5e1 !important; }
-        .dark .fc-day-today { background-color: #1a2233 !important; }
-
-        /* Анимация Модалки */
-        #modalOverlay { transition: opacity 0.3s ease-out; }
-        #modalPanel { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Модалка */
+        #modalOverlay { transition: opacity 0.2s ease-out; }
+        #modalPanel { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         .modal-closed { opacity: 0; pointer-events: none; }
         .modal-closed #modalPanel { transform: scale(0.95) translateY(10px); opacity: 0; }
         .modal-open { opacity: 1; pointer-events: auto; }
         .modal-open #modalPanel { transform: scale(1) translateY(0); opacity: 1; }
     </style>
-    
-    <script>
-        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    </script>
 </head>
-<body class="bg-slate-50 dark:bg-slate-900 min-h-screen p-4 md:p-8 transition-colors duration-300">
+<body class="min-h-screen p-4 md:p-8">
 
     <div class="max-w-7xl mx-auto space-y-6">
-        <div class="flex flex-col sm:flex-row justify-between items-center bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 gap-4">
-            <div class="flex items-center gap-3 w-full sm:w-auto">
-                <div class="bg-blue-600 p-2 rounded-lg text-white shrink-0">
+        
+        <div class="flex flex-col sm:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-transparent gap-4">
+            <div class="flex items-center gap-4 w-full sm:w-auto">
+                <div class="bg-mono-black p-2.5 rounded-xl text-white shrink-0">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-slate-900 dark:text-white">График поездов</h1>
-                    <p class="text-xs text-slate-500 dark:text-slate-400">Доступ: {{ link_name }}</p>
+                    <h1 class="text-xl font-bold text-mono-black tracking-tight">График поездов</h1>
+                    <p class="text-xs text-mono-gray font-medium">Доступ для: {{ link_name }}</p>
                 </div>
             </div>
             
             <div class="flex items-center gap-4 self-end sm:self-auto">
-                <button id="theme-toggle" type="button" class="text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none rounded-lg text-sm p-2.5 transition">
-                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h1a1 1 0 100 2h-1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
-                </button>
-
-                <div class="flex items-center gap-2 border-l border-slate-300 dark:border-slate-600 pl-4">
-                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                    <span class="text-sm text-slate-600 dark:text-slate-300">Запланировано</span>
+                <div class="flex items-center gap-2 px-4 py-2 bg-mono-light rounded-lg">
+                    <span class="w-2 h-2 rounded-full bg-mono-black"></span>
+                    <span class="text-xs font-bold text-mono-black uppercase tracking-wider">Актуально</span>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div id='calendar' class="min-h-[600px] sm:min-h-[750px]"></div>
+        <div class="bg-white p-6 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-transparent">
+            <div id='calendar' class="min-h-[700px] font-sans"></div>
         </div>
     </div>
 
     <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center px-4 modal-closed">
-        
-        <div class="absolute inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm" onclick="closeModal()"></div>
+        <div class="absolute inset-0 bg-mono-black/20 backdrop-blur-sm" onclick="closeModal()"></div>
 
-        <div id="modalPanel" class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden">
+        <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-mono-light">
             
-            <div id="modalHeader" class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 transition-colors duration-300">
+            <div id="modalHeader" class="bg-mono-black px-8 py-6 transition-colors duration-300">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-white/80 text-xs font-bold uppercase tracking-wider mb-1" id="modalDate">ДАТА</p>
-                        <h2 class="text-white text-2xl font-bold leading-tight" id="modalDest">Назначение</h2>
+                        <p class="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
+                        <h2 class="text-white text-2xl font-bold leading-none tracking-tight" id="modalDest">Назначение</h2>
                     </div>
-                    <button onclick="closeModal()" class="text-white/70 hover:text-white transition p-1 rounded-full hover:bg-white/20">
+                    <button onclick="closeModal()" class="text-white/50 hover:text-white transition p-1 rounded-full hover:bg-white/10">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
             </div>
 
-            <div class="p-6 space-y-5">
+            <div class="p-8 space-y-6">
                 
-                <div class="flex items-start gap-3">
-                    <div class="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-600 dark:text-slate-300 mt-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
-                    </div>
-                    <div>
-                        <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Сервис поезда</p>
-                        <p class="text-lg font-bold text-slate-800 dark:text-slate-100" id="modalService">Service Name</p>
-                    </div>
+                <div>
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
+                    <p class="text-lg font-bold text-mono-black" id="modalService">Service Name</p>
                 </div>
 
-                <div class="flex items-start gap-3" id="blockStock">
-                    <div class="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-500 dark:text-slate-400 mt-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
-                    </div>
-                    <div>
-                        <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Доступный сток</p>
-                        <p class="text-base font-semibold text-slate-700 dark:text-slate-300" id="modalStock">Stock Info</p>
-                    </div>
+                <div id="blockStock">
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Доступный сток</p>
+                    <p class="text-base font-medium text-mono-black" id="modalStock">Stock Info</p>
                 </div>
 
-                <div class="flex items-start gap-3" id="blockOwner">
-                    <div class="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-500 dark:text-slate-400 mt-1">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    </div>
-                    <div>
-                        <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Собственник</p>
-                        <p class="text-base font-semibold text-slate-700 dark:text-slate-300" id="modalOwner">Owner Name</p>
-                    </div>
+                <div id="blockOwner">
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
+                    <div class="inline-block px-3 py-1 bg-mono-light rounded-lg text-sm font-mono text-mono-black" id="modalOwner">Owner Name</div>
                 </div>
                 
-                <div id="blockComment" class="hidden pt-4 border-t border-slate-100 dark:border-slate-700">
-                    <p class="text-sm text-slate-400 dark:text-slate-500 italic" id="modalComment"></p>
+                <div id="blockComment" class="hidden pt-4 border-t border-mono-light">
+                    <p class="text-sm text-mono-gray italic" id="modalComment"></p>
                 </div>
-
             </div>
             
-            <div class="bg-slate-50 dark:bg-slate-800/50 px-6 py-3 border-t border-slate-100 dark:border-slate-700 flex justify-center">
-                <button onclick="closeModal()" class="w-full py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition">
+            <div class="bg-mono-light/50 px-6 py-4 border-t border-mono-light flex justify-center">
+                <button onclick="closeModal()" class="w-full py-3 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-light rounded-xl transition shadow-sm">
                     Закрыть
                 </button>
             </div>
@@ -179,45 +151,6 @@
     </div>
 
     <script>
-        // Логика переключения темы
-        var themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
-        var themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
-        var themeToggleBtn = document.getElementById('theme-toggle');
-
-        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            themeToggleLightIcon.classList.remove('hidden');
-        } else {
-            themeToggleDarkIcon.classList.remove('hidden');
-        }
-
-        themeToggleBtn.addEventListener('click', function() {
-            themeToggleDarkIcon.classList.toggle('hidden');
-            themeToggleLightIcon.classList.toggle('hidden');
-
-            if (localStorage.getItem('color-theme')) {
-                if (localStorage.getItem('color-theme') === 'light') {
-                    document.documentElement.classList.add('dark');
-                    localStorage.setItem('color-theme', 'dark');
-                } else {
-                    document.documentElement.classList.remove('dark');
-                    localStorage.setItem('color-theme', 'light');
-                }
-            } else {
-                if (document.documentElement.classList.contains('dark')) {
-                    document.documentElement.classList.remove('dark');
-                    localStorage.setItem('color-theme', 'light');
-                } else {
-                    document.documentElement.classList.add('dark');
-                    localStorage.setItem('color-theme', 'dark');
-                }
-            }
-            // Перерисовка календаря при смене темы
-            if (typeof calendar !== 'undefined') {
-                calendar.render();
-            }
-        });
-
-
         document.addEventListener('DOMContentLoaded', function() {
             var calendarEl = document.getElementById('calendar');
             var token = "{{ token }}";
@@ -240,44 +173,27 @@
                     openModal(info.event);
                 },
 
-                // Рендер карточки с УВЕЛИЧЕННЫМ ШРИФТОМ
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps;
-                    let bgColor = arg.event.backgroundColor || '#3b82f6';
+                    let bgColor = arg.event.backgroundColor || '#2B2B2B';
                     
-                    let isDark = document.documentElement.classList.contains('dark');
-                    let titleColor = isDark ? 'var(--text-event-title)' : '#1e293b';
-                    let serviceColor = isDark ? 'var(--text-event-body)' : '#334155';
-                    let stockColor = isDark ? 'var(--text-event-meta)' : '#475569';
-                    let ownerColor = isDark ? 'var(--text-event-meta)' : '#64748b';
-                    let borderColor = isDark ? 'var(--border-color)' : '#f1f5f9';
-
-                    let html = `<div class="flex flex-col gap-1 leading-tight py-1.5 px-2" style="border-left: 3px solid ${bgColor}">`;
+                    // Строгий стиль карточки
+                    let html = `<div class="flex flex-col py-1.5 px-2 overflow-hidden bg-white" style="border-left: 3px solid ${bgColor}">`;
                     
-                    // 1. Станция: 14px (text-sm), иконка 16px (w-4)
-                    html += `<div style="color: ${titleColor}" class="text-sm font-bold truncate" title="${props.dest}">
-                        <svg class="w-4 h-4 inline-block mr-1 mb-0.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    // 1. Станция
+                    html += `<div class="text-sm font-bold text-mono-black truncate leading-tight mb-0.5">
                         ${props.dest}
                     </div>`;
                     
-                    // 2. Сервис: 12px (text-xs), иконка 14px (w-3.5)
-                    html += `<div style="color: ${serviceColor}" class="text-xs font-medium truncate">
-                        <svg class="w-3.5 h-3.5 inline-block mr-1 mb-0.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
+                    // 2. Сервис
+                    html += `<div class="text-[11px] font-medium text-mono-gray truncate">
                         ${props.service}
                     </div>`;
                     
-                    // 3. Сток
+                    // 3. Сток (опционально)
                     if (props.stock) {
-                        html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[11px] truncate border-t mt-1 pt-1">
-                            <svg class="w-3 h-3 inline-block mr-1 mb-0.5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                        html += `<div class="text-[10px] text-mono-gray/70 truncate mt-1 pt-1 border-t border-mono-light font-mono">
                             ${props.stock}
-                        </div>`;
-                    }
-                    // 4. Собственник
-                    if (props.owner) {
-                        html += `<div style="color: ${ownerColor}" class="text-[11px] italic truncate">
-                            <svg class="w-3 h-3 inline-block mr-1 mb-0.5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            ${props.owner}
                         </div>`;
                     }
                     html += `</div>`;
@@ -285,15 +201,6 @@
                 }
             });
             calendar.render();
-
-            const themeObserver = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    if (mutation.attributeName === 'class') {
-                        calendar.render();
-                    }
-                });
-            });
-            themeObserver.observe(document.documentElement, { attributes: true });
         });
 
         function openModal(event) {
@@ -305,45 +212,27 @@
             document.getElementById('modalDest').innerText = props.dest;
             document.getElementById('modalService').innerText = props.service;
             
-            const color = event.backgroundColor || '#3b82f6';
-            const header = document.getElementById('modalHeader');
-            header.className = 'px-6 py-4 transition-colors duration-300';
-            header.style.backgroundColor = color;
+            const color = event.backgroundColor || '#2B2B2B';
+            document.getElementById('modalHeader').style.backgroundColor = color;
             
-            const elStock = document.getElementById('modalStock');
-            const blockStock = document.getElementById('blockStock');
-            if (props.stock) {
-                elStock.innerText = props.stock;
-                blockStock.classList.remove('hidden');
-                blockStock.classList.add('flex');
-            } else {
-                blockStock.classList.add('hidden');
-                blockStock.classList.remove('flex');
-            }
-            
-            const elOwner = document.getElementById('modalOwner');
-            const blockOwner = document.getElementById('blockOwner');
-            if (props.owner) {
-                elOwner.innerText = props.owner;
-                blockOwner.classList.remove('hidden');
-                blockOwner.classList.add('flex');
-            } else {
-                blockOwner.classList.add('hidden');
-                blockOwner.classList.remove('flex');
-            }
-
-            const elComment = document.getElementById('modalComment');
-            const blockComment = document.getElementById('blockComment');
-            if (props.comment) {
-                elComment.innerText = props.comment;
-                blockComment.classList.remove('hidden');
-            } else {
-                blockComment.classList.add('hidden');
-            }
+            toggleField('blockStock', 'modalStock', props.stock);
+            toggleField('blockOwner', 'modalOwner', props.owner);
+            toggleField('blockComment', 'modalComment', props.comment);
 
             const overlay = document.getElementById('modalOverlay');
             overlay.classList.remove('modal-closed');
             overlay.classList.add('modal-open');
+        }
+
+        function toggleField(blockId, textId, value) {
+            const block = document.getElementById(blockId);
+            const text = document.getElementById(textId);
+            if (value) {
+                text.innerText = value;
+                block.classList.remove('hidden');
+            } else {
+                block.classList.add('hidden');
+            }
         }
 
         function closeModal() {

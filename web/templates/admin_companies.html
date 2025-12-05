@@ -1,93 +1,109 @@
 {% extends "base.html" %}
 
-{% block title %}Управление Компаниями — Logistrail{% endblock %}
+{% block title %}Управление компаниями — Logistrail{% endblock %}
 
 {% block content %}
-<div class="space-y-10 pb-10 animate-fade-in">
+<div class="max-w-7xl mx-auto space-y-10 pb-12 animate-fade-in">
 
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-            <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Компании и Доступ</h1>
-            <p class="text-slate-500 dark:text-slate-400">Создавайте профили клиентов, регистрируйте сотрудников и управляйте правами доступа.</p>
+            <h1 class="text-3xl font-bold text-mono-black tracking-tight">Компании и Доступ</h1>
+            <p class="text-sm text-mono-gray mt-1">Управление клиентами и правами пользователей</p>
         </div>
+        
+        <form action="/admin/companies/sync" method="POST">
+            <button type="submit" class="group flex items-center gap-2 text-xs font-bold text-mono-black border border-mono-border bg-white hover:bg-mono-bg px-4 py-2.5 rounded-xl transition shadow-sm">
+                <div class="p-1 bg-mono-black text-white rounded-full group-hover:scale-110 transition">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </div>
+                <span>Синхронизировать (Terminal → Archive)</span>
+            </button>
+        </form>
     </div>
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
         
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 h-full">
-            <h2 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-                <div class="p-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-300">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+        <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent h-full flex flex-col">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-8 h-8 rounded-lg bg-mono-bg flex items-center justify-center text-mono-black">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
                 </div>
-                Новая Компания
-            </h2>
+                <h2 class="text-lg font-bold text-mono-black">Новая Компания</h2>
+            </div>
             
-            <form action="/admin/companies/create" method="POST" class="space-y-4">
+            <form action="/admin/companies/create" method="POST" class="space-y-5 flex-grow">
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Название *</label>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">Название</label>
                         <input type="text" name="name" required placeholder="ООО Вектор" 
-                               class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition text-slate-900 dark:text-white">
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium">
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ИНН</label>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">ИНН</label>
                         <input type="text" name="inn" placeholder="1234567890" 
-                               class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition text-slate-900 dark:text-white">
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium">
                     </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ключ импорта (из Excel) *</label>
+                <div class="space-y-1.5">
+                    <label class="text-xs font-bold text-mono-gray uppercase ml-1">Ключ импорта (Excel)</label>
                     <input type="text" name="import_key" required placeholder="VECTOR_LLC" 
-                           class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition text-slate-900 dark:text-white">
-                    <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">Точное название клиента в столбце "Клиент" файла терминала.</p>
+                           class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium">
+                    <p class="text-[10px] text-mono-gray ml-1 mt-1">Точное название клиента в столбце "Клиент" файла терминала.</p>
                 </div>
-                <div class="pt-2">
-                    <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition shadow-md hover:shadow-lg active:scale-95">
+                
+                <div class="pt-4 mt-auto">
+                    <button type="submit" class="w-full bg-mono-black text-white font-bold py-3 rounded-xl hover:opacity-90 transition shadow-lg active:scale-95 text-sm">
                         Создать компанию
                     </button>
                 </div>
             </form>
         </div>
 
-        <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 h-full border-l-4 border-l-green-500 dark:border-l-green-400">
-            <h2 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-                <div class="p-1.5 bg-green-100 dark:bg-green-900/50 rounded-lg text-green-600 dark:text-green-300">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+        <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent h-full flex flex-col">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-8 h-8 rounded-lg bg-mono-bg flex items-center justify-center text-mono-black">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
                 </div>
-                Новый Web-пользователь
-            </h2>
+                <h2 class="text-lg font-bold text-mono-black">Новый Web-пользователь</h2>
+            </div>
             
-            <form action="/admin/users/create" method="POST" class="space-y-4">
+            <form action="/admin/users/create" method="POST" class="space-y-5 flex-grow">
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Имя *</label>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">Имя</label>
                         <input type="text" name="name" required placeholder="Иван Петров" 
-                               class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition text-slate-900 dark:text-white">
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium">
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Компания</label>
-                        <select name="company_id" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition text-slate-900 dark:text-white">
-                            <option value="0">— Без компании —</option>
-                            {% for comp in companies %}
-                            <option value="{{ comp.id }}">{{ comp.name }}</option>
-                            {% endfor %}
-                        </select>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">Компания</label>
+                        <div class="relative">
+                            <select name="company_id" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium appearance-none cursor-pointer">
+                                <option value="0">— Без компании —</option>
+                                {% for comp in companies %}
+                                <option value="{{ comp.id }}">{{ comp.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-mono-gray">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Логин (Email) *</label>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">Логин</label>
                         <input type="text" name="login" required placeholder="client_login" 
-                               class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition text-slate-900 dark:text-white">
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium">
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Пароль *</label>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">Пароль</label>
                         <input type="text" name="password" required placeholder="••••••" 
-                               class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition text-slate-900 dark:text-white">
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium">
                     </div>
                 </div>
-                <div class="pt-2">
-                    <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition shadow-md hover:shadow-lg active:scale-95">
+                
+                <div class="pt-4 mt-auto">
+                    <button type="submit" class="w-full bg-white border border-mono-black text-mono-black font-bold py-3 rounded-xl hover:bg-mono-black hover:text-white transition shadow-sm active:scale-95 text-sm">
                         Создать пользователя
                     </button>
                 </div>
@@ -95,110 +111,106 @@
         </div>
     </div>
 
-    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h3 class="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+        <div class="px-8 py-6 bg-white border-b border-mono-border flex justify-between items-center">
+            <h3 class="text-lg font-bold text-mono-black flex items-center gap-3">
                 Активные компании
-                <span class="bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-200 px-2 py-0.5 rounded-full text-xs">{{ companies|length }}</span>
+                <span class="bg-mono-bg text-mono-black px-2.5 py-0.5 rounded-md text-xs font-bold">{{ companies|length }}</span>
             </h3>
-            
-            <form action="/admin/companies/sync" method="POST">
-                <button type="submit" class="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900 px-3 py-2 rounded-lg transition border border-blue-200 dark:border-blue-800/50 shadow-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    Синхронизировать базы (Terminal ➝ Archive)
-                </button>
-            </form>
         </div>
         
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
-                <thead class="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+                <thead class="bg-mono-bg text-mono-gray text-[11px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-6 py-3">ID</th>
-                        <th class="px-6 py-3">Название</th>
-                        <th class="px-6 py-3">ИНН</th>
-                        <th class="px-6 py-3">Ключ импорта</th>
-                        <th class="px-6 py-3">Сотрудников</th>
+                        <th class="px-8 py-4">Компания</th>
+                        <th class="px-8 py-4">ИНН</th>
+                        <th class="px-8 py-4">Ключ импорта</th>
+                        <th class="px-8 py-4 text-center">Сотрудников</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                <tbody class="divide-y divide-mono-border">
                     {% for company in companies %}
-                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                        <td class="px-6 py-3 font-mono text-slate-400 dark:text-slate-500">#{{ company.id }}</td>
-                        <td class="px-6 py-3 font-bold text-slate-800 dark:text-white">{{ company.name }}</td>
-                        <td class="px-6 py-3 text-slate-300">{{ company.inn or '—' }}</td>
-                        <td class="px-6 py-3">
+                    <tr class="hover:bg-mono-bg transition group">
+                        <td class="px-8 py-5">
+                            <div class="font-bold text-mono-black text-base">{{ company.name }}</div>
+                            <div class="text-[10px] text-mono-gray font-mono mt-0.5">ID: #{{ company.id }}</div>
+                        </td>
+                        <td class="px-8 py-5 text-mono-black font-medium">{{ company.inn or '—' }}</td>
+                        <td class="px-8 py-5">
                             {% if company.import_mapping_key %}
-                                <span class="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-1 rounded font-mono text-xs">{{ company.import_mapping_key }}</span>
+                                <span class="bg-white border border-mono-border text-mono-black px-2 py-1 rounded font-mono text-xs">{{ company.import_mapping_key }}</span>
                             {% else %}
-                                <span class="text-slate-400 dark:text-slate-500">—</span>
+                                <span class="text-gray-300 text-xs">—</span>
                             {% endif %}
                         </td>
-                        <td class="px-6 py-3">
-                            <span class="bg-blue-50 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 px-2 py-1 rounded text-xs font-bold">{{ company.users|length }}</span>
+                        <td class="px-8 py-5 text-center">
+                            <span class="inline-flex items-center justify-center w-6 h-6 bg-mono-black text-white text-xs font-bold rounded-full">{{ company.users|length }}</span>
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" class="px-6 py-8 text-center text-slate-500 dark:text-slate-400">Компаний пока нет.</td></tr>
+                    <tr><td colspan="4" class="px-8 py-10 text-center text-mono-gray">Список компаний пуст.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-            <h3 class="font-bold text-slate-700 dark:text-slate-200">Пользователи и Права</h3>
-            <span class="text-xs text-slate-500 dark:text-slate-400">Всего: {{ users|length }}</span>
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+        <div class="px-8 py-6 bg-white border-b border-mono-border flex justify-between items-center">
+            <h3 class="text-lg font-bold text-mono-black flex items-center gap-3">
+                Пользователи и Права
+                <span class="bg-mono-bg text-mono-black px-2.5 py-0.5 rounded-md text-xs font-bold">{{ users|length }}</span>
+            </h3>
         </div>
         
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
-                <thead class="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+                <thead class="bg-mono-bg text-mono-gray text-[11px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-6 py-3">Пользователь</th>
-                        <th class="px-6 py-3">Источник</th>
-                        <th class="px-6 py-3">Компания</th>
-                        <th class="px-6 py-3">Роль</th>
-                        <th class="px-6 py-3 text-right">Действие</th>
+                        <th class="px-8 py-4">Пользователь</th>
+                        <th class="px-8 py-4">Источник</th>
+                        <th class="px-8 py-4">Компания</th>
+                        <th class="px-8 py-4">Роль</th>
+                        <th class="px-8 py-4 text-right">Действие</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                <tbody class="divide-y divide-mono-border">
                     {% for user in users %}
-                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group">
+                    <tr class="hover:bg-mono-bg transition group">
                         <form action="/admin/users/{{ user.id }}/update" method="POST">
                             
-                            <td class="px-6 py-3">
-                                <div class="font-medium text-slate-900 dark:text-white">
+                            <td class="px-8 py-4 align-middle">
+                                <div class="font-bold text-mono-black">
                                     {{ user.first_name }} {{ user.last_name or '' }}
                                 </div>
-                                <div class="text-xs text-slate-500 dark:text-slate-400">
+                                <div class="text-xs text-mono-gray font-mono mt-0.5">
                                     {% if user.username %}
                                         @{{ user.username }}
                                     {% elif user.email_login %}
-                                        Login: <span class="font-mono text-green-600 dark:text-green-400">{{ user.email_login }}</span>
+                                        {{ user.email_login }}
                                     {% else %}
                                         ID: {{ user.id }}
                                     {% endif %}
                                 </div>
                             </td>
 
-                            <td class="px-6 py-3">
+                            <td class="px-8 py-4 align-middle">
                                 {% if user.telegram_id %}
-                                    <span class="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/50 px-2 py-0.5 rounded text-xs font-medium">
+                                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-mono-black text-white text-[10px] font-bold uppercase tracking-wider">
                                         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"></path></svg>
-                                        TG: {{ user.telegram_id }}
-                                    </span>
+                                        Telegram
+                                    </div>
                                 {% else %}
-                                    <span class="inline-flex items-center gap-1 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/50 px-2 py-0.5 rounded text-xs font-medium">
+                                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-mono-border text-mono-black text-[10px] font-bold uppercase tracking-wider">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
                                         WEB
-                                    </span>
+                                    </div>
                                 {% endif %}
                             </td>
                             
-                            <td class="px-6 py-3">
-                                <select name="company_id" class="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-1.5 transition">
+                            <td class="px-8 py-4 align-middle">
+                                <select name="company_id" class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition">
                                     <option value="0" {% if not user.company_id %}selected{% endif %}>— Нет —</option>
                                     {% for comp in companies %}
                                     <option value="{{ comp.id }}" {% if user.company_id == comp.id %}selected{% endif %}>
@@ -208,17 +220,17 @@
                                 </select>
                             </td>
 
-                            <td class="px-6 py-3">
-                                <select name="role" class="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-1.5 transition">
-                                    <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer (Просмотр)</option>
-                                    <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>Manager (Сотрудник)</option>
-                                    <option value="owner" {% if user.role == 'owner' %}selected{% endif %}>Owner (Владелец)</option>
-                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>ADMIN (Супер)</option>
+                            <td class="px-8 py-4 align-middle">
+                                <select name="role" class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition uppercase font-bold tracking-wide">
+                                    <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer</option>
+                                    <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>Manager</option>
+                                    <option value="owner" {% if user.role == 'owner' %}selected{% endif %}>Owner</option>
+                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>ADMIN</option>
                                 </select>
                             </td>
 
-                            <td class="px-6 py-3 text-right">
-                                <button type="submit" class="text-blue-600 dark:text-blue-400 hover:text-white dark:hover:text-white hover:bg-blue-600 dark:hover:bg-blue-500 font-medium text-xs bg-blue-50 dark:bg-blue-900/50 px-3 py-1.5 rounded-lg transition opacity-50 group-hover:opacity-100">
+                            <td class="px-8 py-4 text-right align-middle">
+                                <button type="submit" class="text-mono-black hover:bg-mono-black hover:text-white font-bold text-xs bg-white border border-mono-border px-4 py-2 rounded-lg transition shadow-sm">
                                     Сохранить
                                 </button>
                             </td>

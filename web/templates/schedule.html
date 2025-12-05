@@ -3,49 +3,63 @@
 {% block title %}График отправки — Logistrail{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto">
+<div class="max-w-5xl mx-auto py-8 animate-fade-in">
     
-    <div class="flex items-center gap-4 mb-8">
-        <a href="/admin/dashboard" class="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+    <div class="flex items-center justify-between mb-8">
+        <h1 class="text-3xl font-bold text-mono-black tracking-tight">График отправки поездов</h1>
+        <a href="/admin/dashboard" class="text-sm font-medium text-mono-gray hover:text-mono-black transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+            Назад
         </a>
-        <h1 class="text-3xl font-bold text-slate-900 dark:text-white">График отправки поездов</h1>
     </div>
 
-    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-between items-center">
-            <h2 class="font-semibold text-slate-700 dark:text-slate-200">План на месяц</h2>
-            <span class="text-sm text-slate-500 dark:text-slate-400">{{ period_start.strftime('%d.%m') }} — {{ period_end.strftime('%d.%m.%Y') }}</span>
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+        <div class="px-8 py-5 border-b border-mono-border flex justify-between items-center bg-white">
+            <h2 class="font-bold text-lg text-mono-black">План на месяц</h2>
+            <span class="text-sm font-mono text-mono-gray">{{ period_start.strftime('%d.%m') }} — {{ period_end.strftime('%d.%m.%Y') }}</span>
         </div>
 
         {% if trains %}
         <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300">
-                <thead class="bg-slate-50 dark:bg-slate-700 text-xs uppercase font-bold text-slate-500 dark:text-slate-300">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-6 py-3">Дата отправления</th>
-                        <th class="px-6 py-3">Номер поезда (Терминал)</th>
-                        <th class="px-6 py-3">Номер РЖД</th>
-                        <th class="px-6 py-3">Назначение</th>
-                        <th class="px-6 py-3">Контейнеров</th>
-                        <th class="px-6 py-3">Статус</th>
+                        <th class="px-8 py-4">Дата</th>
+                        <th class="px-8 py-4">Сервис / Поезд</th>
+                        <th class="px-8 py-4">РЖД Номер</th>
+                        <th class="px-8 py-4">Назначение</th>
+                        <th class="px-8 py-4 text-center">Конт.</th>
+                        <th class="px-8 py-4 text-right">Статус</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                <tbody class="divide-y divide-mono-border">
                     {% for train in trains %}
-                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                        <td class="px-6 py-4 font-medium text-slate-900 dark:text-white">
-                            {{ train.departure_date.strftime('%d.%m.%Y') if train.departure_date else '—' }}
+                    <tr class="hover:bg-mono-bg transition group">
+                        <td class="px-8 py-5 font-bold text-mono-black">
+                            {{ train.departure_date.strftime('%d.%m') if train.departure_date else '—' }}
+                            <span class="text-mono-gray text-xs font-normal ml-1">{{ train.departure_date.strftime('%Y') }}</span>
                         </td>
-                        <td class="px-6 py-4 font-mono text-blue-600 dark:text-blue-400">{{ train.terminal_train_number }}</td>
-                        <td class="px-6 py-4">{{ train.rzd_train_number or '—' }}</td>
-                        <td class="px-6 py-4">{{ train.destination_station or '—' }}</td>
-                        <td class="px-6 py-4">{{ train.container_count or '0' }}</td>
-                        <td class="px-6 py-4">
-                            {% if train.departure_date and train.departure_date < period_start %}
-                                <span class="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-1 rounded text-xs font-bold">Ушел</span>
+                        <td class="px-8 py-5">
+                            <span class="font-mono font-medium text-mono-black block">{{ train.terminal_train_number }}</span>
+                        </td>
+                        <td class="px-8 py-5 font-mono text-mono-gray text-xs">
+                            {{ train.rzd_train_number or '—' }}
+                        </td>
+                        <td class="px-8 py-5 font-medium text-mono-black">
+                            {{ train.destination_station or '—' }}
+                        </td>
+                        <td class="px-8 py-5 text-center">
+                            {% if train.container_count %}
+                                <span class="bg-mono-bg px-2 py-1 rounded text-xs font-bold text-mono-black">{{ train.container_count }}</span>
                             {% else %}
-                                <span class="bg-green-100 dark:bg-green-800/50 text-green-700 dark:text-green-300 px-2 py-1 rounded text-xs font-bold">План</span>
+                                <span class="text-gray-300">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-8 py-5 text-right">
+                            {% if train.departure_date and train.departure_date < period_start %}
+                                <span class="text-mono-gray text-xs font-bold uppercase tracking-wider">Отправлен</span>
+                            {% else %}
+                                <span class="bg-mono-black text-white px-3 py-1 rounded-md text-xs font-bold shadow-sm uppercase tracking-wider">План</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -54,7 +68,7 @@
             </table>
         </div>
         {% else %}
-        <div class="p-10 text-center text-slate-500 dark:text-slate-400">
+        <div class="p-12 text-center text-mono-gray">
             <p>Нет запланированных поездов на ближайшее время.</p>
         </div>
         {% endif %}
