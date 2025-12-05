@@ -24,7 +24,7 @@
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #F5F5F7; color: #111111; }
         
-        /* === FullCalendar Monochrome Styles === */
+        /* === FullCalendar Styles === */
         :root {
             --fc-border-color: #E5E5EA;
             --fc-button-text-color: #111111;
@@ -34,11 +34,10 @@
             --fc-button-hover-border-color: #E5E5EA;
             --fc-button-active-bg-color: #111111;
             --fc-button-active-border-color: #111111;
-            --fc-button-active-text-color: #FFFFFF; /* Исправлено: Белый текст на активной кнопке */
+            --fc-button-active-text-color: #FFFFFF;
             --fc-today-bg-color: #FAFAFA;
         }
 
-        /* Кнопки календаря */
         .fc .fc-button-primary {
             background-color: #FFFFFF !important;
             border-color: #E5E5EA !important;
@@ -62,10 +61,9 @@
             color: #FFFFFF !important; /* Белый текст */
         }
 
-        /* События (Карточки) */
         .fc-event {
             background-color: #FFFFFF !important;
-            border: none !important; /* Рамка рисуется внутри HTML */
+            border: none !important; /* Убираем рамку через CSS */
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
             margin-bottom: 4px !important;
@@ -80,7 +78,6 @@
         }
         .fc-daygrid-event { white-space: normal !important; }
         
-        /* Заголовки */
         .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #111111; }
         .fc-col-header-cell-cushion { color: #8E8E93; text-transform: uppercase; font-size: 0.7rem; font-weight: 700; padding: 12px !important; }
         .fc-daygrid-day-number { color: #111111; font-weight: 600; padding: 8px !important; }
@@ -130,7 +127,7 @@
             <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center" style="border-left: 4px solid transparent;">
                 <div>
                     <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
-                    <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Информация о рейсе</h2>
+                    <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Рейс</h2>
                 </div>
                 <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1.5 rounded-lg hover:bg-mono-light">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -158,7 +155,7 @@
                     </div>
                 </div>
 
-                <div id="blockOverload">
+                <div id="blockOverload" class="hidden">
                     <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Станция перегруза</p>
                     <div class="inline-flex items-center gap-1.5 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-lg text-sm font-bold border border-orange-100">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
@@ -166,7 +163,7 @@
                     </div>
                 </div>
 
-                <div id="blockStock" class="pt-4 border-t border-mono-light">
+                <div id="blockStock" class="pt-4 border-t border-mono-light hidden">
                     <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Доступный сток</p>
                     <p class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border" id="modalStock">Stock Info</p>
                 </div>
@@ -213,20 +210,20 @@
                     openModal(info.event);
                 },
 
-                // 🔥 Рендер карточки (1 в 1 как в админке)
+                // 🔥 ИСПРАВЛЕННЫЙ РЕНДЕР (БЕЗ setProp)
                 eventContent: function(arg) {
-                    let props = arg.event.extendedProps;
+                    let props = arg.event.extendedProps || {};
                     let bgColor = arg.event.backgroundColor || '#111111';
                     
-                    // Убираем рамку по умолчанию
-                    arg.event.setProp('borderColor', 'transparent'); 
+                    // ❌ setProp УДАЛЕН ВО ИЗБЕЖАНИЕ ЗАВИСАНИЯ
 
-                    let dest = props.dest;
-                    let service = props.service;
-                    let stock = props.stock;
-                    let owner = props.owner;
-                    let overload = props.overload;
+                    let dest = props.dest || 'Назначение';
+                    let service = props.service || '';
+                    let stock = props.stock || '';
+                    let owner = props.owner || '';
+                    let overload = props.overload || '';
 
+                    // Сборка HTML (Такая же, как в админке)
                     let html = `
                     <div class="flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
                          style="border-left: 4px solid ${bgColor};">

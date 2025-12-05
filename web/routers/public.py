@@ -325,24 +325,28 @@ async def get_shared_schedule_events(
     events = []
     for t in trains:
         title = f"{t.service_name} -> {t.destination}"
+        
+        # Безопасно получаем новые поля
+        overload = getattr(t, 'overload_station', "")
+        owner = getattr(t, 'wagon_owner', "")
+        bg_color = getattr(t, 'color', '#111111') or '#111111'
+
         extendedProps = {
             "service": t.service_name,
             "dest": t.destination,
             "stock": t.stock_info or "",
-            "owner": t.wagon_owner or "",
+            "owner": owner or "",       # <--- Передаем
+            "overload": overload or "", # <--- Передаем
             "comment": t.comment or ""
         }
-        
-        # ✅ ИСПРАВЛЕНИЕ: Берем реальный цвет из базы
-        color = t.color if hasattr(t, 'color') else "#3b82f6" # Передаем правильный цвет
         
         events.append({
             "id": t.id,
             "title": title,
             "start": t.schedule_date.isoformat(),
             "allDay": True,
-            "backgroundColor": color, 
-            "borderColor": color,
+            "backgroundColor": bg_color, 
+            "borderColor": bg_color,
             "extendedProps": extendedProps
         })
         
