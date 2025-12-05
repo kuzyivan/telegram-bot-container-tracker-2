@@ -92,7 +92,7 @@ def _parse_transit_points_from_db(tp_strings: list[str]) -> list[dict]:
 
 async def _get_station_info_from_db(station_name: str, session: AsyncSession) -> dict | None:
     """
-    Ищет станцию в БД.
+    Ищет станцию в БД для калькулятора.
     Умеет обрабатывать префиксы 'РАЗЪЕЗД', 'СТАНЦИЯ' и т.д.
     """
     # 1. Базовая очистка
@@ -216,8 +216,6 @@ async def _enrich_path_with_coords(path_nodes: list[dict], session: AsyncSession
                 'lon': lat_lon[1]
             })
         else:
-            # Если координат нет, добавляем с None, чтобы не ломать логику,
-            # но фильтрация будет на этапе вывода
             enriched_path.append({'name': node['name'], 'lat': None, 'lon': None})
             
     return enriched_path
@@ -310,8 +308,6 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
                 detailed_path_with_coords = await _enrich_path_with_coords(clean_nodes, session)
                 
                 # Сохраняем в результат
-                # detailed_path_coords - для карты (только те, у которых есть lat/lon)
-                # detailed_path - для текстового списка
                 best['detailed_path_coords'] = [p for p in detailed_path_with_coords if p['lat'] is not None]
                 best['detailed_path'] = [node['name'] for node in clean_nodes]
 
@@ -331,10 +327,39 @@ async def get_tariff_distance(from_station_name: str, to_station_name: str) -> d
         return None
 
 async def find_stations_by_name(station_name: str) -> list[dict]:
-    """Автодополнение для поиска станций."""
+    """
+    Автодополнение для поиска станций (для Бота и Веба).
+    Умеет обрабатывать префиксы 'РАЗЪЕЗД', 'СТАНЦИЯ' и т.д.
+    """
     if not TariffSessionLocal: return []
-    cleaned = _normalize_station_name_for_db(station_name)
+    
+    # 1. Базовая очистка
+    cleaned_name = _normalize_station_name_for_db(station_name)
+    search_candidates = [cleaned_name]
+    
+    # 2. Очистка от слов-паразитов
+    prefixes_to_remove = [
+        "РАЗЪЕЗД", "РЗД", "Р-Д", 
+        "СТАНЦИЯ", "СТ.", "СТ ", 
+        "ОП", "О.П.", "О.П", "БП", "П/П"
+    ]
+    
+    upper_name = cleaned_name.upper()
+    for prefix in prefixes_to_remove:
+        if upper_name.startswith(prefix + " ") or upper_name.startswith(prefix + "."):
+            stripped = cleaned_name[len(prefix):].strip(" .")
+            if stripped:
+                search_candidates.append(stripped)
+            break 
+
     async with TariffSessionLocal() as session:
-        stmt = select(TariffStation).where(TariffStation.name.ilike(f"{cleaned}%")).limit(10)
-        res = await session.execute(stmt)
-        return [{'name': s.name, 'code': s.code, 'railway': s.railway} for s in res.scalars()]
+        for candidate in search_candidates:
+            # Ищем совпадения "Начинается с..."
+            stmt = select(TariffStation).where(TariffStation.name.ilike(f"{candidate}%")).limit(10)
+            res = await session.execute(stmt)
+            stations = res.scalars().all()
+            
+            if stations:
+                return [{'name': s.name, 'code': s.code, 'railway': s.railway} for s in stations]
+        
+        return []
