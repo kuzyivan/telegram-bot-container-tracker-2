@@ -10,7 +10,6 @@
     }
 
     var ctx = document.getElementById('clientsChart').getContext('2d');
-    const isDarkMode = document.documentElement.classList.contains('dark');
     
     // Создаем глобальную переменную (через window), чтобы иметь к ней доступ при следующем обновлении
     window.clientsChartInstance = new Chart(ctx, {
@@ -21,8 +20,12 @@
                 label: 'Контейнеров',
                 data: {{ chart_clients_values|safe }},
                 backgroundColor: [
-                    '#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', 
-                    '#f97316', '#eab308', '#10b981'
+                    '#2B2B2B',
+                    '#4F4F4F',
+                    '#6F767E',
+                    '#9CA3AF',
+                    '#D1D5DB',
+                    '#E5E7EB'
                 ],
                 borderRadius: 6,
                 barThickness: 40,
@@ -35,12 +38,12 @@
             plugins: { 
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: isDarkMode ? 'rgb(30 41 59 / 0.9)' : 'rgb(248 250 252 / 0.9)',
-                    titleColor: isDarkMode ? '#cbd5e1' : '#1e293b',
-                    bodyColor: isDarkMode ? '#cbd5e1' : '#1e293b',
+                    backgroundColor: 'rgb(255 255 255 / 0.9)',
+                    titleColor: '#2B2B2B',
+                    bodyColor: '#2B2B2B',
                     padding: 10,
                     cornerRadius: 8,
-                    borderColor: isDarkMode ? '#334155' : '#e2e8f0',
+                    borderColor: '#E2E2E2',
                     borderWidth: 1
                 }
             },
@@ -49,17 +52,17 @@
                     beginAtZero: true,
                     grid: { 
                         borderDash: [4, 4], 
-                        color: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#f1f5f9'
+                        color: '#F2F2F2'
                     },
                     ticks: { 
                         precision: 0,
-                        color: isDarkMode ? '#94a3b8' : '#64748b'
+                        color: '#6F767E'
                     }
                 },
                 x: {
                     grid: { display: false },
                     ticks: {
-                        color: isDarkMode ? '#94a3b8' : '#64748b'
+                        color: '#6F767E'
                     }
                 }
             },

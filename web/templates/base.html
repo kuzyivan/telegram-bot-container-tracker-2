@@ -8,160 +8,119 @@
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script> <script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
+    
+    <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
+                        // Переопределяем стандартные цвета под твою палитру
+                        mono: {
+                            black: '#2B2B2B',  // Основной текст, кнопки
+                            gray: '#6F767E',   // Вторичный текст, границы
+                            light: '#F2F2F2',  // Фон блоков, ховеры
+                            white: '#FFFFFF'   // Чистый белый
+                        },
+                        // Заменяем синий бренд на черный/серый для монохромности
+                        blue: {
+                            50: '#F2F2F2',     // Вместо голубого фона - светло-серый
+                            100: '#E5E5E5',
+                            500: '#6F767E',
+                            600: '#2B2B2B',    // Основные кнопки теперь черные
+                            700: '#1A1A1A',
+                        },
                         slate: {
-                            850: '#1e293b',
-                            900: '#0f172a',
+                            50: '#FAFAFA',     // Очень светлый фон
+                            100: '#F2F2F2',    // Твой Light
+                            200: '#E2E2E2',    // Границы
+                            300: '#CCCCCC',
+                            400: '#999999',
+                            500: '#6F767E',    // Твой Gray
+                            600: '#555555',
+                            700: '#444444',
+                            800: '#333333',
+                            900: '#2B2B2B',    // Твой Black
                         }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Menlo', 'monospace'], // Моноширинный для номеров контейнеров
                     }
                 }
             }
         }
     </script>
+    
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #FFFFFF; /* Белый фон страницы */
+            color: #2B2B2B; /* Темный текст */
+        }
+        
+        /* Скроллбар в стиле минимализма */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #E2E2E2; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6F767E; }
+
         .htmx-indicator { display:none; }
         .htmx-request .htmx-indicator { display:inline; }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Анимации */
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-
-        /* --- КАСТОМНЫЕ СТИЛИ FLATPICKR (Адаптация под тему) --- */
-        .flatpickr-calendar {
-            font-family: 'Inter', sans-serif;
-            border: 1px solid #e2e8f0;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            border-radius: 0.75rem; /* rounded-xl */
-        }
-        .flatpickr-calendar.arrowTop:before, .flatpickr-calendar.arrowTop:after { border-bottom-color: #fff; }
-        
-        .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
-        .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange,
-        .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus,
-        .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover,
-        .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay,
-        .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay {
-            background: #2563eb; /* blue-600 */
-            border-color: #2563eb;
-        }
-        
-        /* Dark Mode для Flatpickr */
-        .dark .flatpickr-calendar {
-            background: #1e293b; /* slate-800 */
-            border-color: #334155; /* slate-700 */
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-        }
-        .dark .flatpickr-calendar.arrowTop:before, .dark .flatpickr-calendar.arrowTop:after { border-bottom-color: #1e293b; }
-        
-        .dark .flatpickr-months .flatpickr-month { color: #fff; fill: #fff; }
-        .dark .flatpickr-months .flatpickr-prev-month, .dark .flatpickr-months .flatpickr-next-month { fill: #fff; }
-        .dark span.flatpickr-weekday { color: #94a3b8; } /* slate-400 */
-        .dark .flatpickr-day { color: #e2e8f0; } /* slate-200 */
-        .dark .flatpickr-day.flatpickr-disabled, .dark .flatpickr-day.flatpickr-disabled:hover { color: #475569; }
-        .dark .flatpickr-day:hover, .dark .flatpickr-day.prevMonthDay:hover, .dark .flatpickr-day.nextMonthDay:hover, .dark .flatpickr-day:focus {
-            background: #334155; /* slate-700 */
-            border-color: #334155;
-        }
+        /* Кастомизация Flatpickr под ч/б */
+        .flatpickr-calendar { border: 1px solid #E2E2E2; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border-radius: 12px; }
+        .flatpickr-day.selected { background: #2B2B2B !important; border-color: #2B2B2B !important; }
+        .flatpickr-day:hover { background: #F2F2F2 !important; }
     </style>
 </head>
 
-<script>
-    // Проверяем localStorage или системные настройки
-    if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-    }
-</script>
+<body class="min-h-screen flex flex-col antialiased">
 
-<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col">
-
-    <header class="bg-white dark:bg-slate-850 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-40 shadow-sm">
+    <header class="bg-white border-b border-mono-light sticky top-0 z-40 backdrop-blur-md bg-white/90">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             
             <div class="flex items-center gap-2">
-                <a href="/" class="flex items-center gap-2 hover:opacity-80 transition">
-                    <div class="bg-blue-600 p-1.5 rounded-lg shadow-sm">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                <a href="/" class="flex items-center gap-3 hover:opacity-70 transition duration-300">
+                    <div class="bg-mono-black p-1.5 rounded-lg">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
-                    <span class="font-bold text-xl tracking-tight text-slate-900 dark:text-white">Logistrail</span>
+                    <span class="font-bold text-lg tracking-tight text-mono-black">Logistrail</span>
                 </a>
             </div>
 
-            <nav class="hidden md:flex gap-6 items-center">
-    
-                <a href="/" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-500 transition">
-                    Поиск
-                </a>
-
-                <a href="/distance" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-500 transition flex items-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
-                    Расчёт расстояния
-                </a>
+            <nav class="hidden md:flex gap-8 items-center">
+                <a href="/track" class="text-sm font-medium text-mono-gray hover:text-mono-black transition">Поиск</a>
+                <a href="/distance" class="text-sm font-medium text-mono-gray hover:text-mono-black transition">Расчёт</a>
 
                 {% if user %}
-                    
                     {% if user.role == 'admin' %}
-                        <a href="/admin/dashboard" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-500 transition">Дашборд</a>
-                        
-                        <a href="/landing" class="text-sm font-medium text-purple-600 dark:text-purple-400 hover:text-purple-800 transition flex items-center gap-1 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-900/20">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                            Лендинг (Draft)
-                        </a>
-
-                        <a href="/admin/schedule_planner" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-500 transition flex items-center gap-1">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            График
-                        </a>
-
-                        <a href="/admin/companies" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-500 transition flex items-center gap-1">
-                            <span>Компании</span>
-                            <span class="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 rounded-md font-bold">NEW</span>
-                        </a>
-                    
+                        <a href="/admin/dashboard" class="text-sm font-medium text-mono-gray hover:text-mono-black transition">Дашборд</a>
+                        <a href="/admin/schedule_planner" class="text-sm font-medium text-mono-gray hover:text-mono-black transition">График</a>
+                        <a href="/admin/companies" class="text-sm font-medium text-mono-gray hover:text-mono-black transition">Компании</a>
                     {% else %}
-                        <a href="/client/dashboard" class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-500 transition flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
-                            Мои грузы
-                        </a>
+                        <a href="/client/dashboard" class="text-sm font-medium text-mono-gray hover:text-mono-black transition">Мои грузы</a>
                     {% endif %}
 
-                    <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
+                    <div class="h-4 w-px bg-mono-light mx-2"></div>
                     
                     <div class="flex items-center gap-3">
-                        <span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{{ user.role }}.{{ user.first_name }}</span>
-                        <a href="/logout" class="text-sm font-medium text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-500 transition">Выход</a>
+                        <span class="text-xs font-bold text-mono-black uppercase tracking-wider bg-mono-light px-2 py-1 rounded">{{ user.role }}.{{ user.first_name }}</span>
+                        <a href="/logout" class="text-sm font-medium text-red-600 hover:text-red-800 transition">Выход</a>
                     </div>
-
                 {% else %}
-                    <a href="/login" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition">Войти</a>
+                    <a href="/login" class="text-sm font-bold text-mono-black hover:opacity-70 transition">Войти</a>
                 {% endif %}
             </nav>
-
-            <div class="flex items-center gap-4">
-                <button id="theme-toggle" type="button" class="text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none rounded-lg text-sm p-2.5 transition">
-                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h1a1 1 0 100 2h-1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
-                </button>
-
-                <a href="https://t.me/AtermTrackBot" target="_blank" class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1">
-                    <span>Бот</span>
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                </a>
-            </div>
         </div>
     </header>
 
@@ -169,52 +128,13 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-white dark:bg-slate-850 border-t border-slate-200 dark:border-slate-700 mt-auto">
-        <div class="max-w-7xl mx-auto px-4 py-6 flex justify-between items-center text-sm text-slate-500 dark:text-slate-400">
+    <footer class="bg-white border-t border-mono-light mt-auto">
+        <div class="max-w-7xl mx-auto px-4 py-8 flex justify-between items-center text-xs text-mono-gray">
             <p>&copy; 2025 Logistrail Tracker.</p>
-            <p class="hidden sm:block">Система управления логистикой</p>
+            <p class="hidden sm:block opacity-60">Monochrome Edition v2.0</p>
         </div>
     </footer>
-<script>
-    var themeToggleDarkIcon = document.getElementById('theme-toggle-dark-icon');
-    var themeToggleLightIcon = document.getElementById('theme-toggle-light-icon');
 
-    // Устанавливаем правильную иконку при загрузке
-    if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        themeToggleLightIcon.classList.remove('hidden');
-    } else {
-        themeToggleDarkIcon.classList.remove('hidden');
-    }
-
-    var themeToggleBtn = document.getElementById('theme-toggle');
-
-    themeToggleBtn.addEventListener('click', function() {
-        // Переключаем иконки
-        themeToggleDarkIcon.classList.toggle('hidden');
-        themeToggleLightIcon.classList.toggle('hidden');
-
-        // Если установлен локально
-        if (localStorage.getItem('color-theme')) {
-            if (localStorage.getItem('color-theme') === 'light') {
-                document.documentElement.classList.add('dark');
-                localStorage.setItem('color-theme', 'dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-                localStorage.setItem('color-theme', 'light');
-            }
-        } else {
-            // Если не установлено, берем системные
-            if (document.documentElement.classList.contains('dark')) {
-                document.documentElement.classList.remove('dark');
-                localStorage.setItem('color-theme', 'light');
-            } else {
-                document.documentElement.classList.add('dark');
-                localStorage.setItem('color-theme', 'dark');
-            }
-        }
-    });
-</script>
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>

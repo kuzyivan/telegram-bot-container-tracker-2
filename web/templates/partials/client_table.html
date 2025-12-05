@@ -1,100 +1,100 @@
 {% for item in containers %}
-<tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition group">
+<tr class="border-b border-mono-light hover:bg-mono-light/50 transition group last:border-b-0">
     
-    <td class="px-6 py-4 align-top">
-        <div class="font-bold text-blue-600 dark:text-blue-400 font-mono text-base">
+    <td class="px-6 py-5 align-top">
+        <div class="font-bold text-mono-black font-mono text-base tracking-wide">
             {{ item.number }}
         </div>
         {% if item.status and item.status.wagon_number %}
-        <div class="text-xs text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+        <div class="text-xs text-mono-gray mt-1.5 flex items-center gap-1.5 font-mono">
+            <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
             {{ item.status.wagon_number }}
         </div>
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 align-top">
+    <td class="px-6 py-5 align-top">
         {% if item.train %}
-            <span class="inline-block bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-2 py-1 rounded font-mono text-xs font-bold border border-slate-200 dark:border-slate-600 whitespace-nowrap">
+            <span class="inline-block bg-mono-light text-mono-black px-2.5 py-1 rounded-md font-mono text-xs font-semibold">
                 {{ item.train }}
             </span>
         {% else %}
-            <span class="text-slate-300 dark:text-slate-600 text-xs">—</span>
+            <span class="text-gray-300 text-xs">—</span>
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 align-top">
+    <td class="px-6 py-5 align-top">
         {% if item.status_code == 'terminal' %}
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-orange-50 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300 border border-orange-100 dark:border-orange-800/50">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-orange-50 text-orange-700 border border-orange-100">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                Ожидает отправки
+                На терминале
             </span>
         {% elif item.status %}
-            <div class="flex flex-col gap-1 min-w-[140px]">
-                <div class="flex items-center gap-1 text-slate-900 dark:text-white font-medium text-xs break-words">
+            <div class="flex flex-col gap-1.5 min-w-[140px]">
+                <div class="flex items-center gap-2 text-mono-black font-medium text-xs break-words">
                     <span class="truncate max-w-[100px]" title="{{ item.status.from_station }}">{{ item.status.from_station or '?' }}</span>
-                    <span class="text-slate-300 dark:text-slate-600">➝</span>
+                    <span class="text-mono-gray">→</span>
                     <span class="truncate max-w-[100px]" title="{{ item.status.to_station }}">{{ item.status.to_station or '?' }}</span>
                 </div>
                 {% if item.status.trip_start_datetime %}
-                <span class="text-[10px] text-slate-400 dark:text-slate-500">
-                    Отпр: {{ item.status.trip_start_datetime.strftime('%d.%m.%Y') }}
+                <span class="text-[10px] text-mono-gray uppercase tracking-wider font-semibold">
+                    {{ item.status.trip_start_datetime.strftime('%d.%m') }}
                 </span>
                 {% endif %}
             </div>
         {% else %}
-            <span class="text-slate-400 dark:text-slate-500 italic text-xs">Нет данных</span>
+            <span class="text-mono-gray italic text-xs">Нет данных</span>
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 align-top">
+    <td class="px-6 py-5 align-top">
         {% if item.status_code == 'terminal' %}
-            <span class="text-slate-400 dark:text-slate-500 text-xs italic">На терминале</span>
+            <span class="text-mono-gray text-xs italic">Оформление</span>
         {% elif item.status %}
-            <div class="font-medium text-slate-800 dark:text-slate-100 text-sm leading-snug">
+            <div class="font-semibold text-mono-black text-sm leading-snug">
                 {{ item.status.operation }}
             </div>
-            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            <div class="text-xs text-mono-gray mt-1">
                 {{ item.status.current_station }}
             </div>
         {% else %}
-            —
+            <span class="text-gray-300 text-xs">—</span>
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 whitespace-nowrap text-xs text-slate-600 dark:text-slate-300 align-top">
+    <td class="px-6 py-5 whitespace-nowrap text-xs text-mono-black align-top font-mono">
         {% if item.status and item.status.operation_date %}
             {{ item.status.operation_date.strftime('%d.%m.%Y') }}
-            <div class="text-slate-400 dark:text-slate-500 text-[10px]">
-                {{ item.status.operation_date.strftime('%H:%M') }}
+            <div class="text-mono-gray text-[10px] mt-0.5">
+                {{ item.status.operation_date.strftime('%H:%M') }} UTC
             </div>
         {% else %}
-            —
+            <span class="text-gray-300">—</span>
         {% endif %}
     </td>
 
-    <td class="px-6 py-4 align-top">
+    <td class="px-6 py-5 align-top">
         {% if item.status and item.progress > 0 %}
-            <div class="w-full max-w-[80px] bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                <div class="bg-blue-600 h-1.5 rounded-full transition-all duration-1000" style="width: {{ item.progress }}%"></div>
+            <div class="w-full max-w-[80px] bg-mono-light rounded-full h-1.5 overflow-hidden">
+                <div class="bg-mono-black h-1.5 rounded-full" style="width: {{ item.progress }}%"></div>
             </div>
-            <div class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+            <div class="text-[10px] text-mono-gray mt-1.5 font-medium">
                 {{ item.progress }}%
             </div>
         {% else %}
             {% if item.status_code == 'arrived' %}
-                <span class="text-green-600 dark:text-green-400 text-xs font-bold bg-green-50 dark:bg-green-900/50 px-2 py-0.5 rounded">Прибыл</span>
+                <span class="text-green-700 bg-green-50 border border-green-100 px-2 py-0.5 rounded text-xs font-bold">Прибыл</span>
             {% else %}
-                <span class="text-slate-300 dark:text-slate-600 text-xs">—</span>
+                <span class="text-gray-300 text-xs">—</span>
             {% endif %}
         {% endif %}
     </td>
 </tr>
 {% else %}
 <tr>
-    <td colspan="6" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
-        <div class="flex flex-col items-center gap-2">
-            <svg class="w-8 h-8 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <td colspan="6" class="px-6 py-12 text-center text-mono-gray">
+        <div class="flex flex-col items-center gap-3">
+            <svg class="w-10 h-10 text-mono-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <span>По вашему запросу ничего не найдено.</span>
         </div>
     </td>
