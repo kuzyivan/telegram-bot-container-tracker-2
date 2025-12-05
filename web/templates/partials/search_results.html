@@ -1,9 +1,9 @@
 {% if has_results %}
-<div class="flex justify-end mb-6 animate-fade-in">
+<div class="flex justify-end mb-6 animate-fade-in max-w-7xl mx-auto">
     <form action="/search/export" method="post" target="_blank">
         <input type="hidden" name="q" value="{{ query_string }}">
-        <button type="submit" class="flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl hover:bg-green-700 transition shadow-sm font-medium">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        <button type="submit" class="flex items-center gap-2 bg-white text-mono-black border border-mono-border px-5 py-2.5 rounded-xl hover:bg-mono-bg transition shadow-sm text-sm font-bold">
+            <svg class="w-4 h-4 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             Скачать Excel
         </button>
     </form>
@@ -11,13 +11,13 @@
 {% endif %}
 
 {% if error %}
-<div class="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl border border-red-100 dark:border-red-500/30 text-center animate-shake">
+<div class="max-w-xl mx-auto bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 text-center animate-fade-in text-sm font-medium">
     {{ error }}
 </div>
 {% endif %}
 
 {% if not has_results and not error and query_string %}
-<div class="text-center py-10 text-slate-500 dark:text-slate-400">
+<div class="text-center py-10 text-mono-gray">
     Ничего не найдено. Проверьте номера.
 </div>
 {% endif %}
@@ -26,101 +26,102 @@
     {% for group in groups %}
     
     {% if group.is_group %}
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 overflow-hidden animate-slide-up ring-1 ring-blue-100 dark:ring-blue-900/50">
-            <div class="bg-slate-50 dark:bg-slate-800/50 px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+        <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden animate-slide-up">
+            
+            <div class="bg-white px-6 py-5 border-b border-mono-border">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div class="flex items-center gap-3">
-                        <div class="bg-indigo-600 text-white p-2.5 rounded-lg shadow-sm">
+                    <div class="flex items-center gap-4">
+                        <div class="bg-mono-black text-white p-2.5 rounded-lg shadow-sm">
                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                         </div>
                         <div>
-                            <h2 class="text-xl font-bold text-slate-900 dark:text-white">Поезд {{ group.title }}</h2>
-                            <p class="text-sm text-slate-500 dark:text-slate-400">Группа из {{ group.containers|length }} контейнеров</p>
+                            <h2 class="text-lg font-bold text-mono-black">Поезд {{ group.title }}</h2>
+                            <p class="text-sm text-mono-gray">{{ group.containers|length }} контейнеров в составе</p>
                         </div>
                     </div>
                     {% if group.train_info.overload_station %}
-                    <div class="bg-orange-50 dark:bg-orange-900/50 text-orange-700 dark:text-orange-300 px-3 py-1.5 rounded-lg text-sm font-medium border border-orange-200 dark:border-orange-800/50 flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <div class="bg-mono-bg text-mono-black px-3 py-1.5 rounded-lg text-xs font-bold border border-mono-border flex items-center gap-2">
+                        <svg class="w-3.5 h-3.5 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                         Перегруз: {{ group.train_info.overload_station }}
                     </div>
                     {% endif %}
                 </div>
                 
-                <div class="mt-4 flex flex-wrap gap-4 text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div class="flex items-center gap-2">
-                        <span class="text-slate-400 dark:text-slate-500">Отпр:</span>
-                        <span class="font-bold text-slate-800 dark:text-slate-100">{{ group.main_route.from_station }}</span>
+                <div class="mt-5 flex flex-wrap gap-6 text-sm">
+                    <div>
+                        <span class="block text-xs font-bold text-mono-gray uppercase mb-0.5">Отправление</span>
+                        <span class="font-bold text-mono-black">{{ group.main_route.from_station }}</span>
                     </div>
-                    <div class="text-slate-300 dark:text-slate-600">➝</div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-slate-400 dark:text-slate-500">Назн:</span>
-                        <span class="font-bold text-slate-800 dark:text-slate-100">{{ group.main_route.to_station }}</span>
+                    <div class="text-mono-gray self-center pt-3">→</div>
+                    <div>
+                        <span class="block text-xs font-bold text-mono-gray uppercase mb-0.5">Назначение</span>
+                        <span class="font-bold text-mono-black">{{ group.main_route.to_station }}</span>
                     </div>
-                    <div class="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-2 hidden sm:block"></div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-slate-400 dark:text-slate-500">Дата выхода:</span>
-                        <span class="font-medium text-slate-800 dark:text-slate-100">{{ group.main_route.trip_start_datetime.strftime('%d.%m.%Y') if group.main_route.trip_start_datetime else 'н/д' }}</span>
+                    <div class="w-px bg-mono-border mx-2"></div>
+                    <div>
+                        <span class="block text-xs font-bold text-mono-gray uppercase mb-0.5">Выход</span>
+                        <span class="font-medium text-mono-black">{{ group.main_route.trip_start_datetime.strftime('%d.%m.%Y') if group.main_route.trip_start_datetime else '—' }}</span>
                     </div>
                 </div>
             </div>
 
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 uppercase font-bold text-xs">
+                    <thead class="bg-mono-bg text-mono-gray uppercase font-bold text-[10px] tracking-wider">
                         <tr>
                             <th class="px-6 py-3">Контейнер</th>
-                            <th class="px-6 py-3">Операция / Дорога</th> <th class="px-6 py-3">Дата (UTC)</th>
-                            <th class="px-6 py-3">Осталось</th>
-                            <th class="px-6 py-3">Прогноз</th> </tr>
+                            <th class="px-6 py-3">Операция / Дорога</th> 
+                            <th class="px-6 py-3">Дата (UTC)</th>
+                            <th class="px-6 py-3 text-center">Осталось</th>
+                            <th class="px-6 py-3 text-right">Прогноз</th> 
+                        </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                    <tbody class="divide-y divide-mono-border">
                         {% for item in group.containers %}
                         {% set obj = item.obj %}
-                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-                            <td class="px-6 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
-                                {{ obj.container_number }}
-                                <div class="text-xs text-slate-400 dark:text-slate-500 font-normal">Ваг: {{ obj.wagon_number or '—' }}</div>
+                        <tr class="hover:bg-mono-bg transition">
+                            <td class="px-6 py-4">
+                                <div class="font-mono font-bold text-mono-black text-sm">{{ obj.container_number }}</div>
+                                <div class="text-xs text-mono-gray mt-0.5">Ваг: {{ obj.wagon_number or '—' }}</div>
                             </td>
-                            <td class="px-6 py-3">
-                                <div class="max-w-[220px] truncate text-slate-800 dark:text-slate-100" title="{{ obj.operation }}">
+                            <td class="px-6 py-4">
+                                <div class="max-w-[200px] truncate font-medium text-mono-black" title="{{ obj.operation }}">
                                     {{ obj.operation }}
-                                    <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                        {{ obj.current_station }} 
-                                        {% if obj.operation_road %}
-                                        <span class="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300 font-semibold">{{ obj.operation_road }}</span>
-                                        {% endif %}
-                                    </div>
+                                </div>
+                                <div class="text-xs text-mono-gray mt-0.5">
+                                    {{ obj.current_station }} 
+                                    {% if obj.operation_road %}
+                                    <span class="opacity-60 ml-1">({{ obj.operation_road }})</span>
+                                    {% endif %}
                                 </div>
                             </td>
-                            <td class="px-6 py-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                            <td class="px-6 py-4 whitespace-nowrap text-mono-gray font-mono text-xs">
                                 {{ obj.operation_date.strftime('%d.%m %H:%M') if obj.operation_date else '—' }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center">
                                 <div id="dist-{{ obj.id }}" class="flex items-center justify-center gap-2 group">
-                                    
-                                    <div class="flex flex-col">
-                                        <span class="font-bold text-slate-700 dark:text-slate-200 text-lg">
+                                    <div class="flex flex-col items-center">
+                                        <span class="font-bold text-mono-black text-sm">
                                             {{ obj.km_left }} км
                                         </span>
-                                        <span class="text-[9px] text-slate-400">Excel / РЖД</span>
+                                        <span class="text-[9px] text-mono-gray">Excel / РЖД</span>
                                     </div>
-                            
                                     <button hx-post="/tracking/recalc/{{ obj.id }}" 
                                             hx-trigger="click"
                                             hx-target="#dist-{{ obj.id }}"
                                             hx-swap="outerHTML"
-                                            class="p-2 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700 transition opacity-30 group-hover:opacity-100"
+                                            class="text-mono-gray hover:text-mono-black opacity-30 group-hover:opacity-100 transition"
                                             title="Пересчитать точно">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                     </button>
-                                    
                                 </div>
                             </td>
-                            <td class="px-6 py-3 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">
+                            <td class="px-6 py-4 text-right">
                                 {% if item.forecast_days_display != "—" %}
-                                    {{ item.forecast_days_display }} дн.
+                                    <span class="font-bold text-mono-black">{{ item.forecast_days_display }}</span>
+                                    <span class="text-xs text-mono-gray">дн.</span>
                                 {% else %}
-                                    <span class="text-slate-400 dark:text-slate-500">—</span>
+                                    <span class="text-gray-300">—</span>
                                 {% endif %}
                             </td>
                         </tr>
@@ -135,144 +136,133 @@
         {% set obj = item.obj %}
         {% set train = item.train_info %}
         
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md transition duration-300 animate-slide-up">
-            <div class="bg-slate-50 dark:bg-slate-800/50 px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden hover:border-mono-border transition duration-300 animate-slide-up">
+            <div class="px-6 py-4 border-b border-mono-border bg-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div class="flex items-center gap-3">
-                    <div class="bg-blue-600 text-white p-2 rounded-lg">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                    <div class="bg-mono-black text-white p-2 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                     </div>
                     <div>
-                        <h2 class="text-xl font-bold text-slate-900 dark:text-white font-mono tracking-wide">{{ obj.container_number }}</h2>
-                        <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Обновлено: {{ obj.operation_date.strftime('%d.%m.%Y %H:%M') if obj.operation_date else '—' }} UTC</p>
+                        <h2 class="text-lg font-bold text-mono-black font-mono tracking-wide">{{ obj.container_number }}</h2>
+                        <p class="text-xs text-mono-gray font-medium">Обновлено: {{ obj.operation_date.strftime('%d.%m.%Y %H:%M') if obj.operation_date else '—' }} UTC</p>
                     </div>
                 </div>
                 
                 {% if item.is_arrived %}
-                    <span class="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-3 py-1 rounded-full text-xs font-bold border border-green-200 dark:border-green-800/50 uppercase tracking-wider">Прибыл</span>
+                    <span class="bg-mono-black text-white px-3 py-1 rounded-md text-xs font-bold shadow-sm uppercase tracking-wider">Прибыл</span>
                 {% else %}
-                    <span class="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full text-xs font-bold border border-blue-200 dark:border-blue-800/50 uppercase tracking-wider">В пути</span>
+                    <span class="bg-mono-bg text-mono-gray px-3 py-1 rounded-md text-xs font-bold border border-mono-border uppercase tracking-wider">В пути</span>
                 {% endif %}
             </div>
 
             <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div class="space-y-4">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-lg">📍</span>
-                        <h3 class="font-bold text-slate-800 dark:text-slate-100">Маршрут</h3>
-                    </div>
+                
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Маршрут</h3>
                     
-                    <div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 border border-slate-100 dark:border-slate-700 space-y-3 text-sm">
+                    <div class="bg-mono-bg rounded-xl p-4 border border-transparent space-y-3 text-sm">
                         {% if train.number %}
-                        <div class="flex justify-between border-b border-slate-200 dark:border-slate-600 pb-2">
-                            <span class="text-slate-500 dark:text-slate-400">Поезд (Терминал):</span>
-                            <span class="font-mono font-bold text-blue-600 dark:text-blue-400">{{ train.number }}</span>
+                        <div class="flex justify-between border-b border-mono-border pb-2 mb-2">
+                            <span class="text-mono-gray">Поезд (Терминал):</span>
+                            <span class="font-mono font-bold text-mono-black">{{ train.number }}</span>
                         </div>
                         {% endif %}
                         
                         <div class="flex justify-between">
-                            <span class="text-slate-500 dark:text-slate-400">Отправление:</span>
-                            <span class="font-medium text-slate-800 dark:text-slate-100 text-right max-w-[60%]">{{ obj.from_station or '—' }}</span>
+                            <span class="text-mono-gray">Отправление:</span>
+                            <span class="font-medium text-mono-black text-right max-w-[60%]">{{ obj.from_station or '—' }}</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-slate-500 dark:text-slate-400">Назначение:</span>
-                            <span class="font-medium text-slate-800 dark:text-slate-100 text-right max-w-[60%]">{{ obj.to_station or '—' }}</span>
+                            <span class="text-mono-gray">Назначение:</span>
+                            <span class="font-medium text-mono-black text-right max-w-[60%]">{{ obj.to_station or '—' }}</span>
                         </div>
                         
                         {% if obj.trip_start_datetime %}
                         <div class="flex justify-between">
-                            <span class="text-slate-500 dark:text-slate-400">Дата выхода:</span>
-                            <span class="font-medium text-slate-800 dark:text-slate-100">{{ obj.trip_start_datetime.strftime('%d.%m.%Y') }}</span>
+                            <span class="text-mono-gray">Дата выхода:</span>
+                            <span class="font-medium text-mono-black">{{ obj.trip_start_datetime.strftime('%d.%m.%Y') }}</span>
                         </div>
                         {% endif %}
 
                         {% if train.overload_station %}
-                        <div class="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-600">
-                            <span class="text-slate-500 dark:text-slate-400">Перегруз:</span>
-                            <span class="font-bold text-orange-600 dark:text-orange-400">{{ train.overload_station }}</span>
+                        <div class="flex justify-between pt-2 border-t border-mono-border">
+                            <span class="text-mono-gray">Перегруз:</span>
+                            <span class="font-bold text-mono-black">{{ train.overload_station }}</span>
                         </div>
                         {% endif %}
                     </div>
                 </div>
 
-                <div class="space-y-4">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-lg">🚂</span>
-                        <h3 class="font-bold text-slate-800 dark:text-slate-100">Текущая дислокация</h3>
-                    </div>
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Текущая позиция</h3>
 
-                    <div class="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 border border-slate-100 dark:border-slate-700 space-y-3 text-sm">
+                    <div class="bg-mono-bg rounded-xl p-4 border border-transparent space-y-3 text-sm">
                         <div>
-                            <span class="text-slate-500 dark:text-slate-400 block text-xs uppercase mb-1">Станция операции</span>
-                            <span class="font-bold text-slate-900 dark:text-white text-base">
+                            <span class="text-mono-gray text-xs block mb-0.5">Станция операции</span>
+                            <span class="font-bold text-mono-black text-base">
                                 {{ obj.current_station }}
                                 {% if obj.operation_road %}
-                                <span class="text-slate-500 dark:text-slate-400 font-normal ml-1">(Дорога: {{ obj.operation_road }})</span>
+                                <span class="text-mono-gray font-normal text-xs ml-1">({{ obj.operation_road }})</span>
                                 {% endif %}
                             </span>
                         </div>
 
                         <div>
-                            <span class="text-slate-500 dark:text-slate-400 block text-xs uppercase mb-1">Операция</span>
-                            <div class="flex items-start gap-2">
-                                <div class="mt-1 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-                                <span class="font-medium text-slate-800 dark:text-slate-100 leading-snug">{{ obj.operation }}</span>
+                            <span class="text-mono-gray text-xs block mb-0.5">Операция</span>
+                            <div class="flex items-center gap-2">
+                                <div class="w-1.5 h-1.5 rounded-full bg-mono-black animate-pulse"></div>
+                                <span class="font-medium text-mono-black">{{ obj.operation }}</span>
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200 dark:border-slate-600">
+                        <div class="grid grid-cols-2 gap-4 pt-2 border-t border-mono-border mt-2">
                             {% if obj.train_index_full %}
                             <div class="col-span-2">
-                                <span class="text-slate-400 dark:text-slate-500 text-xs">Индекс поезда:</span>
-                                <span class="block font-mono text-xs text-slate-700 dark:text-slate-300 truncate" title="{{ obj.train_index_full }}">{{ obj.train_index_full }}</span>
+                                <span class="text-mono-gray text-xs block">Индекс:</span>
+                                <span class="block font-mono text-xs text-mono-dark truncate" title="{{ obj.train_index_full }}">{{ obj.train_index_full }}</span>
                             </div>
                             {% endif %}
                             
                             <div>
-                                <span class="text-slate-400 dark:text-slate-500 text-xs">Вагон:</span>
-                                <span class="block font-medium text-slate-800 dark:text-slate-100">{{ obj.wagon_number or '—' }}</span>
+                                <span class="text-mono-gray text-xs block">Вагон:</span>
+                                <span class="block font-medium text-mono-black font-mono">{{ obj.wagon_number or '—' }}</span>
                             </div>
                             <div>
-                                <span class="text-slate-400 dark:text-slate-500 text-xs">Накладная:</span>
-                                <span class="block font-medium text-slate-800 dark:text-slate-100">{{ obj.waybill or '—' }}</span>
+                                <span class="text-mono-gray text-xs block">Накладная:</span>
+                                <span class="block font-medium text-mono-black font-mono">{{ obj.waybill or '—' }}</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-slate-50 dark:bg-slate-800/50 px-6 py-4 border-t border-slate-100 dark:border-slate-700">
-                <div class="relative w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-4">
-                    <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-1000 ease-out rounded-full" style="width: {{ item.progress }}%"></div>
+            <div class="bg-white px-6 py-4 border-t border-mono-border">
+                <div class="relative w-full h-2 bg-mono-bg rounded-full overflow-hidden mb-4">
+                    <div class="absolute top-0 left-0 h-full bg-mono-black transition-all duration-1000 ease-out rounded-full" style="width: {{ item.progress }}%"></div>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-center">
                     <div>
-                        <span class="block text-xs text-slate-400 dark:text-slate-500 uppercase font-bold">Пройдено</span>
-                        <span class="block font-medium text-slate-700 dark:text-slate-200">{{ item.progress }}%</span>
+                        <span class="block text-[10px] text-mono-gray uppercase font-bold">Пройдено</span>
+                        <span class="block font-bold text-mono-black">{{ item.progress }}%</span>
                     </div>
                     <div>
-                        <span class="block text-xs text-slate-400 dark:text-slate-500 uppercase font-bold">Осталось</span>
+                        <span class="block text-[10px] text-mono-gray uppercase font-bold">Осталось</span>
                         <div id="dist-{{ obj.id }}" class="flex items-center justify-center gap-2 group">
-                            <div class="flex flex-col">
-                                <span class="font-bold text-slate-700 dark:text-slate-200 text-lg">
-                                    {{ obj.km_left or '0' }} км
-                                </span>
-                                <span class="text-[9px] text-slate-400">Excel / РЖД</span>
-                            </div>
+                            <span class="font-bold text-mono-black">{{ obj.km_left or '0' }} км</span>
                             <button hx-post="/tracking/recalc/{{ obj.id }}" 
                                     hx-trigger="click"
                                     hx-target="#dist-{{ obj.id }}"
                                     hx-swap="outerHTML"
-                                    class="p-2 rounded-full text-blue-500 hover:bg-blue-50 dark:hover:bg-slate-700 transition opacity-30 group-hover:opacity-100"
-                                    title="Пересчитать точно">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                    class="text-mono-gray hover:text-mono-black opacity-30 group-hover:opacity-100 transition">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                             </button>
                         </div>
                     </div>
                     <div>
-                        <span class="block text-xs text-slate-400 dark:text-slate-500 uppercase font-bold">Прогноз</span>
-                        <span class="block font-bold text-slate-900 dark:text-white text-lg">
+                        <span class="block text-[10px] text-mono-gray uppercase font-bold">Прогноз</span>
+                        <span class="block font-bold text-mono-black">
                             {% if item.forecast_days_display != "—" %}
-                                {{ item.forecast_days_display }} <span class="text-sm font-normal text-slate-500 dark:text-slate-400">дн.</span>
+                                {{ item.forecast_days_display }} <span class="text-xs font-normal text-mono-gray">дн.</span>
                             {% else %}
                                 —
                             {% endif %}

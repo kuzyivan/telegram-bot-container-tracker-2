@@ -3,142 +3,211 @@
 {% block title %}График поездов — Logistrail{% endblock %}
 
 {% block content %}
-<div class="space-y-6 pb-10 animate-fade-in">
+<div class="max-w-7xl mx-auto space-y-6 pb-12 animate-fade-in">
 
-    <div class="flex justify-between items-center">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-            <h1 class="text-3xl font-bold text-slate-900 dark:text-white">График поездов</h1>
-            <p class="text-slate-500 dark:text-slate-400">Планирование отправки сервисов.</p>
+            <h1 class="text-3xl font-bold text-mono-black tracking-tight">График отправки</h1>
+            <p class="text-sm text-mono-gray mt-1">Планирование сервисов и стоков</p>
         </div>
         
         <div class="flex items-center gap-4">
-            <button onclick="openShareModal()" class="flex items-center gap-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 px-3 py-2 rounded-lg text-sm font-bold transition shadow-sm">
-                <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+            <button onclick="openShareModal()" class="flex items-center gap-2 bg-white border border-mono-border text-mono-black hover:bg-mono-bg px-4 py-2 rounded-xl text-sm font-bold transition shadow-sm">
+                <svg class="w-4 h-4 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
                 Поделиться
             </button>
 
-            <div class="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2 border-l border-slate-300 dark:border-slate-600 pl-4">
-                <span class="w-3 h-3 rounded-full bg-blue-500"></span>
-                Запланировано
+            <div class="text-sm text-mono-gray flex items-center gap-2 border-l border-mono-border pl-4">
+                <span class="w-2.5 h-2.5 rounded-full bg-mono-black"></span>
+                <span class="font-medium">План</span>
             </div>
         </div>
     </div>
 
-    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <div id='calendar' class="min-h-[600px]"></div>
+    <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+        <div id='calendar' class="min-h-[700px] font-sans"></div>
     </div>
 
 </div>
 
-<div id="eventModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-slate-900/80 transition-opacity" onclick="closeModal()"></div>
-        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+<div id="eventModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-mono-black/20 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
 
-        <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-            <div class="bg-white dark:bg-slate-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2" id="modal-title">
-                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    Планирование поезда
-                </h3>
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0 pointer-events-none">
+        <div class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-mono-border">
+            
+            <div class="bg-white px-6 pt-6 pb-4">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold text-mono-black flex items-center gap-2" id="modal-title">
+                        <svg class="w-5 h-5 text-mono-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        Запланировать поезд
+                    </h3>
+                    <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
                 
-                <form id="createEventForm" class="space-y-4">
+                <form id="createEventForm" class="space-y-5">
                     <input type="hidden" id="eventDate" name="date_str">
                     
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Цвет метки</label>
+                        <label class="block text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Маркер</label>
                         <div class="flex items-center gap-3">
-                            <input type="hidden" name="color" id="inpColor" value="#3b82f6">
-                            <button type="button" onclick="selectColor('#3b82f6', this)" class="w-8 h-8 rounded-full bg-blue-500 ring-2 ring-offset-2 ring-blue-500 color-btn"></button>
-                            <button type="button" onclick="selectColor('#10b981', this)" class="w-8 h-8 rounded-full bg-green-500 color-btn hover:opacity-80"></button>
-                            <button type="button" onclick="selectColor('#f59e0b', this)" class="w-8 h-8 rounded-full bg-amber-500 color-btn hover:opacity-80"></button>
-                            <button type="button" onclick="selectColor('#ef4444', this)" class="w-8 h-8 rounded-full bg-red-500 color-btn hover:opacity-80"></button>
-                            <button type="button" onclick="selectColor('#8b5cf6', this)" class="w-8 h-8 rounded-full bg-purple-500 color-btn hover:opacity-80"></button>
-                            <button type="button" onclick="selectColor('#64748b', this)" class="w-8 h-8 rounded-full bg-slate-500 color-btn hover:opacity-80"></button>
+                            <input type="hidden" name="color" id="inpColor" value="#111111">
+                            <button type="button" onclick="selectColor('#111111', this)" class="w-8 h-8 rounded-full bg-[#111111] ring-2 ring-offset-2 ring-mono-black color-btn shadow-sm"></button>
+                            <button type="button" onclick="selectColor('#4B5563', this)" class="w-8 h-8 rounded-full bg-[#4B5563] color-btn hover:scale-110 transition shadow-sm"></button>
+                            <button type="button" onclick="selectColor('#9CA3AF', this)" class="w-8 h-8 rounded-full bg-[#9CA3AF] color-btn hover:scale-110 transition shadow-sm"></button>
+                            <button type="button" onclick="selectColor('#D1D5DB', this)" class="w-8 h-8 rounded-full bg-[#D1D5DB] color-btn hover:scale-110 transition shadow-sm border border-gray-300"></button>
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">Сервис поезда *</label>
-                        <div class="mt-1 relative rounded-md shadow-sm">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                            </div>
-                            <input type="text" name="service" id="inpService" required placeholder="FESCO Moscow Shuttle" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-md py-2">
-                        </div>
+                        <label class="block text-sm font-medium text-mono-black mb-1">Сервис</label>
+                        <input type="text" name="service" id="inpService" required placeholder="FESCO Moscow Shuttle" 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black focus:border-transparent transition outline-none text-sm">
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">Станция назначения *</label>
-                        <div class="mt-1 relative rounded-md shadow-sm">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                            </div>
-                            <input type="text" name="destination" id="inpDest" required placeholder="Силикатная" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-md py-2">
-                        </div>
+                        <label class="block text-sm font-medium text-mono-black mb-1">Назначение</label>
+                        <input type="text" name="destination" id="inpDest" required placeholder="Силикатная" 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black focus:border-transparent transition outline-none text-sm">
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">Сток</label>
-                            <div class="mt-1 relative rounded-md shadow-sm">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
-                                </div>
-                                <input type="text" name="stock" id="inpStock" placeholder="20 x 40'HC" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-md py-2">
-                            </div>
+                            <label class="block text-sm font-medium text-mono-black mb-1">Сток</label>
+                            <input type="text" name="stock" id="inpStock" placeholder="20 x 40'HC" 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black focus:border-transparent transition outline-none text-sm">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-slate-300">Собственник</label>
-                            <div class="mt-1 relative rounded-md shadow-sm">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                                </div>
-                                <input type="text" name="owner" id="inpOwner" placeholder="ТрансКонтейнер" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-md py-2">
-                            </div>
+                            <label class="block text-sm font-medium text-mono-black mb-1">Собственник</label>
+                            <input type="text" name="owner" id="inpOwner" placeholder="ТрансКонтейнер" 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-mono-black focus:border-transparent transition outline-none text-sm">
                         </div>
                     </div>
                 </form>
             </div>
-            <div class="bg-gray-50 dark:bg-slate-800/50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse border-t dark:border-slate-700">
-                <button type="button" onclick="submitCreate()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">
+
+            <div class="bg-mono-bg px-6 py-4 flex flex-row-reverse gap-3 border-t border-mono-border">
+                <button type="button" onclick="submitCreate()" class="w-full sm:w-auto inline-flex justify-center rounded-xl border border-transparent shadow-lg bg-mono-black px-6 py-2.5 text-sm font-bold text-white hover:bg-gray-800 focus:outline-none transition transform active:scale-95">
                     Сохранить
                 </button>
-                <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 dark:border-slate-600 shadow-sm px-4 py-2 bg-white dark:bg-slate-700 text-base font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-600 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
-                    Отмена
-                </button>
-                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden mt-3 w-full sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm justify-center rounded-md border border-red-300 dark:border-red-500/50 shadow-sm px-4 py-2 bg-white dark:bg-red-900/20 text-base font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40 focus:outline-none">
+                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden w-full sm:w-auto justify-center rounded-xl border border-transparent px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 focus:outline-none transition">
                     Удалить
+                </button>
+                <button type="button" onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-xl border border-mono-border shadow-sm px-4 py-2.5 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 focus:outline-none transition">
+                    Отмена
                 </button>
             </div>
         </div>
     </div>
 </div>
 
-<div id="shareModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-slate-900/80 transition-opacity" onclick="closeShareModal()"></div>
-        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-        <div class="inline-block align-bottom bg-white dark:bg-slate-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-            <div class="bg-white dark:bg-slate-800 px-4 pt-5 pb-4 sm:p-6">
-                <h3 class="text-lg leading-6 font-medium text-slate-900 dark:text-white mb-4">Настройки доступа по ссылке</h3>
+<div id="shareModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-mono-black/20 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0 pointer-events-none">
+        <div class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-mono-border">
+            
+            <div class="bg-white px-6 pt-6 pb-6">
+                <h3 class="text-lg font-bold text-mono-black mb-4">Публичные ссылки</h3>
+                
                 <div class="flex gap-2 mb-6">
-                    <input type="text" id="newLinkName" placeholder="Кому (например: Партнеры)" class="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm py-2 px-3 text-slate-900 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                    <button onclick="createLink()" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 font-medium text-sm">Создать</button>
+                    <input type="text" id="newLinkName" placeholder="Название (например: Партнеры)" 
+                           class="flex-1 bg-mono-bg border-transparent rounded-xl px-4 py-2.5 text-sm text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black outline-none transition">
+                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">
+                        Создать
+                    </button>
                 </div>
-                <h4 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">Активные ссылки</h4>
-                <div class="space-y-3 max-h-60 overflow-y-auto" id="linksList">
-                    <p class="text-sm text-slate-500 dark:text-slate-400 text-center py-2">Загрузка...</p>
+                
+                <h4 class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-3">Активные ссылки</h4>
+                <div class="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar" id="linksList">
+                    <p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>
                 </div>
             </div>
-            <div class="bg-slate-50 dark:bg-slate-800/50 px-4 py-3 sm:px-6 flex justify-end border-t dark:border-slate-700">
-                <button onclick="closeShareModal()" class="inline-flex justify-center rounded-md border border-slate-300 dark:border-slate-600 shadow-sm px-4 py-2 bg-white dark:bg-slate-700 text-base font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 sm:text-sm">Закрыть</button>
+            
+            <div class="bg-mono-bg px-6 py-3 flex justify-end border-t border-mono-border">
+                <button onclick="closeShareModal()" class="inline-flex justify-center rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">
+                    Закрыть
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+
+<style>
+    /* Переопределение переменных FullCalendar */
+    :root {
+        --fc-border-color: #E5E5EA;
+        --fc-button-text-color: #111111;
+        --fc-button-bg-color: #FFFFFF;
+        --fc-button-border-color: #E5E5EA;
+        --fc-button-hover-bg-color: #F5F5F7;
+        --fc-button-hover-border-color: #E5E5EA;
+        --fc-button-active-bg-color: #111111;
+        --fc-button-active-border-color: #111111;
+        --fc-button-active-text-color: #FFFFFF;
+        --fc-today-bg-color: #F5F5F7;
+        --fc-neutral-bg-color: #FAFAFA;
+        --fc-list-event-hover-bg-color: #F5F5F7;
+    }
+
+    /* Заголовки дней */
+    .fc-col-header-cell-cushion {
+        color: #8E8E93; /* mono-gray */
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+    }
+
+    /* Номера дат */
+    .fc-daygrid-day-number {
+        color: #111111;
+        font-weight: 600;
+        font-size: 0.9rem;
+        padding: 8px !important;
+    }
+
+    /* Кнопки календаря */
+    .fc-button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        text-transform: capitalize !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        padding: 0.4em 1em !important;
+    }
+    .fc-button:focus { box-shadow: none !important; }
+
+    /* Заголовок календаря */
+    .fc-toolbar-title {
+        font-size: 1.25rem !important;
+        font-weight: 700 !important;
+        color: #111111;
+    }
+
+    /* События (Карточки внутри ячеек) */
+    .fc-event {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E5E5EA !important;
+        border-left-width: 3px !important; /* Цветная полоска слева */
+        border-radius: 6px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        margin-bottom: 4px !important;
+        padding: 2px 0;
+        transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .fc-event:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        z-index: 10;
+    }
+    .fc-daygrid-event { white-space: normal !important; }
+    .fc-event-main { padding: 0 4px; }
+</style>
 
 <script>
     let calendar;
@@ -156,8 +225,14 @@
                 center: 'title',
                 right: 'dayGridMonth,dayGridWeek'
             },
+            buttonText: {
+                today: 'Сегодня',
+                month: 'Месяц',
+                week: 'Неделя'
+            },
             editable: true,
             selectable: true,
+            dayMaxEvents: true, // +more link
             events: '/admin/api/schedule/events', 
 
             dateClick: function(info) {
@@ -172,86 +247,69 @@
                 updateEventDate(info.event.id, info.event.start);
             },
             
-            // --- РЕНДЕР КАРТОЧКИ С УВЕЛИЧЕННЫМ ШРИФТОМ ---
+            // --- РЕНДЕР КАРТОЧКИ (Стиль Clean Dashboard) ---
             eventContent: function(arg) {
                 let props = arg.event.extendedProps;
-                let bgColor = arg.event.backgroundColor || '#3b82f6'; 
+                let bgColor = arg.event.backgroundColor || '#111111'; // По умолчанию черный
                 
-                // Определяем цвета текста
-                let isDark = document.documentElement.classList.contains('dark');
-                let titleColor = isDark ? 'var(--text-event-title)' : '#1e293b';
-                let serviceColor = isDark ? 'var(--text-event-body)' : '#334155';
-                let stockColor = isDark ? 'var(--text-event-meta)' : '#475569';
-                let ownerColor = isDark ? 'var(--text-event-meta)' : '#64748b';
-                let borderColor = isDark ? 'var(--border-color)' : '#f1f5f9';
+                // Используем стиль border-left для цвета
+                arg.event.setProp('borderColor', 'transparent'); // Убираем дефолтную рамку FC
+                
+                // Поскольку мы в белом стиле, текст всегда темный
+                let titleColor = '#111111';
+                let subColor = '#6F767E'; // mono-gray
 
-                let html = `<div class="flex flex-col gap-1 leading-tight py-1.5 px-2" style="border-left: 3px solid ${bgColor}">`;
+                // Формируем HTML. Важно: стиль border-left задается в CSS .fc-event, здесь мы только структуру
+                // Но FC перебивает стили, поэтому задаем border-left цвет динамически через инлайн стиль родителя (недоступен здесь)
+                // Или просто используем маркер внутри.
                 
-                // 1. Станция назначения: 14px (text-sm), иконка 16px (w-4)
-                html += `<div style="color: ${titleColor}" class="text-sm font-bold truncate" title="${props.dest}">
-                    <svg class="w-4 h-4 inline-block mr-1 mb-0.5 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    ${props.dest}
-                </div>`;
-                
-                // 2. Сервис: 12px (text-xs), иконка 14px (w-3.5)
-                html += `<div style="color: ${serviceColor}" class="text-xs font-medium truncate">
-                    <svg class="w-3.5 h-3.5 inline-block mr-1 mb-0.5 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" /></svg>
-                    ${props.service}
-                </div>`;
-                
-                // 3. Сток: 11px
-                if (props.stock) {
-                    html += `<div style="color: ${stockColor}; border-top-color: ${borderColor}" class="text-[11px] truncate border-t mt-1 pt-1">
-                        <svg class="w-3 h-3 inline-block mr-1 mb-0.5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
-                        ${props.stock}
-                    </div>`;
-                }
-                // 4. Собственник: 11px
-                if (props.owner) {
-                    html += `<div style="color: ${ownerColor}" class="text-[11px] italic truncate">
-                        <svg class="w-3 h-3 inline-block mr-1 mb-0.5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        ${props.owner}
-                    </div>`;
-                }
-                html += `</div>`;
-                
+                let html = `
+                    <div class="flex flex-col py-1 overflow-hidden" style="border-left: 3px solid ${bgColor}; padding-left: 6px;">
+                        <div class="text-[11px] font-bold text-mono-black truncate leading-tight mb-0.5">
+                            ${props.dest}
+                        </div>
+                        <div class="text-[10px] text-mono-gray truncate leading-tight">
+                            ${props.service}
+                        </div>
+                        ${props.stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-0.5 pt-0.5 border-t border-gray-100">${props.stock}</div>` : ''}
+                    </div>
+                `;
                 return { html: html }
+            },
+            
+            // Применяем цвет границы к элементу после рендера
+            eventDidMount: function(info) {
+                info.el.style.borderLeftColor = info.event.backgroundColor;
             }
         });
         
         calendar.render();
-
-        const themeObserver = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.attributeName === 'class') {
-                    calendar.render();
-                }
-            });
-        });
-        themeObserver.observe(document.documentElement, { attributes: true });
     });
 
-    // --- Остальной код без изменений ---
+    // --- Функции управления цветом ---
     function selectColor(color, btn) {
+        // Сброс стилей всех кнопок
         document.querySelectorAll('.color-btn').forEach(b => {
-            b.classList.remove('ring-2', 'ring-offset-2', 'ring-blue-500', 'ring-green-500', 'ring-amber-500', 'ring-red-500', 'ring-purple-500', 'ring-slate-500');
+            b.classList.remove('ring-2', 'ring-offset-2', 'ring-mono-black');
         });
+        // Установка значения
         document.getElementById('inpColor').value = color;
-        btn.classList.add('ring-2', 'ring-offset-2');
-        if (color === '#3b82f6') btn.classList.add('ring-blue-500');
-        if (color === '#10b981') btn.classList.add('ring-green-500');
-        if (color === '#f59e0b') btn.classList.add('ring-amber-500');
-        if (color === '#ef4444') btn.classList.add('ring-red-500');
-        if (color === '#8b5cf6') btn.classList.add('ring-purple-500');
-        if (color === '#64748b') btn.classList.add('ring-slate-500');
+        // Активный стиль
+        btn.classList.add('ring-2', 'ring-offset-2', 'ring-mono-black');
     }
 
+    // --- Функции Модалки Событий ---
     function openModalForCreate(dateStr) {
         selectedEventId = null;
-        document.getElementById('modal-title').innerHTML = `<svg class="w-5 h-5 text-blue-500 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> План на ${dateStr}`;
+        document.getElementById('modal-title').innerHTML = `
+            <svg class="w-5 h-5 text-mono-black mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            План на ${dateStr.split('-').reverse().join('.')}`;
         document.getElementById('eventDate').value = dateStr;
         document.getElementById('createEventForm').reset();
-        selectColor('#3b82f6', document.querySelector('.color-btn')); 
+        
+        // Сброс цвета на черный по умолчанию
+        selectColor('#111111', document.querySelector('.color-btn')); 
+        
         document.getElementById('btnDelete').classList.add('hidden'); 
         document.getElementById('eventModal').classList.remove('hidden');
     }
@@ -259,14 +317,26 @@
     function openModalForView(event) {
         selectedEventId = event.id;
         let props = event.extendedProps;
-        document.getElementById('modal-title').innerText = "Поезд: " + props.service;
+        
+        document.getElementById('modal-title').innerHTML = `
+            <svg class="w-5 h-5 text-mono-black mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+            Редактирование`;
+            
         document.getElementById('eventDate').value = event.startStr;
         document.getElementById('inpService').value = props.service;
         document.getElementById('inpDest').value = props.dest;
         document.getElementById('inpStock').value = props.stock;
         document.getElementById('inpOwner').value = props.owner;
-        let color = event.backgroundColor || '#3b82f6';
-        document.getElementById('inpColor').value = color;
+        
+        let color = event.backgroundColor || '#111111';
+        // Находим кнопку с таким цветом и активируем
+        let colorBtn = Array.from(document.querySelectorAll('.color-btn')).find(b => {
+            // Сравниваем hex или rgb (упрощенно)
+            return b.onclick.toString().includes(color);
+        });
+        if(colorBtn) selectColor(color, colorBtn);
+        else selectColor(color, document.querySelector('.color-btn')); // fallback
+
         document.getElementById('btnDelete').classList.remove('hidden');
         document.getElementById('eventModal').classList.remove('hidden');
     }
@@ -276,7 +346,7 @@
     }
 
     async function submitCreate() {
-        if (selectedEventId) { await deleteEvent(true); }
+        if (selectedEventId) { await deleteEvent(true); } // Удаляем старое перед созданием нового (простой способ обновления)
         const form = document.getElementById('createEventForm');
         const formData = new FormData(form);
         try {
@@ -297,29 +367,47 @@
 
     async function deleteEvent(silent = false) {
         if (!selectedEventId) return;
-        if (!silent && !confirm("Удалить?")) return;
+        if (!silent && !confirm("Удалить запись?")) return;
         try {
             let response = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' });
             if (response.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } }
         } catch (e) { console.error(e); }
     }
 
+    // --- Функции Модалки Share ---
     function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
     function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
+    
     async function loadLinks() {
         const list = document.getElementById('linksList');
+        list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>';
         try {
             let res = await fetch('/admin/api/schedule/links');
             let links = await res.json();
-            if (links.length === 0) { list.innerHTML = '<p class="text-sm text-slate-400 dark:text-slate-400 text-center">Нет активных ссылок.</p>'; return; }
+            if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; }
             let html = '';
             links.forEach(link => {
                 const fullUrl = window.location.origin + `/schedule/share/${link.token}`;
-                html += `<div class="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700 mb-2"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-slate-800 dark:text-white">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 w-full focus:outline-none" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`;
+                html += `
+                <div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group">
+                    <div class="overflow-hidden mr-3 w-full">
+                        <p class="text-sm font-bold text-mono-black">${link.name}</p>
+                        <div class="flex items-center gap-2 mt-1">
+                            <input type="text" readonly value="${fullUrl}" class="text-xs text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition" onclick="this.select()">
+                            <a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                        </div>
+                    </div>
+                    <button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>`;
             });
             list.innerHTML = html;
         } catch (e) { console.error(e); }
     }
+    
     async function createLink() {
         const nameInput = document.getElementById('newLinkName');
         const name = nameInput.value.trim();
@@ -328,54 +416,10 @@
         formData.append('name', name);
         try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); }
     }
+    
     async function deleteLink(id) {
-        if (!confirm("Удалить ссылку?")) return;
+        if (!confirm("Удалить ссылку? Доступ по ней будет закрыт.")) return;
         try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); }
     }
 </script>
-
-<style>
-    /* Переопределение переменных FullCalendar для темной темы */
-    .dark {
-        --fc-border-color: rgba(255, 255, 255, 0.08) !important;
-        --fc-page-bg-color: #1e293b !important;
-        --fc-neutral-bg-color: rgba(255, 255, 255, 0.03) !important;
-        --fc-today-bg-color: rgba(59, 130, 246, 0.1) !important;
-    }
-
-    /* Стили календаря для Dark Mode */
-    .fc-event { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-left: 3px solid #3b82f6 !important; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer; margin-bottom: 2px !important; transition: transform 0.1s, box-shadow 0.1s; }
-    .fc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 5; }
-    .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
-    .fc-daygrid-event-dot { display: none; } 
-    .fc-event-main { width: 100%; padding: 0; }
-    .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #1e293b; }
-    .fc-button { background-color: white !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; text-transform: capitalize; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
-    .fc-button:hover { background-color: #f8fafc !important; }
-    .fc-button-active { background-color: #eff6ff !important; color: #2563eb !important; border-color: #bfdbfe !important; }
-    .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #64748b; padding-top: 10px !important; padding-bottom: 10px !important; }
-    .fc-daygrid-day-number { color: #334155; font-weight: 500; padding: 8px !important; }
-    .fc-day-today { background-color: #f8fafc !important; }
-
-    /* Dark mode overrides */
-    .dark .fc-event {
-        background-color: #1e293b !important;
-        border-color: #334155 !important;
-    }
-    .dark .fc-toolbar-title { color: #e2e8f0 !important; }
-    .dark .fc-button {
-        background-color: #334155 !important;
-        color: #cbd5e1 !important;
-        border-color: #475569 !important;
-    }
-    .dark .fc-button:hover { background-color: #475569 !important; }
-    .dark .fc-button-active {
-        background-color: #2563eb !important;
-        color: white !important;
-        border-color: #2563eb !important;
-    }
-    .dark .fc-col-header-cell-cushion { color: #94a3b8 !important; }
-    .dark .fc-daygrid-day-number { color: #cbd5e1 !important; }
-    .dark .fc-day-today { background-color: #1a2233 !important; }
-</style>
 {% endblock %}

@@ -3,52 +3,55 @@
 {% block title %}Поиск груза — Logistrail{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto pt-10">
+<div class="max-w-7xl mx-auto px-4 py-8">
     
-    <div class="text-center mb-10 fade-in">
-        <h1 class="text-4xl font-bold text-mono-black mb-4 tracking-tight">Отслеживание груза</h1>
-        <p class="text-lg text-mono-gray">Введите номера контейнеров или вагонов для поиска.</p>
-    </div>
+    <div class="max-w-3xl mx-auto mb-12">
+        
+        <div class="text-center mb-8 fade-in">
+            <h1 class="text-4xl font-bold text-mono-black mb-3 tracking-tight">Поиск контейнера</h1>
+            <p class="text-lg text-mono-gray">Отслеживание дислокации в реальном времени</p>
+        </div>
 
-    <div class="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-mono-light p-1 transition-all focus-within:ring-2 focus-within:ring-mono-black focus-within:shadow-lg">
-        <form hx-post="/search" hx-target="#search-results" hx-indicator="#loading-spinner">
-            
-            <div class="relative">
-                <textarea 
-                    id="q" 
-                    name="q" 
-                    rows="3" 
-                    class="block w-full p-5 bg-transparent border-0 outline-none font-mono text-xl uppercase placeholder:text-gray-300 text-mono-black resize-none"
-                    placeholder="TCNU1234567, 12345678..." required></textarea>
+        <div class="bg-white rounded-2xl shadow-card border border-mono-border p-1 transition-all focus-within:ring-2 focus-within:ring-mono-black focus-within:border-transparent">
+            <form hx-post="/search" hx-target="#search-results" hx-indicator="#loading-spinner">
                 
-                <div class="border-t border-mono-light flex justify-between items-center px-4 py-3 bg-white/50 rounded-b-xl">
-                    <span class="text-xs text-mono-gray">Поддерживается список из Excel</span>
-                    <button type="submit" class="px-6 py-2.5 bg-mono-black text-white font-semibold rounded-lg hover:bg-gray-800 transition shadow-md flex items-center gap-2">
-                        <span>Найти</span>
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                    </button>
+                <div class="relative">
+                    <textarea 
+                        id="q" 
+                        name="q" 
+                        rows="3" 
+                        class="block w-full p-5 bg-transparent border-0 outline-none font-mono text-xl uppercase placeholder:text-gray-300 text-mono-black resize-none"
+                        placeholder="TCNU1234567, 12345678..." required></textarea>
+                    
+                    <div class="border-t border-mono-border flex justify-between items-center px-4 py-3 bg-mono-bg/50 rounded-b-xl">
+                        <span class="text-xs text-mono-gray font-medium">Вставьте список номеров (Excel/Text)</span>
+                        <button type="submit" class="px-6 py-2.5 bg-mono-black text-white font-bold text-sm rounded-lg hover:bg-gray-800 transition shadow-sm flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            <span>Найти</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
-        </form>
-    </div>
+            </form>
+        </div>
 
-    <div id="loading-spinner" class="htmx-indicator flex justify-center py-8">
-        <div class="flex flex-col items-center gap-3">
-            <svg class="animate-spin h-8 w-8 text-mono-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <span class="text-mono-gray text-sm font-medium animate-pulse">Загрузка данных...</span>
+        <div id="loading-spinner" class="htmx-indicator flex justify-center py-8">
+            <div class="flex flex-col items-center gap-3">
+                <svg class="animate-spin h-8 w-8 text-mono-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-mono-gray text-sm font-medium animate-pulse">Поиск данных...</span>
+            </div>
         </div>
     </div>
 
-    <div id="search-results" class="min-h-[10px] mb-6 mt-8"></div>
+    <div id="search-results" class="min-h-[10px] mb-12"></div>
 
     <div id="active-trains-block" 
          hx-get="/active_trains" 
          hx-trigger="load" 
          hx-swap="innerHTML"
-         class="mt-12 border-t border-mono-light pt-8">
+         class="border-t border-mono-border pt-10">
     </div>
 
 </div>
