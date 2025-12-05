@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>График поездов ({{ link_name }})</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -13,7 +14,13 @@
             theme: {
                 extend: {
                     colors: {
-                        mono: { black: '#111111', gray: '#8E8E93', light: '#F5F5F7', border: '#E5E5EA', white: '#FFFFFF' }
+                        mono: { 
+                            black: '#111111', 
+                            gray: '#8E8E93', 
+                            light: '#F5F5F7', 
+                            border: '#E5E5EA', 
+                            white: '#FFFFFF' 
+                        }
                     },
                     fontFamily: { sans: ['Inter', 'sans-serif'] }
                 }
@@ -24,7 +31,7 @@
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #F5F5F7; color: #111111; }
         
-        /* === FullCalendar Styles === */
+        /* === Настройка FullCalendar под Монохром === */
         :root {
             --fc-border-color: #E5E5EA;
             --fc-button-text-color: #111111;
@@ -34,10 +41,11 @@
             --fc-button-hover-border-color: #E5E5EA;
             --fc-button-active-bg-color: #111111;
             --fc-button-active-border-color: #111111;
-            --fc-button-active-text-color: #FFFFFF;
+            --fc-button-active-text-color: #FFFFFF; /* Белый текст активной кнопки */
             --fc-today-bg-color: #FAFAFA;
         }
 
+        /* Кнопки (Месяц, Неделя, Сегодня) */
         .fc .fc-button-primary {
             background-color: #FFFFFF !important;
             border-color: #E5E5EA !important;
@@ -55,15 +63,17 @@
             border-color: #d1d5db !important;
         }
 
+        /* Активная кнопка - Черная с белым текстом */
         .fc .fc-button-active {
             background-color: #111111 !important;
             border-color: #111111 !important;
-            color: #FFFFFF !important; /* Белый текст */
+            color: #FFFFFF !important;
         }
 
+        /* События (Карточки на сетке) */
         .fc-event {
             background-color: #FFFFFF !important;
-            border: none !important; /* Убираем рамку через CSS */
+            border: none !important; /* Убираем дефолтную рамку */
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
             margin-bottom: 4px !important;
@@ -78,11 +88,12 @@
         }
         .fc-daygrid-event { white-space: normal !important; }
         
-        .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #111111; }
+        /* Типографика календаря */
+        .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #111111; letter-spacing: -0.02em; }
         .fc-col-header-cell-cushion { color: #8E8E93; text-transform: uppercase; font-size: 0.7rem; font-weight: 700; padding: 12px !important; }
         .fc-daygrid-day-number { color: #111111; font-weight: 600; padding: 8px !important; }
 
-        /* Модалка */
+        /* Анимация Модалки */
         #modalOverlay { transition: opacity 0.2s ease-out; }
         #modalPanel { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
         .modal-closed { opacity: 0; pointer-events: none; }
@@ -98,7 +109,7 @@
         <div class="flex flex-col sm:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-transparent gap-4">
             <div class="flex items-center gap-4 w-full sm:w-auto">
                 <div class="bg-mono-black p-2.5 rounded-xl text-white shrink-0">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 </div>
                 <div>
                     <h1 class="text-xl font-bold text-mono-black tracking-tight">График поездов</h1>
@@ -108,8 +119,8 @@
             
             <div class="flex items-center gap-4 self-end sm:self-auto">
                 <div class="flex items-center gap-2 px-3 py-1.5 bg-mono-light rounded-lg border border-mono-border">
-                    <span class="w-2 h-2 rounded-full bg-mono-black"></span>
-                    <span class="text-xs font-bold text-mono-black uppercase tracking-wider">Актуально</span>
+                    <span class="w-2 h-2 rounded-full bg-mono-black animate-pulse"></span>
+                    <span class="text-xs font-bold text-mono-black uppercase tracking-wider">Online</span>
                 </div>
             </div>
         </div>
@@ -120,14 +131,14 @@
     </div>
 
     <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center px-4 modal-closed">
-        <div class="absolute inset-0 bg-mono-black/20 backdrop-blur-sm" onclick="closeModal()"></div>
+        <div class="absolute inset-0 bg-mono-black/30 backdrop-blur-sm" onclick="closeModal()"></div>
 
         <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-mono-light">
             
-            <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center" style="border-left: 4px solid transparent;">
+            <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center" style="border-left: 6px solid transparent;">
                 <div>
                     <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
-                    <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Рейс</h2>
+                    <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Информация о рейсе</h2>
                 </div>
                 <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1.5 rounded-lg hover:bg-mono-light">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -138,10 +149,10 @@
                 
                 <div>
                     <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
-                    <p class="text-lg font-bold text-mono-black" id="modalDest">Dest</p>
+                    <p class="text-2xl font-bold text-mono-black tracking-tight" id="modalDest">Dest</p>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-2 gap-6">
                     <div>
                         <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
                         <p class="text-sm font-medium text-mono-black" id="modalService">Service</p>
@@ -149,23 +160,26 @@
                     
                     <div id="blockOwner">
                         <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
-                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-2.5 py-1 rounded text-sm font-medium text-mono-black border border-mono-border">
+                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-3 py-1 rounded-lg text-sm font-medium text-mono-black border border-mono-border">
+                            <svg class="w-3.5 h-3.5 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                             <span id="modalOwner">Owner</span>
                         </div>
                     </div>
                 </div>
 
                 <div id="blockOverload" class="hidden">
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Станция перегруза</p>
-                    <div class="inline-flex items-center gap-1.5 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-lg text-sm font-bold border border-orange-100">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Перегруз</p>
+                    <div class="inline-flex items-center gap-2 bg-mono-black text-white px-3 py-2 rounded-lg text-sm font-bold shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
                         <span id="modalOverload">Station</span>
                     </div>
                 </div>
 
                 <div id="blockStock" class="pt-4 border-t border-mono-light hidden">
                     <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Доступный сток</p>
-                    <p class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border" id="modalStock">Stock Info</p>
+                    <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="modalStock">
+                        Stock Info
+                    </div>
                 </div>
                 
                 <div id="blockComment" class="hidden pt-4 border-t border-mono-light">
@@ -203,6 +217,8 @@
                 },
                 editable: false,
                 selectable: false,
+                
+                // Ссылка на API событий (мы его починили)
                 events: `/api/share/${token}/events`,
 
                 eventClick: function(info) {
@@ -210,20 +226,19 @@
                     openModal(info.event);
                 },
 
-                // 🔥 ИСПРАВЛЕННЫЙ РЕНДЕР (БЕЗ setProp)
+                // 🔥 Рендер карточки (Безопасный, без setProp)
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps || {};
                     let bgColor = arg.event.backgroundColor || '#111111';
                     
-                    // ❌ setProp УДАЛЕН ВО ИЗБЕЖАНИЕ ЗАВИСАНИЯ
-
-                    let dest = props.dest || 'Назначение';
+                    // Безопасное получение данных
+                    let dest = props.dest || '';
                     let service = props.service || '';
                     let stock = props.stock || '';
                     let owner = props.owner || '';
                     let overload = props.overload || '';
 
-                    // Сборка HTML (Такая же, как в админке)
+                    // HTML карточки (Стиль: Монохром + Полоска)
                     let html = `
                     <div class="flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
                          style="border-left: 4px solid ${bgColor};">
@@ -238,8 +253,8 @@
 
                         ${owner || overload ? `
                         <div class="flex flex-wrap gap-1 mt-1 pt-1 border-t border-mono-light/50">
-                            ${owner ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full">👤 ${owner}</span>` : ''}
-                            ${overload ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full">🔄 ${overload}</span>` : ''}
+                            ${owner ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1.5 py-0.5 rounded border border-mono-border/50 truncate max-w-full">👤 ${owner}</span>` : ''}
+                            ${overload ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1.5 py-0.5 rounded border border-mono-border/50 truncate max-w-full">🔄 ${overload}</span>` : ''}
                         </div>` : ''}
 
                         ${stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-0.5 font-mono">${stock}</div>` : ''}
@@ -251,6 +266,8 @@
             calendar.render();
         });
 
+        // --- Логика Модалки ---
+
         function openModal(event) {
             const props = event.extendedProps;
             const dateOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -260,11 +277,11 @@
             document.getElementById('modalDest').innerText = props.dest;
             document.getElementById('modalService').innerText = props.service;
             
-            // Цветная полоска в хедере
+            // Красим полоску слева
             const color = event.backgroundColor || '#111111';
             document.getElementById('modalHeader').style.borderLeftColor = color;
             
-            // Заполнение полей
+            // Заполняем поля (если есть данные)
             toggleField('blockStock', 'modalStock', props.stock);
             toggleField('blockOwner', 'modalOwner', props.owner);
             toggleField('blockOverload', 'modalOverload', props.overload);
@@ -278,7 +295,7 @@
         function toggleField(blockId, textId, value) {
             const block = document.getElementById(blockId);
             const text = document.getElementById(textId);
-            if (value && value.toString().trim() !== "") {
+            if (value && String(value).trim() !== "") {
                 text.innerText = value;
                 block.classList.remove('hidden');
             } else {
