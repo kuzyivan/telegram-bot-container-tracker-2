@@ -13,7 +13,7 @@
             theme: {
                 extend: {
                     colors: {
-                        mono: { black: '#2B2B2B', gray: '#6F767E', light: '#F2F2F2', white: '#FFFFFF' }
+                        mono: { black: '#111111', gray: '#8E8E93', light: '#F5F5F7', border: '#E5E5EA', white: '#FFFFFF' }
                     },
                     fontFamily: { sans: ['Inter', 'sans-serif'] }
                 }
@@ -22,49 +22,68 @@
     </script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #F2F2F2; color: #2B2B2B; }
+        body { font-family: 'Inter', sans-serif; background-color: #F5F5F7; color: #111111; }
         
-        /* FullCalendar Monochrome Overrides */
+        /* === FullCalendar Monochrome Styles === */
         :root {
-            --fc-border-color: #E2E2E2;
-            --fc-button-text-color: #2B2B2B;
+            --fc-border-color: #E5E5EA;
+            --fc-button-text-color: #111111;
             --fc-button-bg-color: #FFFFFF;
-            --fc-button-border-color: #E2E2E2;
-            --fc-button-hover-bg-color: #F2F2F2;
-            --fc-button-active-bg-color: #2B2B2B;
-            --fc-button-active-border-color: #2B2B2B;
-            --fc-button-active-text-color: #FFFFFF;
-            --fc-today-bg-color: #FFFFFF;
-            --fc-neutral-bg-color: #FAFAFA;
+            --fc-button-border-color: #E5E5EA;
+            --fc-button-hover-bg-color: #F5F5F7;
+            --fc-button-hover-border-color: #E5E5EA;
+            --fc-button-active-bg-color: #111111;
+            --fc-button-active-border-color: #111111;
+            --fc-button-active-text-color: #FFFFFF; /* Исправлено: Белый текст на активной кнопке */
+            --fc-today-bg-color: #FAFAFA;
         }
 
+        /* Кнопки календаря */
+        .fc .fc-button-primary {
+            background-color: #FFFFFF !important;
+            border-color: #E5E5EA !important;
+            color: #111111 !important;
+            font-weight: 600 !important;
+            text-transform: capitalize !important;
+            border-radius: 10px !important;
+            padding: 0.5rem 1rem !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+            transition: all 0.2s !important;
+        }
+        
+        .fc .fc-button-primary:hover {
+            background-color: #F5F5F7 !important;
+            border-color: #d1d5db !important;
+        }
+
+        .fc .fc-button-active {
+            background-color: #111111 !important;
+            border-color: #111111 !important;
+            color: #FFFFFF !important; /* Белый текст */
+        }
+
+        /* События (Карточки) */
         .fc-event {
             background-color: #FFFFFF !important;
-            border: 1px solid #E2E2E2 !important;
-            /* border-left задается динамически, но база такая */
-            border-radius: 8px;
+            border: none !important; /* Рамка рисуется внутри HTML */
+            border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
             margin-bottom: 4px !important;
+            padding: 0;
             cursor: pointer;
-            transition: transform 0.1s, box-shadow 0.1s;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
         }
-        .fc-event:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        
-        .fc-daygrid-event { white-space: normal !important; align-items: flex-start; }
-        .fc-event-main { width: 100%; padding: 0; }
-        
-        .fc-toolbar-title { font-size: 1.5rem !important; text-transform: capitalize; font-weight: 700; color: #2B2B2B; }
-        
-        .fc-button { 
-            border-radius: 10px !important; 
-            font-weight: 600 !important; 
-            text-transform: capitalize !important; 
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
-            padding: 0.5em 1em !important;
+        .fc-event:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            z-index: 50;
         }
+        .fc-daygrid-event { white-space: normal !important; }
         
-        .fc-col-header-cell-cushion { text-transform: uppercase; font-size: 0.75rem; font-weight: 700; color: #6F767E; padding: 12px 0 !important; }
-        .fc-daygrid-day-number { color: #2B2B2B; font-weight: 600; padding: 8px !important; }
+        /* Заголовки */
+        .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #111111; }
+        .fc-col-header-cell-cushion { color: #8E8E93; text-transform: uppercase; font-size: 0.7rem; font-weight: 700; padding: 12px !important; }
+        .fc-daygrid-day-number { color: #111111; font-weight: 600; padding: 8px !important; }
 
         /* Модалка */
         #modalOverlay { transition: opacity 0.2s ease-out; }
@@ -91,7 +110,7 @@
             </div>
             
             <div class="flex items-center gap-4 self-end sm:self-auto">
-                <div class="flex items-center gap-2 px-4 py-2 bg-mono-light rounded-lg">
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-mono-light rounded-lg border border-mono-border">
                     <span class="w-2 h-2 rounded-full bg-mono-black"></span>
                     <span class="text-xs font-bold text-mono-black uppercase tracking-wider">Актуально</span>
                 </div>
@@ -108,42 +127,58 @@
 
         <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-mono-light">
             
-            <div id="modalHeader" class="bg-mono-black px-8 py-6 transition-colors duration-300">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <p class="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
-                        <h2 class="text-white text-2xl font-bold leading-none tracking-tight" id="modalDest">Назначение</h2>
-                    </div>
-                    <button onclick="closeModal()" class="text-white/50 hover:text-white transition p-1 rounded-full hover:bg-white/10">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
+            <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center" style="border-left: 4px solid transparent;">
+                <div>
+                    <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
+                    <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Информация о рейсе</h2>
                 </div>
+                <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1.5 rounded-lg hover:bg-mono-light">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
 
-            <div class="p-8 space-y-6">
+            <div class="p-6 space-y-5">
                 
                 <div>
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
-                    <p class="text-lg font-bold text-mono-black" id="modalService">Service Name</p>
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
+                    <p class="text-lg font-bold text-mono-black" id="modalDest">Dest</p>
                 </div>
 
-                <div id="blockStock">
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Доступный сток</p>
-                    <p class="text-base font-medium text-mono-black" id="modalStock">Stock Info</p>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
+                        <p class="text-sm font-medium text-mono-black" id="modalService">Service</p>
+                    </div>
+                    
+                    <div id="blockOwner">
+                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
+                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-2.5 py-1 rounded text-sm font-medium text-mono-black border border-mono-border">
+                            <span id="modalOwner">Owner</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div id="blockOwner">
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
-                    <div class="inline-block px-3 py-1 bg-mono-light rounded-lg text-sm font-mono text-mono-black" id="modalOwner">Owner Name</div>
+                <div id="blockOverload">
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Станция перегруза</p>
+                    <div class="inline-flex items-center gap-1.5 bg-orange-50 text-orange-800 px-3 py-1.5 rounded-lg text-sm font-bold border border-orange-100">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                        <span id="modalOverload">Station</span>
+                    </div>
+                </div>
+
+                <div id="blockStock" class="pt-4 border-t border-mono-light">
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Доступный сток</p>
+                    <p class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border" id="modalStock">Stock Info</p>
                 </div>
                 
                 <div id="blockComment" class="hidden pt-4 border-t border-mono-light">
+                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Примечание</p>
                     <p class="text-sm text-mono-gray italic" id="modalComment"></p>
                 </div>
             </div>
             
-            <div class="bg-mono-light/50 px-6 py-4 border-t border-mono-light flex justify-center">
-                <button onclick="closeModal()" class="w-full py-3 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-light rounded-xl transition shadow-sm">
+            <div class="bg-mono-light/30 px-6 py-4 border-t border-mono-light flex justify-end">
+                <button onclick="closeModal()" class="px-6 py-2.5 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-border rounded-xl transition shadow-sm">
                     Закрыть
                 </button>
             </div>
@@ -164,6 +199,11 @@
                     center: 'title',
                     right: 'dayGridMonth,dayGridWeek'
                 },
+                buttonText: {
+                    today: 'Сегодня',
+                    month: 'Месяц',
+                    week: 'Неделя'
+                },
                 editable: false,
                 selectable: false,
                 events: `/api/share/${token}/events`,
@@ -173,30 +213,41 @@
                     openModal(info.event);
                 },
 
+                // 🔥 Рендер карточки (1 в 1 как в админке)
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps;
-                    let bgColor = arg.event.backgroundColor || '#2B2B2B';
+                    let bgColor = arg.event.backgroundColor || '#111111';
                     
-                    // Строгий стиль карточки
-                    let html = `<div class="flex flex-col py-1.5 px-2 overflow-hidden bg-white" style="border-left: 3px solid ${bgColor}">`;
-                    
-                    // 1. Станция
-                    html += `<div class="text-sm font-bold text-mono-black truncate leading-tight mb-0.5">
-                        ${props.dest}
-                    </div>`;
-                    
-                    // 2. Сервис
-                    html += `<div class="text-[11px] font-medium text-mono-gray truncate">
-                        ${props.service}
-                    </div>`;
-                    
-                    // 3. Сток (опционально)
-                    if (props.stock) {
-                        html += `<div class="text-[10px] text-mono-gray/70 truncate mt-1 pt-1 border-t border-mono-light font-mono">
-                            ${props.stock}
-                        </div>`;
-                    }
-                    html += `</div>`;
+                    // Убираем рамку по умолчанию
+                    arg.event.setProp('borderColor', 'transparent'); 
+
+                    let dest = props.dest;
+                    let service = props.service;
+                    let stock = props.stock;
+                    let owner = props.owner;
+                    let overload = props.overload;
+
+                    let html = `
+                    <div class="flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
+                         style="border-left: 4px solid ${bgColor};">
+                        
+                        <div class="text-[11px] font-bold text-mono-black truncate leading-tight">
+                            ${dest}
+                        </div>
+                        
+                        <div class="text-[10px] text-mono-gray truncate leading-tight">
+                            ${service}
+                        </div>
+
+                        ${owner || overload ? `
+                        <div class="flex flex-wrap gap-1 mt-1 pt-1 border-t border-mono-light/50">
+                            ${owner ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full">👤 ${owner}</span>` : ''}
+                            ${overload ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full">🔄 ${overload}</span>` : ''}
+                        </div>` : ''}
+
+                        ${stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-0.5 font-mono">${stock}</div>` : ''}
+                    </div>
+                    `;
                     return { html: html }
                 }
             });
@@ -212,11 +263,14 @@
             document.getElementById('modalDest').innerText = props.dest;
             document.getElementById('modalService').innerText = props.service;
             
-            const color = event.backgroundColor || '#2B2B2B';
-            document.getElementById('modalHeader').style.backgroundColor = color;
+            // Цветная полоска в хедере
+            const color = event.backgroundColor || '#111111';
+            document.getElementById('modalHeader').style.borderLeftColor = color;
             
+            // Заполнение полей
             toggleField('blockStock', 'modalStock', props.stock);
             toggleField('blockOwner', 'modalOwner', props.owner);
+            toggleField('blockOverload', 'modalOverload', props.overload);
             toggleField('blockComment', 'modalComment', props.comment);
 
             const overlay = document.getElementById('modalOverlay');
@@ -227,7 +281,7 @@
         function toggleField(blockId, textId, value) {
             const block = document.getElementById(blockId);
             const text = document.getElementById(textId);
-            if (value) {
+            if (value && value.toString().trim() !== "") {
                 text.innerText = value;
                 block.classList.remove('hidden');
             } else {
