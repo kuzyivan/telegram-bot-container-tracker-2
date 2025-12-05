@@ -202,13 +202,36 @@ async def search_handler(
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
     five_days_ago = datetime.now() - timedelta(days=5)
-    stmt = select(Train).where(Train.last_operation_date.isnot(None))\
-        .where(Train.last_operation.not_ilike("%(39)%"))\
-        .where(Train.last_operation.not_ilike("%(49)%"))\
-        .where(not_(and_(func.lower(Train.destination_station) == func.lower(Train.last_known_station), Train.last_operation.ilike("%выгрузка%"), Train.last_operation_date < five_days_ago)))\
-        .order_by(desc(Train.terminal_train_number)).limit(10)
+    
+    # 1. Получаем список поездов из БД
+    stmt = select(Train).where(Train.last_operation_date.isnot(None))        .where(Train.last_operation.not_ilike("%(39)%"))        .where(Train.last_operation.not_ilike("%(49)%"))        .where(not_(and_(func.lower(Train.destination_station) == func.lower(Train.last_known_station), Train.last_operation.ilike("%выгрузка%"), Train.last_operation_date < five_days_ago)))        .order_by(desc(Train.terminal_train_number)).limit(10)
+    
     result = await db.execute(stmt)
     trains = result.scalars().all()
+
+    # 2. 🔥 ПРОХОДИМ ПО СПИСКУ И СЧИТАЕМ РАССТОЯНИЕ 10-01
+    for train in trains:
+        # Устанавливаем флаг, что это не расчетное значение (по умолчанию)
+        setattr(train, 'is_calc_1001', False)
+
+        if train.last_known_station and train.destination_station:
+            try:
+                # Пытаемся рассчитать расстояние по Тарифному справочнику
+                calc_result = await get_tariff_distance(train.last_known_station, train.destination_station)
+                
+                if calc_result and calc_result.get('distance') is not None:
+                    dist = calc_result['distance']
+                    
+                    # Если дистанция > 0, подменяем значение для отображения
+                    if dist > 0:
+                        train.km_remaining = dist
+                        # Ставим метку, что значение взято из расчета 10-01
+                        setattr(train, 'is_calc_1001', True)
+                        
+            except Exception as e:
+                # Если ошибка расчета, просто оставляем значение из Excel
+                print(f"Error calculating distance for train {train.terminal_train_number}: {e}")
+
     return templates.TemplateResponse("partials/active_trains.html", {"request": request, "trains": trains})
 
 @router.post("/search/export")
