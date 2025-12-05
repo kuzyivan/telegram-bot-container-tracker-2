@@ -18,159 +18,91 @@
         </div>
     </div>
 
-    <div class="h-96 w-full bg-mono-bg relative z-0" id="map-container"></div>
+    <div class="w-full bg-mono-bg relative z-0" style="height: 400px;">
+        <div id="map-{{ result.info_a.station_code }}-{{ result.info_b.station_code }}" class="h-full w-full z-0"></div>
+    </div>
 
     <div class="p-8">
         <h3 class="text-base font-bold text-mono-black mb-8 flex items-center gap-2 uppercase tracking-wide">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
             Детализация
         </h3>
-
-        <div class="space-y-0 relative pl-4">
-            <div class="absolute left-[27px] top-4 bottom-4 w-0.5 bg-mono-border"></div>
-
-            <div class="relative flex gap-6 pb-8 group">
-                <div class="w-6 h-6 rounded-full bg-mono-black border-4 border-white shadow-sm flex items-center justify-center shrink-0 z-10 box-content">
-                </div>
-                <div>
-                    <p class="text-xs text-mono-gray uppercase font-bold mb-1">Отправление</p>
-                    <h4 class="text-xl font-bold text-mono-black leading-none mb-2">{{ result.info_a.station_name }}</h4>
-                    <span class="inline-block bg-mono-bg text-mono-black text-xs px-2 py-1 rounded font-mono border border-mono-border">
-                        {{ result.info_a.station_code }}
-                    </span>
-                    <span class="text-sm text-mono-gray ml-2">{{ result.info_a.railway }}</span>
-                </div>
-            </div>
-
-            {% set route = result.route_details %}
-            
-            {% if route.tpa_name != route.tpb_name %}
-                <div class="relative flex gap-6 pb-8">
-                    <div class="w-4 h-4 rounded-full bg-white border-2 border-mono-gray ml-1 mt-1 z-10"></div>
-                    <div class="pt-0.5">
-                        <div class="text-sm font-medium text-mono-black">
-                            {{ route.tpa_name }}
-                        </div>
-                        <div class="text-xs text-mono-gray mt-1">
-                            + {{ route.distance_a_to_tpa }} км
-                        </div>
-                    </div>
-                </div>
-                
-                {% if route.distance_tpa_to_tpb > 0 %}
-                <div class="relative flex gap-6 pb-8">
-                    <div class="w-4 h-4 rounded-full bg-white border-2 border-mono-gray ml-1 mt-1 z-10"></div>
-                    <div class="pt-0.5">
-                        <div class="text-sm font-medium text-mono-black">
-                            {{ route.tpb_name }}
-                        </div>
-                        <div class="text-xs text-mono-gray mt-1">
-                            Транзит: {{ route.distance_tpa_to_tpb }} км
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-            {% endif %}
-
-            <div class="relative flex gap-6">
-                <div class="w-6 h-6 rounded-sm bg-white border-4 border-mono-black shadow-sm flex items-center justify-center shrink-0 z-10 box-content">
-                </div>
-                <div>
-                    <p class="text-xs text-mono-gray uppercase font-bold mb-1">Назначение</p>
-                    <h4 class="text-xl font-bold text-mono-black leading-none mb-2">{{ result.info_b.station_name }}</h4>
-                    <span class="inline-block bg-mono-bg text-mono-black text-xs px-2 py-1 rounded font-mono border border-mono-border">
-                        {{ result.info_b.station_code }}
-                    </span>
-                    <span class="text-sm text-mono-gray ml-2">{{ result.info_b.railway }}</span>
-                    
-                    <div class="mt-4 text-sm text-mono-black bg-mono-bg p-3 rounded-xl inline-block border border-mono-border">
-                        Последний участок: <b>{{ route.distance_tpb_to_b }} км</b>
-                    </div>
-                </div>
-            </div>
         </div>
-    </div>
 </div>
 
 <script>
     (function() {
-        const mapId = 'map-' + Math.random().toString(36).substr(2, 9);
-        const container = document.getElementById('map-container');
+        // Уникальный ID для карты
+        const uniqueId = "map-{{ result.info_a.station_code }}-{{ result.info_b.station_code }}";
         
-        // 1. Проверка данных
-        // Используем tojson для корректной передачи объекта Python в JS
-        const pathData = {{ result.route_details.detailed_path_coords | tojson }};
+        // Безопасно парсим данные из Python
+        const pathData = {{ result.route_details.detailed_path_coords | tojson | safe }};
         
-        if (!container) return;
-
-        container.innerHTML = `<div id="${mapId}" class="h-full w-full z-0" style="min-height: 384px; border-radius: 0;"></div>`;
-
-        if (typeof L === 'undefined' || !pathData || pathData.length === 0) {
-            container.innerHTML = '<div class="flex flex-col items-center justify-center h-full text-mono-gray text-sm"><svg class="w-8 h-8 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>Нет координат для отображения карты</div>';
+        if (!document.getElementById(uniqueId)) {
+            console.error("Map container not found:", uniqueId);
             return;
         }
 
-        // 2. Инициализация карты
-        const map = L.map(mapId, {
-            zoomControl: false, // Убираем стандартный зум для чистоты (можно вернуть)
-            scrollWheelZoom: false // Чтобы не мешало скроллу страницы
-        }).setView([55.75, 37.61], 3);
-
-        // 3. Используем CartoDB Positron (ЧЕРНО-БЕЛАЯ КАРТА)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '',
-            subdomains: 'abcd',
-            maxZoom: 19
-        }).addTo(map);
-
-        const latLngs = [];
-
-        // 4. Отрисовка маршрута
-        pathData.forEach((point, index) => {
-            if (point.lat && point.lon) {
-                const coords = [point.lat, point.lon];
-                latLngs.push(coords);
-                
-                const isStart = (index === 0);
-                const isEnd = (index === pathData.length - 1);
-                
-                // Рисуем маркеры только для начала и конца
-                if (isStart || isEnd) {
-                    const color = '#111111'; // Черный
-                    // Кастомный маркер: черный круг с белой обводкой
-                    const iconHtml = isStart 
-                        ? `<div style='background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 4px white, 0 4px 10px rgba(0,0,0,0.2);'></div>`
-                        : `<div style='background-color: white; width: 12px; height: 12px; border: 3px solid ${color}; border-radius: 2px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);'></div>`;
-
-                    const icon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: iconHtml,
-                        iconSize: [12, 12],
-                        iconAnchor: [6, 6]
-                    });
-                    
-                    L.marker(coords, {icon: icon, zIndexOffset: 1000})
-                     .addTo(map)
-                     .bindPopup(`<b style="font-family: Inter, sans-serif; font-size: 12px;">${point.name}</b>`);
-                }
+        // Ждем отрисовки DOM (для HTMX)
+        setTimeout(() => {
+            if (typeof L === 'undefined') {
+                console.error("Leaflet library not loaded!");
+                document.getElementById(uniqueId).innerHTML = "Ошибка: библиотека карт не загружена.";
+                return;
             }
-        });
 
-        if (latLngs.length > 0) {
-            // Рисуем линию: Черная, чуть прозрачная
-            L.polyline(latLngs, { 
-                color: '#111111', 
-                weight: 3, 
-                opacity: 0.8,
-                lineCap: 'round'
+            const map = L.map(uniqueId, {
+                zoomControl: true,
+                scrollWheelZoom: false,
+                attributionControl: false
+            });
+
+            // Используем стандартный OSM, если CartoDB не грузится (более надежно)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
             }).addTo(map);
+
+            const latLngs = [];
+
+            pathData.forEach((point, index) => {
+                if (point.lat && point.lon) {
+                    const coords = [point.lat, point.lon];
+                    latLngs.push(coords);
+                    
+                    const isStart = (index === 0);
+                    const isEnd = (index === pathData.length - 1);
+                    
+                    if (isStart || isEnd) {
+                        // Простые маркеры, но черного цвета (через CSS фильтр hue-rotate/grayscale не выйдет, берем стандарт или divIcon)
+                        // Используем CircleMarker для надежности (нет внешних картинок)
+                        L.circleMarker(coords, {
+                            color: '#111111',
+                            fillColor: isStart ? '#111111' : '#FFFFFF',
+                            fillOpacity: 1,
+                            radius: 6,
+                            weight: 2
+                        }).addTo(map).bindPopup(point.name);
+                    }
+                }
+            });
+
+            if (latLngs.length > 0) {
+                const polyline = L.polyline(latLngs, { 
+                    color: '#111111', 
+                    weight: 3, 
+                    opacity: 0.8 
+                }).addTo(map);
+                
+                map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+            } else {
+                // Если координат нет, центрируем на Москве
+                map.setView([55.75, 37.61], 3);
+            }
             
-            // Центрируем с отступами
-            map.fitBounds(latLngs, { padding: [50, 50] });
-        }
-        
-        // Хак для корректной отрисовки после появления в DOM
-        setTimeout(() => map.invalidateSize(), 200);
+            // Фикс серого экрана (обновление размера)
+            setTimeout(() => { map.invalidateSize(); }, 300);
+            
+        }, 100); // Небольшая задержка для рендера
     })();
 </script>
 {% endif %}
