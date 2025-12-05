@@ -7,7 +7,9 @@
 
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
     
@@ -17,12 +19,12 @@
                 extend: {
                     colors: {
                         mono: {
-                            black: '#111111',  // Глубокий черный для текста и активных кнопок
-                            dark: '#2B2B2B',   // Вторичный черный
-                            gray: '#8E8E93',   // Серый для подписей (как на скрине)
-                            border: '#E5E5EA', // Светлые границы
-                            bg: '#F5F5F7',     // Общий фон страницы (светло-серый)
-                            white: '#FFFFFF'   // Карточки
+                            black: '#111111',
+                            dark: '#2B2B2B',
+                            gray: '#8E8E93',
+                            border: '#E5E5EA',
+                            bg: '#F5F5F7',
+                            white: '#FFFFFF'
                         }
                     },
                     fontFamily: {
@@ -30,7 +32,7 @@
                         mono: ['JetBrains Mono', 'Menlo', 'monospace'],
                     },
                     boxShadow: {
-                        'card': '0 1px 3px rgba(0,0,0,0.05), 0 5px 15px rgba(0,0,0,0.02)', // Мягкая тень как на скрине
+                        'card': '0 1px 3px rgba(0,0,0,0.05), 0 5px 15px rgba(0,0,0,0.02)',
                     }
                 }
             }
@@ -42,16 +44,14 @@
     <style>
         body { 
             font-family: 'Inter', sans-serif; 
-            background-color: #F5F5F7; /* Фон как на референсе */
+            background-color: #F5F5F7;
             color: #111111; 
         }
         
-        /* Скроллбар */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
         
-        /* Стили для Flatpickr */
         .flatpickr-calendar { border: none !important; box-shadow: 0 10px 40px rgba(0,0,0,0.1) !important; border-radius: 16px !important; }
         .flatpickr-day.selected { background: #111111 !important; border-color: #111111 !important; }
     </style>
@@ -72,6 +72,8 @@
 
                 <nav class="hidden md:flex items-center gap-2">
                     <a href="/" class="px-4 py-2 rounded-lg text-sm font-medium text-mono-gray hover:text-mono-black hover:bg-mono-bg transition">Поиск</a>
+                    
+                    <a href="/distance" class="px-4 py-2 rounded-lg text-sm font-medium text-mono-gray hover:text-mono-black hover:bg-mono-bg transition">Расчёт</a>
                     
                     {% if user %}
                         {% if user.role == 'admin' %}
