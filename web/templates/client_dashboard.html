@@ -25,7 +25,7 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
         <div onclick="applyFilter('all')" 
-             class="bg-white p-6 rounded-2xl border border-mono-light cursor-pointer hover:border-mono-gray transition group select-none relative overflow-hidden">
+             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-mono-gray transition group select-none relative overflow-hidden">
             <div id="indicator-all" class="absolute top-0 left-0 w-1 h-full bg-mono-black transition-opacity" style="opacity: 1;"></div>
             <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Всего</p>
             <div class="flex items-baseline justify-between">
@@ -35,7 +35,7 @@
         </div>
 
         <div onclick="applyFilter('terminal')"
-             class="bg-white p-6 rounded-2xl border border-mono-light cursor-pointer hover:border-orange-400 transition group select-none relative overflow-hidden">
+             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-orange-400 transition group select-none relative overflow-hidden">
             <div id="indicator-terminal" class="absolute top-0 left-0 w-1 h-full bg-orange-500 transition-opacity" style="opacity: 0;"></div>
             <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">На терминале</p>
             <div class="flex items-baseline justify-between">
@@ -47,7 +47,7 @@
         </div>
 
         <div onclick="applyFilter('transit')"
-             class="bg-white p-6 rounded-2xl border border-mono-light cursor-pointer hover:border-blue-400 transition group select-none relative overflow-hidden">
+             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-blue-400 transition group select-none relative overflow-hidden">
             <div id="indicator-transit" class="absolute top-0 left-0 w-1 h-full bg-blue-500 transition-opacity" style="opacity: 0;"></div>
             <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">В пути</p>
             <div class="flex items-baseline justify-between">
@@ -59,7 +59,7 @@
         </div>
 
         <div onclick="applyFilter('arrived')"
-             class="bg-white p-6 rounded-2xl border border-mono-light cursor-pointer hover:border-green-400 transition group select-none relative overflow-hidden">
+             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-green-400 transition group select-none relative overflow-hidden">
             <div id="indicator-arrived" class="absolute top-0 left-0 w-1 h-full bg-green-500 transition-opacity" style="opacity: 0;"></div>
             <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Прибыло</p>
             <div class="flex items-baseline justify-between">
@@ -71,7 +71,7 @@
         </div>
     </div>
     
-    <div class="bg-white p-4 rounded-2xl border border-mono-light">
+    <div class="bg-white/70 backdrop-blur-sm p-4 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark">
         <form id="filter-form" 
               hx-get="/client/containers/search" 
               hx-target="#containers-table-body" 
@@ -124,7 +124,7 @@
         </form>
     </div>
 
-    <div class="bg-white rounded-2xl border border-mono-light overflow-hidden">
+    <div class="bg-white/70 backdrop-blur-sm rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left text-mono-gray">
                 <thead class="text-xs text-mono-gray uppercase bg-mono-light/50 border-b border-mono-light">

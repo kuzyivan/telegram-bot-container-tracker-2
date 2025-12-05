@@ -18,6 +18,11 @@
         tailwind.config = {
             theme: {
                 extend: {
+                    boxShadow: {
+                        // Эффект вдавленного или выпуклого металла
+                        'metal': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.5), 0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                        'metal-dark': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.3)',
+                    },
                     colors: {
                         // Переопределяем стандартные цвета под твою палитру
                         mono: {
@@ -62,7 +67,7 @@
     <style>
         body { 
             font-family: 'Inter', sans-serif; 
-            background-color: #FFFFFF; /* Белый фон страницы */
+            /* background-color: #FFFFFF; /* Белый фон страницы */
             color: #2B2B2B; /* Темный текст */
         }
         
@@ -81,12 +86,49 @@
         .flatpickr-calendar { border: 1px solid #E2E2E2; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border-radius: 12px; }
         .flatpickr-day.selected { background: #2B2B2B !important; border-color: #2B2B2B !important; }
         .flatpickr-day:hover { background: #F2F2F2 !important; }
+
+        /* Эффект анодированного алюминия */
+        .bg-aluminum {
+            /* 1. Базовый цвет (твой Light из палитры) */
+            background-color: #F2F2F2;
+            
+            /* 2. Легкий градиент для имитации металлического блика */
+            background-image: 
+                linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(0,0,0,0.05) 100%),
+                /* 3. SVG Шум для текстуры металла */
+                url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+            
+            /* Свойства фона */
+            background-repeat: repeat; /* Шум повторяется */
+            background-size: auto, 150px 150px; /* Размер зерна */
+            background-blend-mode: normal; /* Смешивание */
+        }
+        
+        .bg-aluminum-flat {
+            background-color: #F2F2F2;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 150px 150px;
+        }
+
+        /* Для темной темы (Dark Aluminum / Gunmetal) */
+        .dark .bg-aluminum {
+            background-color: #1A1A1A; /* Темная база */
+            background-image: 
+                linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.2) 100%),
+                url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E");
+        }
+
+        .dark .bg-aluminum-flat {
+            background-color: #1A1A1A;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.15'/%3E%3C/svg%3E");
+        }
     </style>
 </head>
 
-<body class="min-h-screen flex flex-col antialiased">
+<body class="bg-aluminum text-mono-black dark:text-mono-white min-h-screen flex flex-col antialiased">
 
-    <header class="bg-white border-b border-mono-light sticky top-0 z-40 backdrop-blur-md bg-white/90">
+    <header class="bg-aluminum-flat border-b border-mono-light/80 sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             
             <div class="flex items-center gap-2">
@@ -128,7 +170,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-white border-t border-mono-light mt-auto">
+    <footer class="bg-aluminum-flat border-t border-mono-light/80 mt-auto">
         <div class="max-w-7xl mx-auto px-4 py-8 flex justify-between items-center text-xs text-mono-gray">
             <p>&copy; 2025 Logistrail Tracker.</p>
             <p class="hidden sm:block opacity-60">Monochrome Edition v2.0</p>
