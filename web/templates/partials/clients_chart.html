@@ -1,74 +1,85 @@
-<div class="relative h-64 w-full animate-fade-in">
+<div class="relative h-full w-full animate-fade-in">
     <canvas id="clientsChart"></canvas>
 </div>
 
 <script>
-    // Если график уже существует (при обновлении), уничтожаем его, чтобы нарисовать новый
-    // Проверяем, определена ли переменная и существует ли экземпляр
     if (typeof clientsChartInstance !== 'undefined' && clientsChartInstance) {
         clientsChartInstance.destroy();
     }
 
     var ctx = document.getElementById('clientsChart').getContext('2d');
     
-    // Создаем глобальную переменную (через window), чтобы иметь к ней доступ при следующем обновлении
+    // Создаем градиентную палитру серого
+    const colors = [
+        '#111111', // Черный
+        '#333333', // Темно-серый
+        '#555555',
+        '#777777',
+        '#999999',
+        '#BBBBBB',
+        '#DDDDDD'  // Светло-серый
+    ];
+
     window.clientsChartInstance = new Chart(ctx, {
-        type: 'bar',
+        type: 'doughnut', // Круговая диаграмма как на скрине
         data: {
             labels: {{ chart_clients_labels|safe }},
             datasets: [{
-                label: 'Контейнеров',
                 data: {{ chart_clients_values|safe }},
-                backgroundColor: [
-                    '#2B2B2B',
-                    '#4F4F4F',
-                    '#6F767E',
-                    '#9CA3AF',
-                    '#D1D5DB',
-                    '#E5E7EB'
-                ],
-                borderRadius: 6,
-                barThickness: 40,
-                maxBarThickness: 60
+                backgroundColor: colors,
+                borderWidth: 0, // Убираем границы сегментов для чистоты
+                hoverOffset: 4
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: '70%', // Делаем "пончик" тоньше
             plugins: { 
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: 'rgb(255 255 255 / 0.9)',
-                    titleColor: '#2B2B2B',
-                    bodyColor: '#2B2B2B',
-                    padding: 10,
-                    cornerRadius: 8,
-                    borderColor: '#E2E2E2',
-                    borderWidth: 1
-                }
-            },
-            scales: { 
-                y: { 
-                    beginAtZero: true,
-                    grid: { 
-                        borderDash: [4, 4], 
-                        color: '#F2F2F2'
-                    },
-                    ticks: { 
-                        precision: 0,
-                        color: '#6F767E'
+                legend: { 
+                    position: 'right',
+                    labels: { 
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        font: { family: "'Inter', sans-serif", size: 12 },
+                        color: '#111111'
                     }
                 },
-                x: {
-                    grid: { display: false },
-                    ticks: {
-                        color: '#6F767E'
-                    }
+                tooltip: {
+                    backgroundColor: '#111111',
+                    titleColor: '#FFFFFF',
+                    bodyColor: '#FFFFFF',
+                    padding: 12,
+                    cornerRadius: 8,
+                    displayColors: false
                 }
             },
-            animation: {
-                duration: 500 // Немного ускорим анимацию при обновлении
+            layout: { padding: 10 }
+        }
+    });
+    
+    // Рисуем текст в центре (опционально, если нужно показать общий процент/число)
+    Chart.register({
+        id: 'centerText',
+        beforeDraw: function(chart) {
+            var width = chart.width, height = chart.height, ctx = chart.ctx;
+            ctx.restore();
+            var fontSize = (height / 114).toFixed(2);
+            ctx.font = "bold " + fontSize + "em Inter";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#111111";
+            
+            var text = "{{ total_sent }}", // Общее число
+                textX = Math.round((width - ctx.measureText(text).width) / 2) - 40, // Смещение из-за легенды справа
+                textY = height / 2;
+            
+            // Простая центровка, если легенда справа
+            if (chart.config.options.plugins.legend.position === 'right') {
+                 // ручная подгонка не идеальна, но работает для демо
+            } else {
+                 ctx.fillText(text, textX, textY);
             }
+            ctx.save();
         }
     });
 </script>

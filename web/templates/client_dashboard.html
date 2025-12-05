@@ -3,141 +3,131 @@
 {% block title %}Мои грузы — {{ company.name }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6 animate-fade-in pb-10">
+<div class="w-full space-y-6 animate-fade-in pb-10">
 
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h1 class="text-2xl font-bold text-mono-black flex flex-wrap items-center gap-3">
-                Мои грузы
-                <span class="bg-mono-light text-mono-black px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-slate-200">
-                    {{ company.name }}
-                </span>
-                <span class="bg-mono-light text-mono-gray px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                    {{ user.first_name }} {{ user.last_name or '' }}
-                </span>
-            </h1>
-            <p class="text-mono-gray text-sm mt-1">Оперативный мониторинг контейнеров</p>
+            <h1 class="text-3xl font-bold text-mono-black tracking-tight">Обзор перевозок</h1>
+            <p class="text-mono-gray text-sm mt-1">Компания: {{ company.name }}</p>
         </div>
+        
+        <form id="filter-form" class="flex gap-2 bg-white p-1 rounded-xl shadow-sm border border-mono-border">
+            <input type="text" name="date_from" class="datepicker w-28 px-3 py-1.5 text-sm bg-transparent outline-none text-center font-medium" placeholder="С даты">
+            <span class="text-mono-border self-center">|</span>
+            <input type="text" name="date_to" class="datepicker w-28 px-3 py-1.5 text-sm bg-transparent outline-none text-center font-medium" placeholder="По дату">
+            <button type="submit" class="bg-mono-black text-white px-4 py-1.5 rounded-lg text-sm font-medium shadow-sm hover:opacity-90 transition">
+                Обновить
+            </button>
+        </form>
     </div>
 
-    <!-- KPI Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
         <div onclick="applyFilter('all')" 
-             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-mono-gray transition group select-none relative overflow-hidden">
-            <div id="indicator-all" class="absolute top-0 left-0 w-1 h-full bg-mono-black transition-opacity" style="opacity: 1;"></div>
-            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Всего</p>
-            <div class="flex items-baseline justify-between">
-                <p class="text-3xl font-extrabold text-mono-black">{{ kpi.total }}</p>
-                <svg class="w-6 h-6 text-mono-light group-hover:text-mono-gray transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-sm font-medium text-mono-gray">Всего грузов</p>
+                <div class="p-2 bg-mono-bg rounded-full text-mono-black group-hover:bg-black group-hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+            </div>
+            <p class="text-3xl font-bold text-mono-black">{{ kpi.total }}</p>
+            <div class="mt-4 h-1 w-full bg-mono-bg rounded-full overflow-hidden">
+                <div class="h-full bg-mono-black w-full"></div>
             </div>
         </div>
 
         <div onclick="applyFilter('terminal')"
-             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-orange-400 transition group select-none relative overflow-hidden">
-            <div id="indicator-terminal" class="absolute top-0 left-0 w-1 h-full bg-orange-500 transition-opacity" style="opacity: 0;"></div>
-            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">На терминале</p>
-            <div class="flex items-baseline justify-between">
-                <p class="text-3xl font-extrabold text-orange-600">{{ kpi.terminal }}</p>
-                <div class="text-orange-400">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-sm font-medium text-mono-gray">На терминале</p>
+                <div class="p-2 bg-mono-bg rounded-full text-mono-black group-hover:bg-black group-hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                 </div>
+            </div>
+            <p class="text-3xl font-bold text-mono-black">{{ kpi.terminal }}</p>
+            <div class="mt-4 h-1 w-full bg-mono-bg rounded-full overflow-hidden">
+                <div class="h-full bg-gray-400 w-1/3"></div>
             </div>
         </div>
 
         <div onclick="applyFilter('transit')"
-             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-blue-400 transition group select-none relative overflow-hidden">
-            <div id="indicator-transit" class="absolute top-0 left-0 w-1 h-full bg-blue-500 transition-opacity" style="opacity: 0;"></div>
-            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">В пути</p>
-            <div class="flex items-baseline justify-between">
-                <p class="text-3xl font-extrabold text-blue-600">{{ kpi.in_transit }}</p>
-                <div class="text-blue-400">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-sm font-medium text-mono-gray">В пути</p>
+                <div class="p-2 bg-mono-bg rounded-full text-mono-black group-hover:bg-black group-hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 </div>
+            </div>
+            <p class="text-3xl font-bold text-mono-black">{{ kpi.in_transit }}</p>
+            <div class="mt-4 h-1 w-full bg-mono-bg rounded-full overflow-hidden">
+                <div class="h-full bg-gray-600 w-2/3"></div>
             </div>
         </div>
 
         <div onclick="applyFilter('arrived')"
-             class="bg-white/70 backdrop-blur-sm p-6 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark cursor-pointer hover:border-green-400 transition group select-none relative overflow-hidden">
-            <div id="indicator-arrived" class="absolute top-0 left-0 w-1 h-full bg-green-500 transition-opacity" style="opacity: 0;"></div>
-            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Прибыло</p>
-            <div class="flex items-baseline justify-between">
-                <p class="text-3xl font-extrabold text-green-600">{{ kpi.arrived }}</p>
-                <div class="text-green-500">
-                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group">
+            <div class="flex justify-between items-start mb-4">
+                <p class="text-sm font-medium text-mono-gray">Прибыло</p>
+                <div class="p-2 bg-mono-bg rounded-full text-mono-black group-hover:bg-black group-hover:text-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                 </div>
+            </div>
+            <p class="text-3xl font-bold text-mono-black">{{ kpi.arrived }}</p>
+            <div class="mt-4 h-1 w-full bg-mono-bg rounded-full overflow-hidden">
+                <div class="h-full bg-black w-full"></div>
             </div>
         </div>
     </div>
-    
-    <div class="bg-white/70 backdrop-blur-sm p-4 rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark">
-        <form id="filter-form" 
-              hx-get="/client/containers/search" 
-              hx-target="#containers-table-body" 
-              hx-trigger="submit, input delay:500ms"
-              class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-            
-            <input type="hidden" name="status" id="status-input" value="all">
 
-            <div class="col-span-1">
-                <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Контейнер</label>
-                <input type="text" name="q" placeholder="Номер..." 
-                       class="block w-full p-2 text-sm text-mono-black border border-mono-light rounded-lg bg-mono-light/50 focus:ring-2 focus:ring-mono-black outline-none">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <h3 class="text-lg font-bold text-mono-black mb-6">Динамика отправлений</h3>
+            <div class="relative h-64 w-full">
+                {% include "partials/clients_chart.html" %}
             </div>
+        </div>
 
-            <div class="col-span-1">
-                <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Поезд (Терминал)</label>
-                <input type="text" name="train" placeholder="Например: K25-103" 
-                       class="block w-full p-2 text-sm text-mono-black border border-mono-light rounded-lg bg-mono-light/50 focus:ring-2 focus:ring-mono-black outline-none">
-            </div>
-
-            <div class="col-span-2 flex items-end gap-2">
-                <div class="flex-grow grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">С даты</label>
-                        <div class="relative">
-                            <input type="text" name="date_from" class="datepicker block w-full p-2 pl-8 text-sm border border-mono-light rounded-lg bg-mono-light/50 text-mono-black focus:ring-2 focus:ring-mono-black outline-none" placeholder="ДД.ММ.ГГГГ">
-                            <div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                                <svg class="w-4 h-4 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">По дату</label>
-                        <div class="relative">
-                            <input type="text" name="date_to" class="datepicker block w-full p-2 pl-8 text-sm border border-mono-light rounded-lg bg-mono-light/50 text-mono-black focus:ring-2 focus:ring-mono-black outline-none" placeholder="ДД.ММ.ГГГГ">
-                            <div class="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                                <svg class="w-4 h-4 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col">
+            <h3 class="text-lg font-bold text-mono-black mb-4">Быстрый поиск</h3>
+            <div class="flex-grow flex flex-col gap-4">
+                <input type="text" name="q" form="filter-form" placeholder="Номер контейнера..." 
+                       class="w-full px-4 py-3 bg-mono-bg border-none rounded-xl text-mono-black focus:ring-2 focus:ring-black placeholder-gray-400 transition outline-none font-mono">
                 
-                <button type="button" 
-                        onclick="downloadReport()"
-                        class="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg transition shadow-sm h-[38px] w-[38px] flex items-center justify-center mb-[1px]"
-                        title="Скачать Excel отчет">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                <input type="text" name="train" form="filter-form" placeholder="Номер поезда..." 
+                       class="w-full px-4 py-3 bg-mono-bg border-none rounded-xl text-mono-black focus:ring-2 focus:ring-black placeholder-gray-400 transition outline-none font-mono">
+                
+                <button type="button" onclick="htmx.trigger('#filter-form', 'submit')" 
+                        class="mt-auto w-full bg-mono-black text-white font-bold py-3 rounded-xl hover:opacity-90 transition shadow-lg">
+                    Найти
                 </button>
             </div>
-        </form>
+        </div>
     </div>
 
-    <div class="bg-white/70 backdrop-blur-sm rounded-xl border border-mono-light/50 shadow-metal dark:bg-[#222]/70 dark:border-gray-700 dark:shadow-metal-dark overflow-hidden">
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+        <div class="px-6 py-5 border-b border-mono-border flex justify-between items-center bg-white">
+            <h3 class="text-lg font-bold text-mono-black">Список контейнеров</h3>
+            
+            <button onclick="downloadReport()" class="text-sm font-medium text-mono-gray hover:text-mono-black flex items-center gap-2 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                Экспорт .xlsx
+            </button>
+        </div>
+        
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left text-mono-gray">
-                <thead class="text-xs text-mono-gray uppercase bg-mono-light/50 border-b border-mono-light">
+            <table class="w-full min-w-[1000px] text-left border-collapse">
+                <thead class="bg-mono-bg text-mono-gray text-xs uppercase font-semibold tracking-wider">
                     <tr>
-                        <th class="px-6 py-3 w-[15%]">Контейнер</th>
-                        <th class="px-6 py-3 w-[10%]">Поезд</th>
-                        <th class="px-6 py-3 w-[20%]">Маршрут</th>
-                        <th class="px-6 py-3 w-[25%]">Операция</th>
-                        <th class="px-6 py-3 w-[15%]">Дата (UTC)</th>
-                        <th class="px-6 py-3 w-[15%]">Прогресс</th>
+                        <th class="px-6 py-4">Контейнер</th>
+                        <th class="px-6 py-4">Поезд</th>
+                        <th class="px-6 py-4">Маршрут</th>
+                        <th class="px-6 py-4">Операция</th>
+                        <th class="px-6 py-4">Дата (UTC)</th>
+                        <th class="px-6 py-4 text-right">Статус</th>
                     </tr>
                 </thead>
-                <tbody id="containers-table-body" class="divide-y divide-mono-light">
+                <tbody id="containers-table-body" class="divide-y divide-mono-border bg-white">
                     {% include "partials/client_table.html" %}
                 </tbody>
             </table>
@@ -146,46 +136,33 @@
 </div>
 
 <script>
-    // Инициализация Flatpickr
     flatpickr(".datepicker", {
         locale: "ru",
         dateFormat: "Y-m-d",
         altInput: true,
         altFormat: "d.m.Y",
-        allowInput: true,
         disableMobile: "true"
     });
 
-    function applyFilter(statusType) {
-        // 1. Обновляем скрытое поле
-        const hiddenInput = document.getElementById('status-input');
-        if (hiddenInput) hiddenInput.value = statusType;
-
-        // 2. Обновляем визуальные индикаторы
-        const indicators = {
-            'all': document.getElementById('indicator-all'),
-            'terminal': document.getElementById('indicator-terminal'),
-            'transit': document.getElementById('indicator-transit'),
-            'arrived': document.getElementById('indicator-arrived')
-        };
-
-        for (const key in indicators) {
-            if (indicators[key]) {
-                indicators[key].style.opacity = (key === statusType) ? '1' : '0';
-            }
+    function applyFilter(status) {
+        // Логика фильтрации (добавить hidden input в форму)
+        let input = document.getElementById('status-input');
+        if(!input) {
+            input = document.createElement('input');
+            input.type = 'hidden';
+            input.id = 'status-input';
+            input.name = 'status';
+            document.getElementById('filter-form').appendChild(input);
         }
-
-        // 3. Отправляем форму
-        const form = document.getElementById('filter-form');
-        if (form) htmx.trigger(form, 'submit');
+        input.value = status;
+        htmx.trigger('#filter-form', 'submit');
     }
 
     function downloadReport() {
         const form = document.getElementById('filter-form');
         const formData = new FormData(form);
         const params = new URLSearchParams(formData);
-        const url = `/client/export?${params.toString()}`;
-        window.open(url, '_blank');
+        window.open(`/client/export?${params.toString()}`, '_blank');
     }
 </script>
 {% endblock %}
