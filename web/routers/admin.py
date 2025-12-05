@@ -198,27 +198,88 @@ async def schedule_planner_page(request: Request, user: User = Depends(admin_req
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
 
 @router.get("/api/schedule/events")
-async def get_schedule_events(start: str, end: str, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
-    start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
-    end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
-    stmt = select(ScheduledTrain).where(and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date))
-    result = await db.execute(stmt)
-    trains = result.scalars().all()
-    events = []
-    for t in trains:
-        title = f"{t.service_name} -> {t.destination}"
-        extendedProps = {"service": t.service_name, "dest": t.destination, "stock": t.stock_info or "", "owner": t.wagon_owner or "", "comment": t.comment or ""}
-        color = t.color if hasattr(t, 'color') else "#3b82f6"
-        events.append({"id": t.id, "title": title, "start": t.schedule_date.isoformat(), "allDay": True, "backgroundColor": color, "borderColor": color, "extendedProps": extendedProps})
-    return JSONResponse(events)
+async def get_schedule_events(
+    start: str, 
+    end: str, 
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required)
+):
+    try:
+        # Парсим даты
+        start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
+        end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
+        
+        # Запрос к БД
+        stmt = select(ScheduledTrain).where(
+            and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date)
+        )
+        result = await db.execute(stmt)
+        trains = result.scalars().all()
+        
+        events = []
+        for t in trains:
+            title = f"{t.service_name} -> {t.destination}"
+            
+            # --- ВОССТАНОВЛЕНИЕ ЦВЕТА ---
+            # Берем цвет из базы. Если поля нет или оно пустое — ставим дефолтный синий или черный
+            # Используем getattr для безопасности, если модель в памяти старая
+            train_color = getattr(t, 'color', '#111111') 
+            if not train_color:
+                train_color = '#111111' 
+
+            extendedProps = {
+                "service": t.service_name,
+                "dest": t.destination,
+                "stock": t.stock_info or "",
+                "owner": t.wagon_owner or "",
+                "comment": t.comment or ""
+            }
+            
+            events.append({
+                "id": t.id,
+                "title": title,
+                "start": t.schedule_date.isoformat(),
+                "allDay": True,
+                # Передаем цвет в свойства календаря
+                "backgroundColor": train_color, 
+                "borderColor": train_color,
+                "extendedProps": extendedProps
+            })
+            
+        return JSONResponse(events)
+        
+    except Exception as e:
+        print(f"❌ Ошибка API Calendar: {e}")
+        return JSONResponse([], status_code=500)
 
 @router.post("/api/schedule/create")
-async def create_schedule_event(date_str: str = Form(...), service: str = Form(...), destination: str = Form(...), stock: str = Form(None), owner: str = Form(None), color: str = Form("#3b82f6"), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
-    dt = datetime.strptime(date_str, "%Y-%m-%d").date()
-    new_train = ScheduledTrain(schedule_date=dt, service_name=service, destination=destination, stock_info=stock, wagon_owner=owner, color=color)
-    db.add(new_train)
-    await db.commit()
-    return {"status": "ok", "id": new_train.id}
+async def create_schedule_event(
+    date_str: str = Form(...), 
+    service: str = Form(...), 
+    destination: str = Form(...), 
+    stock: str = Form(None), 
+    owner: str = Form(None), 
+    color: str = Form("#111111"), # <--- Принимаем цвет
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required)
+):
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d").date()
+        # Сохраняем цвет в базу
+        new_train = ScheduledTrain(
+            schedule_date=dt, 
+            service_name=service, 
+            destination=destination, 
+            stock_info=stock, 
+            wagon_owner=owner, 
+            color=color # <--- Важно
+        )
+        db.add(new_train)
+        await db.commit()
+        return {"status": "ok", "id": new_train.id}
+    except Exception as e:
+        print(f"❌ Ошибка создания события: {e}")
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=500)
 
 @router.post("/api/schedule/{event_id}/move")
 async def move_schedule_event(event_id: int, new_date: str = Form(...), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
