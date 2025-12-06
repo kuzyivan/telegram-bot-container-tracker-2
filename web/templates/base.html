@@ -75,16 +75,31 @@
                 </a>
 
                 <nav class="hidden md:flex items-center gap-2">
-                    <a href="/" class="px-4 py-2 rounded-lg text-sm font-medium text-mono-gray hover:text-mono-black hover:bg-mono-bg transition">Поиск</a>
+                    <a href="/" 
+                       class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                        Поиск
+                    </a>
                     
-                    <a href="/distance" class="px-4 py-2 rounded-lg text-sm font-medium text-mono-gray hover:text-mono-black hover:bg-mono-bg transition">Расчёт</a>
+                    <a href="/distance" 
+                       class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/distance' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                        Расчёт
+                    </a>
                     
                     {% if user %}
                         {% if user.role == 'admin' %}
-                            <a href="/admin/dashboard" class="px-4 py-2 rounded-lg text-sm font-medium bg-mono-black text-white shadow-sm">Дашборд</a>
-                            <a href="/admin/schedule_planner" class="px-4 py-2 rounded-lg text-sm font-medium text-mono-gray hover:text-mono-black hover:bg-mono-bg transition">График</a>
+                            <a href="/admin/dashboard" 
+                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/admin/dashboard' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                                Дашборд
+                            </a>
+                            <a href="/admin/schedule_planner" 
+                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/admin/schedule_planner' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                                График
+                            </a>
                         {% else %}
-                            <a href="/client/dashboard" class="px-4 py-2 rounded-lg text-sm font-medium bg-mono-black text-white shadow-sm">Мои грузы</a>
+                            <a href="/client/dashboard" 
+                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/client/dashboard' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                                Мои грузы
+                            </a>
                         {% endif %}
                     {% endif %}
                 </nav>
