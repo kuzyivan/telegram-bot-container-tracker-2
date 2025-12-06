@@ -1,53 +1,95 @@
 {% if error %}
-<div class="max-w-xl mx-auto bg-red-50 border border-red-100 rounded-xl p-6 text-center animate-fade-in">
-    <div class="inline-flex items-center justify-center w-12 h-12 bg-white border border-red-100 rounded-full text-red-600 mb-3 shadow-sm">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+<div class="max-w-xl mx-auto bg-red-50 border border-red-100 rounded-xl p-4 text-center animate-fade-in">
+    <div class="inline-flex items-center justify-center w-10 h-10 bg-white border border-red-100 rounded-full text-red-600 mb-2 shadow-sm">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
     </div>
-    <h3 class="text-lg font-bold text-mono-black mb-1">Ошибка расчета</h3>
-    <p class="text-red-600 text-sm font-medium">{{ error }}</p>
+    <h3 class="text-sm font-bold text-mono-black mb-1">Ошибка расчета</h3>
+    <p class="text-red-600 text-xs font-medium">{{ error }}</p>
 </div>
 
 {% elif result %}
 <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden animate-slide-up">
     
-    <div class="px-8 py-10 text-center bg-white border-b border-mono-border">
-        <p class="text-mono-gray text-xs font-bold uppercase tracking-widest mb-3">Тарифное расстояние</p>
+    <div class="px-6 py-6 text-center bg-white border-b border-mono-border"> <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1">Тарифное расстояние</p>
         <div class="flex items-baseline justify-center gap-2">
-            <span class="text-6xl font-bold text-mono-black tracking-tighter">{{ result.distance }}</span>
-            <span class="text-2xl font-medium text-mono-gray">км</span>
+            <span class="text-5xl font-bold text-mono-black tracking-tighter">{{ result.distance }}</span> <span class="text-xl font-medium text-mono-gray">км</span>
         </div>
     </div>
 
-    <div class="w-full bg-mono-bg relative z-0" style="height: 400px;">
+    <div class="w-full bg-mono-bg relative z-0" style="height: 350px;">
         <div id="map-{{ result.info_a.station_code }}-{{ result.info_b.station_code }}" class="h-full w-full z-0"></div>
     </div>
 
-    <div class="p-8">
-        <h3 class="text-base font-bold text-mono-black mb-8 flex items-center gap-2 uppercase tracking-wide">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
-            Детализация
+    <div class="p-6">
+        <h3 class="text-sm font-bold text-mono-black mb-5 flex items-center gap-2 uppercase tracking-wide">
+            <svg class="w-4 h-4 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
+            Маршрут (Прейскурант 10-01)
         </h3>
+
+        <div class="space-y-0 text-sm border rounded-xl border-mono-border overflow-hidden">
+            
+            <div class="flex justify-between items-center p-4 bg-white border-b border-mono-border last:border-0 hover:bg-mono-bg transition">
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-mono-black"></div>
+                        <span class="font-bold text-mono-black">{{ result.info_a.station_name }}</span>
+                    </div>
+                    <div class="pl-4 ml-1 border-l border-mono-border py-1 my-1">
+                        <span class="text-xs text-mono-gray block">Входной ТП:</span>
+                        <span class="text-xs font-medium text-mono-dark">{{ result.route_details.tpa_name }}</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="block font-mono font-bold text-mono-black">{{ result.route_details.distance_a_to_tpa }} км</span>
+                </div>
+            </div>
+
+            {% if result.route_details.distance_tpa_to_tpb > 0 %}
+            <div class="flex justify-between items-center p-4 bg-mono-light/30 border-b border-mono-border hover:bg-mono-bg transition">
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Транзит</span>
+                    <div class="flex items-center gap-2 text-xs">
+                        <span class="font-medium">{{ result.route_details.tpa_name }}</span>
+                        <span class="text-mono-gray">→</span>
+                        <span class="font-medium">{{ result.route_details.tpb_name }}</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="block font-mono font-bold text-mono-black">{{ result.route_details.distance_tpa_to_tpb }} км</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="flex justify-between items-center p-4 bg-white hover:bg-mono-bg transition">
+                <div class="flex flex-col">
+                    <div class="pl-4 ml-1 border-l border-mono-border py-1 my-1">
+                        <span class="text-xs text-mono-gray block">Выходной ТП:</span>
+                        <span class="text-xs font-medium text-mono-dark">{{ result.route_details.tpb_name }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full border-2 border-mono-black"></div>
+                        <span class="font-bold text-mono-black">{{ result.info_b.station_name }}</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="block font-mono font-bold text-mono-black">{{ result.route_details.distance_tpb_to_b }} км</span>
+                </div>
+            </div>
+
         </div>
+    </div>
 </div>
 
 <script>
     (function() {
-        // Уникальный ID для карты
         const uniqueId = "map-{{ result.info_a.station_code }}-{{ result.info_b.station_code }}";
-        
-        // Безопасно парсим данные из Python
         const pathData = {{ result.route_details.detailed_path_coords | tojson | safe }};
         
-        if (!document.getElementById(uniqueId)) {
-            console.error("Map container not found:", uniqueId);
-            return;
-        }
+        if (!document.getElementById(uniqueId)) return;
 
-        // Ждем отрисовки DOM (для HTMX)
         setTimeout(() => {
             if (typeof L === 'undefined') {
-                console.error("Leaflet library not loaded!");
-                document.getElementById(uniqueId).innerHTML = "Ошибка: библиотека карт не загружена.";
+                document.getElementById(uniqueId).innerHTML = "Карта не загружена";
                 return;
             }
 
@@ -57,7 +99,6 @@
                 attributionControl: false
             });
 
-            // Используем стандартный OSM, если CartoDB не грузится (более надежно)
             L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
                 maxZoom: 19
             }).addTo(map);
@@ -73,13 +114,11 @@
                     const isEnd = (index === pathData.length - 1);
                     
                     if (isStart || isEnd) {
-                        // Простые маркеры, но черного цвета (через CSS фильтр hue-rotate/grayscale не выйдет, берем стандарт или divIcon)
-                        // Используем CircleMarker для надежности (нет внешних картинок)
                         L.circleMarker(coords, {
                             color: '#111111',
                             fillColor: isStart ? '#111111' : '#FFFFFF',
                             fillOpacity: 1,
-                            radius: 6,
+                            radius: 5,
                             weight: 2
                         }).addTo(map).bindPopup(point.name);
                     }
@@ -92,17 +131,13 @@
                     weight: 3, 
                     opacity: 0.8 
                 }).addTo(map);
-                
-                map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+                map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
             } else {
-                // Если координат нет, центрируем на Москве
                 map.setView([55.75, 37.61], 3);
             }
             
-            // Фикс серого экрана (обновление размера)
             setTimeout(() => { map.invalidateSize(); }, 300);
-            
-        }, 100); // Небольшая задержка для рендера
+        }, 100);
     })();
 </script>
 {% endif %}
