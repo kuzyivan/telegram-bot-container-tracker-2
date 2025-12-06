@@ -52,6 +52,18 @@
         margin: 1px 0 !important;
     }
 
+    /* --- БЛОКИРОВКА СКРОЛЛА FONА --- */
+    body.modal-open {
+        overflow: hidden !important;
+        touch-action: none; /* Дополнительная защита для iOS */
+    }
+    
+    /* --- УЛУЧШЕННЫЙ СКРОЛЛ В МОДАЛКЕ --- */
+    .custom-scrollbar {
+        overscroll-behavior-y: contain; /* Не передает скролл родителю */
+        -webkit-overflow-scrolling: touch; /* Плавность на iOS */
+    }
+
     /* --- МОБИЛЬНАЯ АДАПТАЦИЯ --- */
     @media (max-width: 768px) {
         /* Уменьшаем заголовок */
@@ -98,16 +110,17 @@
 
 <!-- 1. Модалка РЕЙСА (Просмотр / Редактирование) -->
 <div id="eventModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <!-- Фон (Backdrop) -->
     <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
     
-    <!-- 🔥 ИЗМЕНЕНИЕ: items-start и pt-20 (прижимаем к верху) вместо items-end -->
-    <div class="flex items-start justify-center min-h-screen px-4 pt-20 pb-4 pointer-events-none">
+    <!-- Контейнер: pt-4 на мобильном (чтобы было выше), pt-20 на пк -->
+    <div class="flex items-start justify-center min-h-screen px-4 pt-4 md:pt-20 pb-4 pointer-events-none">
         
-        <!-- 🔥 ИЗМЕНЕНИЕ: rounded-2xl (везде круглое), max-h-[85vh] (скролл внутри), flex-col -->
+        <!-- Карточка -->
         <div class="pointer-events-auto w-full max-w-md inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
             
             <!-- Хедер (Фиксированный) -->
-            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
+            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center shrink-0 bg-white z-10" style="border-left: 6px solid transparent;">
                 <h3 class="text-lg font-bold text-mono-black" id="modal-title">Рейс</h3>
                 <div class="flex items-center gap-2">
                     <div id="viewModeButtons" class="flex gap-2">
@@ -126,10 +139,10 @@
             </div>
             
             <!-- Контент (Скроллируемый) -->
-            <div class="p-6 overflow-y-auto custom-scrollbar">
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white">
                 
                 <!-- 🔥 БЛОК ПРОСМОТРА (VIEW MODE) -->
-                <div id="viewModeContent" class="space-y-6">
+                <div id="viewModeContent" class="space-y-6 pb-2">
                     <div>
                         <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
                         <p class="text-2xl font-bold text-mono-black tracking-tight leading-none" id="viewDest">Dest</p>
@@ -171,7 +184,7 @@
                 </div>
 
                 <!-- 🔥 БЛОК РЕДАКТИРОВАНИЯ (EDIT MODE) -->
-                <form id="createEventForm" class="space-y-5 hidden">
+                <form id="createEventForm" class="space-y-5 hidden pb-2">
                     <input type="hidden" id="eventDate" name="date_str">
                     <input type="hidden" name="color" id="inpColor" value="#111111">
                     
@@ -240,8 +253,7 @@
 <div id="shareModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
     
-    <!-- Аналогичное исправление: items-start, pt-20 -->
-    <div class="flex items-start justify-center min-h-screen px-4 pt-20 pb-4 pointer-events-none">
+    <div class="flex items-start justify-center min-h-screen px-4 pt-4 md:pt-20 pb-4 pointer-events-none">
         <div class="pointer-events-auto w-full max-w-lg inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
             
             <div class="bg-white px-6 pt-6 pb-6 shrink-0">
@@ -353,7 +365,7 @@
         document.getElementById('createEventForm').reset();
         selectColor('#111111', document.querySelector('.color-btn')); 
         showEditUI(true); 
-        document.getElementById('eventModal').classList.remove('hidden');
+        openModal();
     }
 
     function openModalForView(event) {
@@ -390,7 +402,7 @@
 
         showViewUI();
         document.getElementById('modal-title').innerText = 'Информация о рейсе';
-        document.getElementById('eventModal').classList.remove('hidden');
+        openModal();
     }
 
     function switchToEditMode() {
@@ -440,7 +452,17 @@
         if(header) header.style.borderLeft = `6px solid ${color}`;
         btn.classList.remove('ring-transparent'); btn.classList.add('ring-mono-black');
     }
-    function closeModal() { document.getElementById('eventModal').classList.add('hidden'); }
+    
+    // --- УПРАВЛЕНИЕ СКРОЛЛОМ БОДИ ---
+    function openModal() {
+        document.body.classList.add('modal-open'); // Блокируем скролл фона
+        document.getElementById('eventModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.body.classList.remove('modal-open'); // Разблокируем
+        document.getElementById('eventModal').classList.add('hidden');
+    }
 
     // --- API ---
     async function submitCreate() {
@@ -464,8 +486,17 @@
         try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } } } catch (e) { console.error(e); }
     }
     
-    function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
-    function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
+    function openShareModal() { 
+        document.body.classList.add('modal-open');
+        document.getElementById('shareModal').classList.remove('hidden'); 
+        loadLinks(); 
+    }
+    
+    function closeShareModal() { 
+        document.body.classList.remove('modal-open');
+        document.getElementById('shareModal').classList.add('hidden'); 
+    }
+    
     async function loadLinks() { const list = document.getElementById('linksList'); list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; try { let res = await fetch('/admin/api/schedule/links'); let links = await res.json(); if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } let html = ''; links.forEach(link => { const fullUrl = window.location.origin + `/schedule/share/${link.token}`; html += `<div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-mono-black">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`; }); list.innerHTML = html; } catch (e) { console.error(e); } }
     async function createLink() { const nameInput = document.getElementById('newLinkName'); const name = nameInput.value.trim(); if (!name) return alert("Введите название"); const formData = new FormData(); formData.append('name', name); try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } }
     async function deleteLink(id) { if (!confirm("Удалить?")) return; try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); } }
