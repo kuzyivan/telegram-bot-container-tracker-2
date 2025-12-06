@@ -2,16 +2,17 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}Logistrail{% endblock %}</title>
+
+    <!-- PWA Settings -->
     <link rel="manifest" href="/static/manifest.json">
-    
-    <meta name="theme-color" content="#111111">
-    
+    <meta name="theme-color" content="#FFFFFF">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Logistrail">
     <link rel="apple-touch-icon" href="/static/images/icon-192.png">
+
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -22,7 +23,6 @@
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
     
     <script>
         tailwind.config = {
@@ -44,6 +44,7 @@
                     },
                     boxShadow: {
                         'card': '0 1px 3px rgba(0,0,0,0.05), 0 5px 15px rgba(0,0,0,0.02)',
+                        'up': '0 -4px 20px rgba(0,0,0,0.05)', // Тень для нижнего меню
                     }
                 }
             }
@@ -57,8 +58,14 @@
             font-family: 'Inter', sans-serif; 
             background-color: #F5F5F7;
             color: #111111; 
+            -webkit-tap-highlight-color: transparent;
         }
         
+        /* Безопасная зона для iPhone X+ */
+        .safe-area-pb {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
@@ -68,19 +75,21 @@
     </style>
 </head>
 
-<body class="min-h-screen flex flex-col antialiased">
+<body class="min-h-screen flex flex-col antialiased bg-mono-bg">
 
+    <!-- ВЕРХНЕЕ МЕНЮ (ДЕСКТОП) -->
     <header class="bg-mono-white sticky top-0 z-40 border-b border-mono-border">
-        <div class="w-full px-6 h-16 flex items-center justify-between">
+        <div class="w-full px-4 sm:px-6 h-16 flex items-center justify-between">
             
-            <div class="flex items-center gap-8">
+            <div class="flex items-center gap-4 sm:gap-8">
                 <a href="/" class="flex items-center gap-3 hover:opacity-70 transition">
                     <div class="bg-mono-black p-1.5 rounded-lg">
                         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
-                    <span class="font-bold text-lg tracking-tight text-mono-black">Logistrail</span>
+                    <span class="font-bold text-lg tracking-tight text-mono-black hidden sm:block">Logistrail</span>
                 </a>
 
+                <!-- Кнопки десктопа -->
                 <nav class="hidden md:flex items-center gap-2">
                     <a href="/" 
                        class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
@@ -114,7 +123,7 @@
 
             <div class="flex items-center gap-4">
                 {% if user %}
-                    <div class="flex items-center gap-3 pl-4 border-l border-mono-border">
+                    <div class="flex items-center gap-3 pl-4 sm:border-l border-mono-border">
                         <div class="text-right hidden sm:block">
                             <p class="text-xs font-bold text-mono-black">{{ user.first_name }}</p>
                             <p class="text-[10px] text-mono-gray uppercase">{{ user.role }}</p>
@@ -133,19 +142,48 @@
         </div>
     </header>
 
-    <main class="flex-grow w-full px-4 sm:px-6 lg:px-8 py-8">
+    <!-- КОНТЕНТ (pb-24 добавляет отступ снизу на мобилках, чтобы меню не перекрывало текст) -->
+    <main class="flex-grow w-full px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- НИЖНЕЕ МЕНЮ (МОБИЛЬНОЕ PWA) -->
+    <!-- z-50 гарантирует, что оно будет поверх всего. fixed bottom-0 прибивает к низу -->
+    <nav class="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-mono-border flex justify-around items-center pt-3 pb-2 z-[100] safe-area-pb shadow-up">
+        
+        <a href="/" class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if request.url.path == '/' else 'text-mono-gray hover:text-mono-black' }} transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <span class="text-[10px] font-bold">Поиск</span>
+        </a>
+        
+        <a href="/distance" class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if request.url.path == '/distance' else 'text-mono-gray hover:text-mono-black' }} transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 7m0 13V7"></path></svg>
+            <span class="text-[10px] font-bold">Расчёт</span>
+        </a>
+
+        {% if user %}
+            <a href="{{ '/admin/dashboard' if user.role == 'admin' else '/client/dashboard' }}" 
+               class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if 'dashboard' in request.url.path else 'text-mono-gray hover:text-mono-black' }} transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
+                <span class="text-[10px] font-bold">Кабинет</span>
+            </a>
+        {% else %}
+            <a href="/login" class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if request.url.path == '/login' else 'text-mono-gray hover:text-mono-black' }} transition">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                <span class="text-[10px] font-bold">Войти</span>
+            </a>
+        {% endif %}
+    </nav>
+
+    <!-- Register Service Worker -->
     <script>
-        // Проверяем, поддерживает ли браузер PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/static/sw.js')
-                    .then(reg => console.log('PWA Service Worker запущен!', reg.scope))
-                    .catch(err => console.log('Ошибка запуска PWA:', err));
+                    .then(reg => console.log('SW registered!', reg.scope))
+                    .catch(err => console.log('SW registration failed: ', err));
             });
         }
     </script>
-</body>
 </body>
 </html>
