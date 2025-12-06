@@ -5,22 +5,110 @@
 {% block content %}
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 
-<!-- 🔥 СТИЛИ ДЛЯ DRAG-N-DROP -->
+<!-- 🔥 СТИЛИ ДЛЯ DRAG-N-DROP И МОНОХРОМНОЙ ТЕМЫ -->
 <style>
-    /* Курсор "рука" при наведении на событие */
+    /* Переопределение переменных FullCalendar для Монохрома */
+    :root {
+        --fc-border-color: #E5E5EA;
+        --fc-button-text-color: #111111;
+        --fc-button-bg-color: #FFFFFF;
+        --fc-button-border-color: #E5E5EA;
+        --fc-button-hover-bg-color: #F5F5F7;
+        --fc-button-hover-border-color: #E5E5EA;
+        --fc-button-active-bg-color: #111111;
+        --fc-button-active-border-color: #111111;
+        --fc-button-active-text-color: #FFFFFF;
+        --fc-today-bg-color: #FAFAFA;
+        --fc-event-bg-color: transparent;
+        --fc-event-border-color: transparent;
+    }
+
+    /* --- КНОПКИ (Prev, Next, Today, Month, Week) --- */
+    .fc .fc-button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        text-transform: capitalize !important;
+        padding: 0.5rem 1rem !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        transition: all 0.2s ease !important;
+        outline: none !important;
+    }
+    
+    /* Обычное состояние кнопок (белые) */
+    .fc .fc-button-primary {
+        background-color: #FFFFFF !important;
+        border-color: #E5E5EA !important;
+        color: #111111 !important;
+    }
+    
+    /* Ховер (светло-серый) */
+    .fc .fc-button-primary:hover {
+        background-color: #F5F5F7 !important;
+        border-color: #d1d5db !important;
+        color: #000000 !important;
+    }
+
+    /* Активное состояние (Черная кнопка) */
+    .fc .fc-button-active {
+        background-color: #111111 !important;
+        border-color: #111111 !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+    }
+    
+    /* Убираем синюю обводку фокуса */
+    .fc .fc-button:focus {
+        box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.2) !important;
+    }
+
+    /* --- ЗАГОЛОВКИ И СЕТКА --- */
+    .fc-toolbar-title {
+        font-size: 1.5rem !important;
+        font-weight: 800 !important;
+        color: #111111 !important;
+        letter-spacing: -0.02em !important;
+    }
+    
+    .fc-col-header-cell-cushion {
+        color: #8E8E93 !important; /* Серый цвет */
+        text-transform: uppercase !important;
+        font-size: 0.75rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.05em !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+        text-decoration: none !important;
+    }
+    
+    .fc-daygrid-day-number {
+        color: #111111 !important;
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        padding: 8px !important;
+        text-decoration: none !important;
+    }
+
+    /* --- СОБЫТИЯ (Drag-n-Drop) --- */
     .fc-event {
         cursor: grab !important; 
-    }
-    .fc-event:active {
-        cursor: grabbing !important;
-    }
-    /* Убираем лишние отступы и рамки для чистоты */
-    .fc-daygrid-event {
         border: none !important;
         background: transparent !important;
         margin-top: 2px !important;
         margin-bottom: 2px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Легкая тень */
+        border-radius: 6px !important;
     }
+    .fc-event:active {
+        cursor: grabbing !important;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1); /* Тень при перетаскивании */
+        transform: scale(1.02);
+    }
+    .fc-daygrid-event {
+        white-space: normal !important;
+    }
+    
+    /* Скрываем стандартную точку события */
+    .fc-daygrid-event-dot { display: none; }
 </style>
 
 <div class="max-w-7xl mx-auto space-y-6 pb-12 animate-fade-in">
@@ -378,6 +466,3 @@
     }
 </script>
 {% endblock %}
-```
-
-Теперь код легко читается, а все функции (включая перетаскивание) гарантированно работают. Спасибо за внимательность!
