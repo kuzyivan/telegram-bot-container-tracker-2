@@ -5,9 +5,9 @@
 {% block content %}
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 
-<!-- 🔥 СТИЛИ -->
+<!-- 🔥 СТИЛИ: АДАПТАЦИЯ ПОД МОБИЛЬНЫЕ И МОНОХРОМ -->
 <style>
-    /* FullCalendar Variables */
+    /* --- FullCalendar Variables --- */
     :root {
         --fc-border-color: #E5E5EA;
         --fc-button-text-color: #111111;
@@ -23,31 +23,44 @@
         --fc-event-border-color: transparent;
     }
 
-    /* Кнопки */
+    /* --- Кнопки --- */
     .fc .fc-button {
-        border-radius: 10px !important; font-weight: 600 !important; text-transform: capitalize !important;
-        padding: 0.5rem 1rem !important; box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-        transition: all 0.2s ease !important; outline: none !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        text-transform: capitalize !important;
+        padding: 0.5rem 1rem !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        transition: all 0.2s ease !important;
+        outline: none !important;
     }
     .fc .fc-button-primary { background-color: #FFFFFF !important; border-color: #E5E5EA !important; color: #111111 !important; }
     .fc .fc-button-primary:hover { background-color: #F5F5F7 !important; border-color: #d1d5db !important; }
     .fc .fc-button-active { background-color: #111111 !important; border-color: #111111 !important; color: #FFFFFF !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; }
     .fc .fc-button:focus { box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.2) !important; }
 
-    /* Заголовки */
+    /* --- Сетка и Текст --- */
     .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 800 !important; color: #111111 !important; letter-spacing: -0.02em !important; }
     .fc-col-header-cell-cushion { color: #8E8E93 !important; text-transform: uppercase !important; font-size: 0.75rem !important; font-weight: 700 !important; padding: 10px 0 !important; text-decoration: none !important; }
     .fc-daygrid-day-number { color: #111111 !important; font-weight: 600 !important; font-size: 0.9rem !important; padding: 8px !important; text-decoration: none !important; }
-    .fc-daygrid-event-dot { display: none; }
+    .fc-daygrid-event-dot { display: none; } /* Скрываем дефолтную точку */
 
-    /* События */
-    .fc-event { cursor: pointer; border: none !important; background: transparent !important; margin: 1px 0 !important; }
+    /* --- События (Общее) --- */
+    .fc-event {
+        cursor: pointer;
+        border: none !important;
+        background: transparent !important;
+        margin: 1px 0 !important;
+    }
 
-    /* Мобильная адаптация */
+    /* --- МОБИЛЬНАЯ АДАПТАЦИЯ --- */
     @media (max-width: 768px) {
+        /* Уменьшаем заголовок */
         .fc-toolbar-title { font-size: 1.1rem !important; }
+        /* Компактные кнопки */
         .fc .fc-button { padding: 0.4rem 0.6rem !important; font-size: 0.75rem !important; }
+        /* Уменьшаем высоту ячеек, чтобы влезало больше недель */
         .fc-daygrid-day-frame { min-height: 60px !important; }
+        /* Прячем длинные названия дней недели (Понедельник -> П), оставляем первую букву */
         .fc-col-header-cell-cushion { overflow: hidden; max-width: 20px; text-overflow: clip; white-space: nowrap; }
     }
 </style>
@@ -285,6 +298,7 @@
                 updateEventDate(info.event.id, info.event.startStr);
             },
             
+            // 🔥 РЕНДЕРИНГ: Точки для мобил, Карточки для ПК
             eventContent: function(arg) {
                 let props = arg.event.extendedProps || {};
                 let bgColor = arg.event.backgroundColor || '#111111'; 
@@ -292,6 +306,7 @@
                 let service = props.service || 'Сервис';
                 let owner = props.owner || '';
                 
+                // 1. ДЕСКТОП ВЕРСИЯ (Карточка) - hidden md:flex
                 let desktopHtml = `
                     <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 select-none overflow-hidden hover:shadow-md transition-shadow" 
                          style="border-left: 4px solid ${bgColor};">
@@ -300,11 +315,14 @@
                         ${owner ? `<div class="text-[9px] text-mono-gray/70 pt-1 pointer-events-none">👤 ${owner}</div>` : ''}
                     </div>
                 `;
+
+                // 2. МОБИЛЬНАЯ ВЕРСИЯ (Точка) - md:hidden flex
                 let mobileHtml = `
                     <div class="md:hidden flex justify-center items-center w-full py-0.5">
                         <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
                     </div>
                 `;
+
                 return { html: desktopHtml + mobileHtml }
             }
         });
