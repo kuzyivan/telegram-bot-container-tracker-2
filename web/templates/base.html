@@ -4,7 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Logistrail{% endblock %}</title>
-
+    <link rel="manifest" href="/static/manifest.json">
+    
+    <meta name="theme-color" content="#111111">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Logistrail">
+    <link rel="apple-touch-icon" href="/static/images/icon-192.png">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -129,6 +136,16 @@
     <main class="flex-grow w-full px-4 sm:px-6 lg:px-8 py-8">
         {% block content %}{% endblock %}
     </main>
-
+    <script>
+        // Проверяем, поддерживает ли браузер PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(reg => console.log('PWA Service Worker запущен!', reg.scope))
+                    .catch(err => console.log('Ошибка запуска PWA:', err));
+            });
+        }
+    </script>
+</body>
 </body>
 </html>
