@@ -100,13 +100,16 @@
 <div id="eventModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
     
-    <div class="flex items-end md:items-center justify-center min-h-screen px-0 md:px-4 pt-4 pb-0 md:pb-20 pointer-events-none">
-        <div class="pointer-events-auto w-full md:w-auto inline-block bg-white rounded-t-2xl md:rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border-t border-mono-border md:border sm:max-w-md sm:w-full">
+    <!-- 🔥 ИЗМЕНЕНИЕ: items-start и pt-20 (прижимаем к верху) вместо items-end -->
+    <div class="flex items-start justify-center min-h-screen px-4 pt-20 pb-4 pointer-events-none">
+        
+        <!-- 🔥 ИЗМЕНЕНИЕ: rounded-2xl (везде круглое), max-h-[85vh] (скролл внутри), flex-col -->
+        <div class="pointer-events-auto w-full max-w-md inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
             
-            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center" style="border-left: 6px solid transparent;">
+            <!-- Хедер (Фиксированный) -->
+            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
                 <h3 class="text-lg font-bold text-mono-black" id="modal-title">Рейс</h3>
                 <div class="flex items-center gap-2">
-                    <!-- Кнопки в заголовке для режима просмотра -->
                     <div id="viewModeButtons" class="flex gap-2">
                         <button onclick="switchToEditMode()" class="p-2 bg-mono-bg rounded-lg text-mono-gray hover:text-mono-black hover:bg-mono-border transition" title="Редактировать">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
@@ -122,7 +125,8 @@
                 </div>
             </div>
             
-            <div class="p-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+            <!-- Контент (Скроллируемый) -->
+            <div class="p-6 overflow-y-auto custom-scrollbar">
                 
                 <!-- 🔥 БЛОК ПРОСМОТРА (VIEW MODE) -->
                 <div id="viewModeContent" class="space-y-6">
@@ -217,7 +221,7 @@
             </div>
 
             <!-- ФУТЕР (Кнопки действий) -->
-            <div id="modalFooter" class="p-6 pt-2 pb-8 md:pb-6 hidden"> <!-- Скрыт в режиме просмотра -->
+            <div id="modalFooter" class="px-6 py-4 border-t border-mono-bg shrink-0 hidden bg-white"> 
                 <div class="flex flex-col gap-3">
                     <button type="button" onclick="submitCreate()" class="w-full bg-mono-black text-white py-3.5 rounded-xl font-bold text-sm hover:bg-gray-800 transition shadow-lg active:scale-95">
                         Сохранить
@@ -235,18 +239,31 @@
 <!-- 2. Модалка ПОДЕЛИТЬСЯ -->
 <div id="shareModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
-    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0 pointer-events-none">
-        <div class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-mono-border">
-            <div class="bg-white px-6 pt-6 pb-6">
+    
+    <!-- Аналогичное исправление: items-start, pt-20 -->
+    <div class="flex items-start justify-center min-h-screen px-4 pt-20 pb-4 pointer-events-none">
+        <div class="pointer-events-auto w-full max-w-lg inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
+            
+            <div class="bg-white px-6 pt-6 pb-6 shrink-0">
                 <h3 class="text-lg font-bold text-mono-black mb-4">Публичные ссылки</h3>
+                
                 <div class="flex gap-2 mb-6">
-                    <input type="text" id="newLinkName" placeholder="Название" class="flex-1 bg-mono-bg border-transparent rounded-xl px-4 py-2.5 text-sm text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black outline-none transition">
-                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">Создать</button>
+                    <input type="text" id="newLinkName" placeholder="Название" 
+                           class="flex-1 bg-mono-bg border-transparent rounded-xl px-4 py-2.5 text-sm text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black outline-none transition">
+                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">
+                        Создать
+                    </button>
                 </div>
-                <div class="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar" id="linksList"></div>
+                
+                <div class="space-y-2 overflow-y-auto pr-1 custom-scrollbar max-h-60" id="linksList">
+                    <!-- Ссылки загружаются JS -->
+                </div>
             </div>
-            <div class="bg-mono-bg px-6 py-3 flex justify-end border-t border-mono-border">
-                <button onclick="closeShareModal()" class="rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">Закрыть</button>
+            
+            <div class="bg-mono-bg px-6 py-3 flex justify-end border-t border-mono-border shrink-0">
+                <button onclick="closeShareModal()" class="rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">
+                    Закрыть
+                </button>
             </div>
         </div>
     </div>
@@ -255,7 +272,7 @@
 <script>
     let calendar;
     let selectedEventId = null;
-    let currentEventData = {}; // Для хранения данных при переключении режимов
+    let currentEventData = {}; 
 
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
@@ -286,19 +303,18 @@
             droppable: true,
 
             dateClick: function(info) {
-                openModalForCreate(info.dateStr); // При создании сразу режим редактирования
+                openModalForCreate(info.dateStr); 
             },
 
             eventClick: function(info) {
                 info.jsEvent.preventDefault();
-                openModalForView(info.event); // При клике на событие - режим ПРОСМОТРА
+                openModalForView(info.event); 
             },
 
             eventDrop: function(info) {
                 updateEventDate(info.event.id, info.event.startStr);
             },
             
-            // 🔥 РЕНДЕРИНГ: Точки для мобил, Карточки для ПК
             eventContent: function(arg) {
                 let props = arg.event.extendedProps || {};
                 let bgColor = arg.event.backgroundColor || '#111111'; 
@@ -306,7 +322,6 @@
                 let service = props.service || 'Сервис';
                 let owner = props.owner || '';
                 
-                // 1. ДЕСКТОП ВЕРСИЯ (Карточка) - hidden md:flex
                 let desktopHtml = `
                     <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 select-none overflow-hidden hover:shadow-md transition-shadow" 
                          style="border-left: 4px solid ${bgColor};">
@@ -316,7 +331,6 @@
                     </div>
                 `;
 
-                // 2. МОБИЛЬНАЯ ВЕРСИЯ (Точка) - md:hidden flex
                 let mobileHtml = `
                     <div class="md:hidden flex justify-center items-center w-full py-0.5">
                         <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
@@ -332,28 +346,21 @@
 
     // --- УПРАВЛЕНИЕ РЕЖИМАМИ (VIEW / EDIT) ---
 
-    // Открыть модалку для СОЗДАНИЯ (сразу режим редактирования)
     function openModalForCreate(dateStr) {
         selectedEventId = null;
         document.getElementById('modal-title').innerText = 'Новый рейс';
         document.getElementById('eventDate').value = dateStr;
         document.getElementById('createEventForm').reset();
-        
         selectColor('#111111', document.querySelector('.color-btn')); 
-        
-        // Показываем форму, скрываем просмотр
-        showEditUI(true); // true = создание (нет кнопки отмены редактирования, только закрыть)
-        
+        showEditUI(true); 
         document.getElementById('eventModal').classList.remove('hidden');
     }
 
-    // Открыть модалку для ПРОСМОТРА
     function openModalForView(event) {
         selectedEventId = event.id;
         let props = event.extendedProps;
-        let startStr = event.startStr; // Дата YYYY-MM-DD
+        let startStr = event.startStr; 
         
-        // Сохраняем данные для возможного редактирования
         currentEventData = {
             id: event.id,
             startStr: startStr,
@@ -365,7 +372,6 @@
             color: event.backgroundColor || '#111111'
         };
 
-        // Заполняем Блок Просмотра
         document.getElementById('viewDest').innerText = props.dest || '—';
         document.getElementById('viewService').innerText = props.service || '—';
         document.getElementById('viewDate').innerText = new Date(startStr).toLocaleDateString('ru-RU');
@@ -379,20 +385,15 @@
         document.getElementById('viewStock').innerText = props.stock || '—';
         document.getElementById('viewBlockStock').classList.toggle('hidden', !props.stock);
 
-        // Устанавливаем цвет полоски заголовка
         const header = document.getElementById('modalHeader');
         if(header) header.style.borderLeft = `6px solid ${currentEventData.color}`;
 
-        // Показываем UI просмотра
         showViewUI();
-        
         document.getElementById('modal-title').innerText = 'Информация о рейсе';
         document.getElementById('eventModal').classList.remove('hidden');
     }
 
-    // Переключиться в режим РЕДАКТИРОВАНИЯ
     function switchToEditMode() {
-        // Заполняем форму сохраненными данными
         document.getElementById('eventDate').value = currentEventData.startStr;
         document.getElementById('inpService').value = currentEventData.service;
         document.getElementById('inpDest').value = currentEventData.dest;
@@ -400,47 +401,38 @@
         document.getElementById('inpOwner').value = currentEventData.owner;
         document.getElementById('inpOverload').value = currentEventData.overload;
         
-        // Выбираем цвет
         let colorBtns = Array.from(document.querySelectorAll('.color-btn'));
         let activeBtn = colorBtns.find(b => b.getAttribute('onclick').includes(currentEventData.color));
         if (activeBtn) selectColor(currentEventData.color, activeBtn); 
         else selectColor(currentEventData.color, colorBtns[0]);
 
         document.getElementById('modal-title').innerText = 'Редактирование';
-        showEditUI(false); // false = редактирование (есть кнопка отмены)
+        showEditUI(false); 
     }
 
-    // Отменить редактирование (вернуться к просмотру)
     function cancelEditMode() {
-        // Если это было создание нового (нет ID), то просто закрываем
         if (!selectedEventId) {
             closeModal();
         } else {
-            // Если редактирование существующего - возвращаем UI просмотра
             document.getElementById('modal-title').innerText = 'Информация о рейсе';
             showViewUI();
         }
     }
 
-    // UI Helpers
     function showViewUI() {
         document.getElementById('viewModeContent').classList.remove('hidden');
-        document.getElementById('viewModeButtons').classList.remove('hidden'); // Кнопки (карандаш, корзина)
+        document.getElementById('viewModeButtons').classList.remove('hidden'); 
         document.getElementById('createEventForm').classList.add('hidden');
-        document.getElementById('modalFooter').classList.add('hidden'); // Кнопка Сохранить скрыта
+        document.getElementById('modalFooter').classList.add('hidden'); 
     }
 
     function showEditUI(isCreatingNew) {
         document.getElementById('viewModeContent').classList.add('hidden');
-        document.getElementById('viewModeButtons').classList.add('hidden'); // Прячем кнопки просмотра
+        document.getElementById('viewModeButtons').classList.add('hidden'); 
         document.getElementById('createEventForm').classList.remove('hidden');
-        document.getElementById('modalFooter').classList.remove('hidden'); // Показываем Сохранить
-        
-        // Если создаем новое, кнопка "Отмена" должна просто закрывать модалку
-        // (логика cancelEditMode это обрабатывает)
+        document.getElementById('modalFooter').classList.remove('hidden'); 
     }
 
-    // --- ФУНКЦИИ (СТАРЫЕ) ---
     function selectColor(color, btn) {
         document.querySelectorAll('.color-btn').forEach(b => { b.classList.remove('ring-mono-black'); b.classList.add('ring-transparent'); });
         document.getElementById('inpColor').value = color;
@@ -452,8 +444,6 @@
 
     // --- API ---
     async function submitCreate() {
-        // Если есть ID, сначала удаляем старое (это кривовато, но для быстрого апдейта сойдет, лучше сделать PATCH)
-        // В данном случае, так как у нас отдельный эндпоинт create, старая логика: удалить -> создать
         if (selectedEventId) { await deleteEvent(true); } 
         const form = document.getElementById('createEventForm');
         const formData = new FormData(form);
@@ -474,7 +464,6 @@
         try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } } } catch (e) { console.error(e); }
     }
     
-    // --- SHARE ---
     function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
     function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
     async function loadLinks() { const list = document.getElementById('linksList'); list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; try { let res = await fetch('/admin/api/schedule/links'); let links = await res.json(); if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } let html = ''; links.forEach(link => { const fullUrl = window.location.origin + `/schedule/share/${link.token}`; html += `<div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-mono-black">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`; }); list.innerHTML = html; } catch (e) { console.error(e); } }
