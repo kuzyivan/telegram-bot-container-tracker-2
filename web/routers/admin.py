@@ -202,7 +202,6 @@ async def get_schedule_events(
     user: User = Depends(admin_required)
 ):
     try:
-        # Парсинг дат от FullCalendar
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
         end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
         
@@ -216,7 +215,6 @@ async def get_schedule_events(
         for t in trains:
             title = f"{t.service_name} -> {t.destination}"
             
-            # --- Безопасное получение полей (если миграция не прошла, не упадем) ---
             bg_color = getattr(t, 'color', '#111111') 
             if not bg_color: bg_color = '#111111'
             
@@ -233,16 +231,26 @@ async def get_schedule_events(
             }
             
             events.append({
-                "id": t.id,
+                "id": str(t.id), # Преобразуем ID в строку (важно для FullCalendar)
                 "title": title,
                 "start": t.schedule_date.isoformat(),
                 "allDay": True,
                 "backgroundColor": bg_color, 
                 "borderColor": bg_color,
-                "extendedProps": extendedProps
+                "extendedProps": extendedProps,
+                # --- 🔥 ПРИНУДИТЕЛЬНО РАЗРЕШАЕМ ПЕРЕТАСКИВАНИЕ ---
+                "editable": True,
+                "startEditable": True,
+                "durationEditable": False,
+                "resourceEditable": False
+                # ------------------------------------------------
             })
             
         return JSONResponse(events)
+        
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR in Calendar API: {e}")
+        return JSONResponse([], status_code=200)
         
     except Exception as e:
         print(f"❌ CRITICAL ERROR in Calendar API: {e}")
