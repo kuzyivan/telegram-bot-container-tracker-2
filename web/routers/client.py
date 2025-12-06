@@ -116,7 +116,7 @@ async def get_client_data(
         current_status = get_container_status_code(track_obj)
 
         # --- Фильтр по Статусу ---
-        if status_filter != 'all':
+        if status_filter and status_filter != 'all':
             if status_filter != current_status:
                 continue
 
@@ -178,6 +178,11 @@ async def get_client_kpi(session: AsyncSession, company_id: int):
 @router.get("/dashboard")
 async def client_dashboard(
     request: Request, 
+    q: Optional[str] = Query(None),
+    status: Optional[str] = Query("all"),
+    train: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(login_required)
 ):
@@ -187,15 +192,38 @@ async def client_dashboard(
     company = await db.get(Company, user.company_id)
     kpi_data = await get_client_kpi(db, user.company_id)
     
-    # Первичная загрузка (все данные)
-    containers_data = await get_client_data(db, user.company_id)
+    # Парсинг дат
+    d_from, d_to = None, None
+    if date_from:
+        try: d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+        except: pass
+    if date_to:
+        try: d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+        except: pass
+
+    # Загрузка данных с учетом фильтров
+    containers_data = await get_client_data(
+        db, 
+        user.company_id,
+        query_str=q or "",
+        status_filter=status or "all",
+        train_filter=train or "",
+        date_from=d_from,
+        date_to=d_to
+    )
 
     return templates.TemplateResponse("client_dashboard.html", {
         "request": request,
         "user": user,
         "company": company,
         "containers": containers_data,
-        "kpi": kpi_data
+        "kpi": kpi_data,
+        # Передаем текущие значения фильтров обратно в шаблон
+        "current_q": q or "",
+        "current_status": status or "all",
+        "current_train": train or "",
+        "current_date_from": date_from or "",
+        "current_date_to": date_to or ""
     })
 
 @router.get("/containers/search")

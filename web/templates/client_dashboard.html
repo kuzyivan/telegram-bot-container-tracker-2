@@ -5,6 +5,7 @@
 {% block content %}
 <div class="max-w-7xl mx-auto space-y-8 animate-fade-in pb-12">
 
+    <!-- Хедер и Фильтр по датам -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
             <h1 class="text-3xl font-bold text-mono-black tracking-tight">Обзор перевозок</h1>
@@ -15,20 +16,35 @@
             </div>
         </div>
         
-        <form id="filter-form" class="flex items-center bg-white p-1 rounded-xl shadow-sm border border-mono-border">
-            <input type="text" name="date_from" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Начало">
+        <!-- 
+            Главная форма фильтрации (HTMX).
+            Теперь включает скрытые поля для статуса и поиска, чтобы сохранять состояние при смене дат.
+        -->
+        <form id="filter-form" 
+              hx-get="/client/containers/search" 
+              hx-target="#containers-table-body" 
+              hx-swap="innerHTML"
+              hx-push-url="true"
+              class="flex items-center bg-white p-1 rounded-xl shadow-sm border border-mono-border">
+            
+            <!-- Скрытые поля для состояния -->
+            <input type="hidden" name="status" id="status-input" value="{{ current_status }}">
+            
+            <input type="text" name="date_from" value="{{ current_date_from }}" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Начало">
             <div class="h-4 w-px bg-mono-border"></div>
-            <input type="text" name="date_to" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Конец">
+            <input type="text" name="date_to" value="{{ current_date_to }}" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Конец">
+            
             <button type="submit" class="ml-1 bg-mono-black text-white px-5 py-2 rounded-lg text-sm font-medium shadow-sm hover:bg-gray-800 transition">
                 OK
             </button>
         </form>
     </div>
 
+    <!-- KPI Блоки (Фильтры статуса) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
         <div onclick="applyFilter('all')" 
-             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden">
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden filter-card" data-status="all">
             <div class="flex justify-between items-start mb-2">
                 <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Всего</p>
                 <div class="text-mono-gray group-hover:text-mono-black transition">
@@ -36,13 +52,13 @@
                 </div>
             </div>
             <p class="text-3xl font-bold text-mono-black">{{ kpi.total }}</p>
-            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg">
+            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg transition-colors duration-300 status-bar">
                 <div class="h-full bg-mono-black w-full"></div>
             </div>
         </div>
 
         <div onclick="applyFilter('terminal')"
-             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden">
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden filter-card" data-status="terminal">
             <div class="flex justify-between items-start mb-2">
                 <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Терминал</p>
                 <div class="text-mono-gray group-hover:text-mono-black transition">
@@ -50,13 +66,13 @@
                 </div>
             </div>
             <p class="text-3xl font-bold text-mono-black">{{ kpi.terminal }}</p>
-            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg">
+            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg transition-colors duration-300 status-bar">
                 <div class="h-full bg-gray-400 w-1/3"></div>
             </div>
         </div>
 
         <div onclick="applyFilter('transit')"
-             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden">
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden filter-card" data-status="transit">
             <div class="flex justify-between items-start mb-2">
                 <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">В пути</p>
                 <div class="text-mono-gray group-hover:text-mono-black transition">
@@ -64,13 +80,13 @@
                 </div>
             </div>
             <p class="text-3xl font-bold text-mono-black">{{ kpi.in_transit }}</p>
-            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg">
+            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg transition-colors duration-300 status-bar">
                 <div class="h-full bg-gray-600 w-2/3"></div>
             </div>
         </div>
 
         <div onclick="applyFilter('arrived')"
-             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden">
+             class="bg-white p-6 rounded-2xl shadow-card border border-transparent hover:border-mono-border transition cursor-pointer group relative overflow-hidden filter-card" data-status="arrived">
             <div class="flex justify-between items-start mb-2">
                 <p class="text-xs font-bold text-mono-gray uppercase tracking-wider">Прибыло</p>
                 <div class="text-mono-gray group-hover:text-mono-black transition">
@@ -78,12 +94,13 @@
                 </div>
             </div>
             <p class="text-3xl font-bold text-mono-black">{{ kpi.arrived }}</p>
-            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg">
+            <div class="absolute bottom-0 left-0 w-full h-1 bg-mono-bg transition-colors duration-300 status-bar">
                 <div class="h-full bg-black w-full"></div>
             </div>
         </div>
     </div>
 
+    <!-- График и Сайдбар -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 bg-white p-6 rounded-2xl shadow-card border border-transparent">
             <h3 class="text-base font-bold text-mono-black mb-6">Статистика по клиентам</h3>
@@ -95,21 +112,18 @@
         <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col justify-between">
             <div>
                 <h3 class="text-base font-bold text-mono-black mb-4">Поиск по базе</h3>
-                <div class="space-y-4">
-                    <input type="text" name="q" form="filter-form" placeholder="Номер контейнера..." 
-                           class="w-full px-4 py-3 bg-mono-bg border-none rounded-xl text-mono-black focus:ring-2 focus:ring-black placeholder-gray-400 transition outline-none font-mono text-sm">
-                    
-                    <input type="text" name="train" form="filter-form" placeholder="Номер поезда..." 
-                           class="w-full px-4 py-3 bg-mono-bg border-none rounded-xl text-mono-black focus:ring-2 focus:ring-black placeholder-gray-400 transition outline-none font-mono text-sm">
-                </div>
+                <p class="text-xs text-mono-gray mb-4">
+                    Используйте фильтры в заголовках таблицы для быстрого поиска по номеру контейнера или поезда.
+                </p>
             </div>
-            <button type="button" onclick="htmx.trigger('#filter-form', 'submit')" 
-                    class="mt-6 w-full bg-mono-black text-white font-bold py-3 rounded-xl hover:opacity-90 transition shadow-lg text-sm">
-                Найти
-            </button>
+            <div class="bg-mono-bg p-4 rounded-xl text-xs text-mono-gray">
+                <p class="font-bold text-mono-black mb-1">Совет:</p>
+                Вы можете вводить частичные номера. Таблица обновится автоматически при вводе.
+            </div>
         </div>
     </div>
 
+    <!-- Таблица с данными -->
     <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
         <div class="px-6 py-5 border-b border-mono-border flex justify-between items-center">
             <h3 class="text-base font-bold text-mono-black">Детализация</h3>
@@ -123,12 +137,36 @@
             <table class="w-full min-w-[1000px] text-left border-collapse">
                 <thead class="bg-mono-bg text-mono-gray text-[11px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-6 py-4">Контейнер</th>
-                        <th class="px-6 py-4">Поезд</th>
-                        <th class="px-6 py-4">Маршрут</th>
-                        <th class="px-6 py-4">Операция</th>
-                        <th class="px-6 py-4">Дата (UTC)</th>
-                        <th class="px-6 py-4 text-right">Статус</th>
+                        <th class="px-6 py-4 align-bottom">
+                            <div class="mb-2">Контейнер</div>
+                            <!-- Фильтр по контейнеру -->
+                            <input type="text" name="q" form="filter-form" 
+                                   value="{{ current_q }}"
+                                   class="w-full bg-white border border-mono-border rounded-lg px-2 py-1.5 text-xs text-mono-black focus:border-mono-black focus:ring-0 outline-none transition font-mono"
+                                   placeholder="Поиск..."
+                                   hx-trigger="keyup changed delay:500ms"
+                                   hx-get="/client/containers/search"
+                                   hx-target="#containers-table-body"
+                                   hx-include="#filter-form"
+                                   hx-swap="innerHTML">
+                        </th>
+                        <th class="px-6 py-4 align-bottom">
+                            <div class="mb-2">Поезд</div>
+                            <!-- Фильтр по поезду -->
+                            <input type="text" name="train" form="filter-form" 
+                                   value="{{ current_train }}"
+                                   class="w-full bg-white border border-mono-border rounded-lg px-2 py-1.5 text-xs text-mono-black focus:border-mono-black focus:ring-0 outline-none transition font-mono"
+                                   placeholder="Поиск..."
+                                   hx-trigger="keyup changed delay:500ms"
+                                   hx-get="/client/containers/search"
+                                   hx-target="#containers-table-body"
+                                   hx-include="#filter-form"
+                                   hx-swap="innerHTML">
+                        </th>
+                        <th class="px-6 py-4 align-bottom pb-6">Маршрут</th>
+                        <th class="px-6 py-4 align-bottom pb-6">Операция</th>
+                        <th class="px-6 py-4 align-bottom pb-6">Дата (UTC)</th>
+                        <th class="px-6 py-4 align-bottom pb-6 text-right">Статус</th>
                     </tr>
                 </thead>
                 <tbody id="containers-table-body" class="divide-y divide-mono-border">
@@ -145,25 +183,60 @@
         dateFormat: "Y-m-d",
         altInput: true,
         altFormat: "d.m.Y",
-        disableMobile: "true"
+        disableMobile: "true",
+        onChange: function() {
+            // Триггерим отправку формы при выборе даты
+            htmx.trigger('#filter-form', 'submit');
+        }
     });
 
+    // Функция обновления статуса
     function applyFilter(status) {
-        let input = document.getElementById('status-input');
-        if(!input) {
-            input = document.createElement('input');
-            input.type = 'hidden';
-            input.id = 'status-input';
-            input.name = 'status';
-            document.getElementById('filter-form').appendChild(input);
-        }
-        input.value = status;
+        // Обновляем скрытое поле
+        const input = document.getElementById('status-input');
+        if(input) input.value = status;
+        
+        // Визуальное обновление карточек
+        document.querySelectorAll('.filter-card').forEach(card => {
+            const isActive = card.dataset.status === status;
+            const bar = card.querySelector('.status-bar');
+            
+            if (isActive) {
+                card.classList.add('ring-2', 'ring-mono-black', 'bg-mono-bg');
+                bar.classList.add('h-2'); // Увеличиваем полоску
+            } else {
+                card.classList.remove('ring-2', 'ring-mono-black', 'bg-mono-bg');
+                bar.classList.remove('h-2');
+            }
+        });
+
+        // Отправляем HTMX запрос
         htmx.trigger('#filter-form', 'submit');
     }
+
+    // Инициализация активного статуса при загрузке
+    document.addEventListener('DOMContentLoaded', () => {
+        const currentStatus = "{{ current_status }}" || "all";
+        const activeCard = document.querySelector(`.filter-card[data-status="${currentStatus}"]`);
+        if(activeCard) {
+            activeCard.classList.add('ring-2', 'ring-mono-black', 'bg-mono-bg');
+            const bar = activeCard.querySelector('.status-bar');
+            if(bar) bar.classList.add('h-2');
+        }
+    });
 
     function downloadReport() {
         const form = document.getElementById('filter-form');
         const formData = new FormData(form);
+        
+        // Добавляем значения из инпутов таблицы вручную, если они не внутри form тега в DOM
+        // (Атрибут form="filter-form" связывает их, но FormData иногда капризничает)
+        const qInput = document.querySelector('input[name="q"]');
+        const trainInput = document.querySelector('input[name="train"]');
+        
+        if (qInput) formData.set('q', qInput.value);
+        if (trainInput) formData.set('train', trainInput.value);
+
         const params = new URLSearchParams(formData);
         window.open(`/client/export?${params.toString()}`, '_blank');
     }
