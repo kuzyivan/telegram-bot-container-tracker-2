@@ -5,9 +5,9 @@
 {% block content %}
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 
-<!-- 🔥 СТИЛИ ДЛЯ DRAG-N-DROP И МОНОХРОМНОЙ ТЕМЫ -->
+<!-- 🔥 СТИЛИ: АДАПТАЦИЯ ПОД МОБИЛЬНЫЕ И МОНОХРОМ -->
 <style>
-    /* Переопределение переменных FullCalendar для Монохрома */
+    /* --- FullCalendar Variables --- */
     :root {
         --fc-border-color: #E5E5EA;
         --fc-button-text-color: #111111;
@@ -23,7 +23,7 @@
         --fc-event-border-color: transparent;
     }
 
-    /* --- КНОПКИ (Prev, Next, Today, Month, Week) --- */
+    /* --- Кнопки --- */
     .fc .fc-button {
         border-radius: 10px !important;
         font-weight: 600 !important;
@@ -33,197 +33,150 @@
         transition: all 0.2s ease !important;
         outline: none !important;
     }
-    
-    /* Обычное состояние кнопок (белые) */
-    .fc .fc-button-primary {
-        background-color: #FFFFFF !important;
-        border-color: #E5E5EA !important;
-        color: #111111 !important;
-    }
-    
-    /* Ховер (светло-серый) */
-    .fc .fc-button-primary:hover {
-        background-color: #F5F5F7 !important;
-        border-color: #d1d5db !important;
-        color: #000000 !important;
-    }
+    .fc .fc-button-primary { background-color: #FFFFFF !important; border-color: #E5E5EA !important; color: #111111 !important; }
+    .fc .fc-button-primary:hover { background-color: #F5F5F7 !important; border-color: #d1d5db !important; }
+    .fc .fc-button-active { background-color: #111111 !important; border-color: #111111 !important; color: #FFFFFF !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; }
+    .fc .fc-button:focus { box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.2) !important; }
 
-    /* Активное состояние (Черная кнопка) */
-    .fc .fc-button-active {
-        background-color: #111111 !important;
-        border-color: #111111 !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-    }
-    
-    /* Убираем синюю обводку фокуса */
-    .fc .fc-button:focus {
-        box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.2) !important;
-    }
+    /* --- Сетка и Текст --- */
+    .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 800 !important; color: #111111 !important; letter-spacing: -0.02em !important; }
+    .fc-col-header-cell-cushion { color: #8E8E93 !important; text-transform: uppercase !important; font-size: 0.75rem !important; font-weight: 700 !important; padding: 10px 0 !important; text-decoration: none !important; }
+    .fc-daygrid-day-number { color: #111111 !important; font-weight: 600 !important; font-size: 0.9rem !important; padding: 8px !important; text-decoration: none !important; }
+    .fc-daygrid-event-dot { display: none; } /* Скрываем дефолтную точку */
 
-    /* --- ЗАГОЛОВКИ И СЕТКА --- */
-    .fc-toolbar-title {
-        font-size: 1.5rem !important;
-        font-weight: 800 !important;
-        color: #111111 !important;
-        letter-spacing: -0.02em !important;
-    }
-    
-    .fc-col-header-cell-cushion {
-        color: #8E8E93 !important; /* Серый цвет */
-        text-transform: uppercase !important;
-        font-size: 0.75rem !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.05em !important;
-        padding-top: 10px !important;
-        padding-bottom: 10px !important;
-        text-decoration: none !important;
-    }
-    
-    .fc-daygrid-day-number {
-        color: #111111 !important;
-        font-weight: 600 !important;
-        font-size: 0.9rem !important;
-        padding: 8px !important;
-        text-decoration: none !important;
-    }
-
-    /* --- СОБЫТИЯ (Drag-n-Drop) --- */
+    /* --- События (Общее) --- */
     .fc-event {
-        cursor: grab !important; 
+        cursor: pointer;
         border: none !important;
         background: transparent !important;
-        margin-top: 2px !important;
-        margin-bottom: 2px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Легкая тень */
-        border-radius: 6px !important;
+        margin: 1px 0 !important;
     }
-    .fc-event:active {
-        cursor: grabbing !important;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1); /* Тень при перетаскивании */
-        transform: scale(1.02);
+
+    /* --- МОБИЛЬНАЯ АДАПТАЦИЯ --- */
+    @media (max-width: 768px) {
+        /* Уменьшаем заголовок */
+        .fc-toolbar-title { font-size: 1.1rem !important; }
+        /* Компактные кнопки */
+        .fc .fc-button { padding: 0.4rem 0.6rem !important; font-size: 0.75rem !important; }
+        /* Уменьшаем высоту ячеек, чтобы влезало больше недель */
+        .fc-daygrid-day-frame { min-height: 60px !important; }
+        /* Прячем длинные названия дней недели (Понедельник -> П), оставляем первую букву */
+        .fc-col-header-cell-cushion { overflow: hidden; max-width: 20px; text-overflow: clip; white-space: nowrap; }
     }
-    .fc-daygrid-event {
-        white-space: normal !important;
-    }
-    
-    /* Скрываем стандартную точку события */
-    .fc-daygrid-event-dot { display: none; }
 </style>
 
-<div class="max-w-7xl mx-auto space-y-6 pb-12 animate-fade-in">
+<div class="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-20 md:pb-12 animate-fade-in">
 
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+    <!-- Шапка страницы -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-4 md:px-0 pt-4 md:pt-0">
         <div>
-            <h1 class="text-3xl font-bold text-mono-black tracking-tight">График отправки</h1>
-            <p class="text-sm text-mono-gray mt-1">Планирование сервисов и стоков</p>
+            <h1 class="text-2xl md:text-3xl font-bold text-mono-black tracking-tight">График отправки</h1>
+            <p class="text-xs md:text-sm text-mono-gray mt-1">Планирование сервисов</p>
         </div>
         
-        <div class="flex items-center gap-4">
-            <div class="flex items-center gap-2 px-3 py-1.5 bg-white border border-mono-border rounded-lg shadow-sm">
+        <div class="flex items-center gap-3 w-full md:w-auto">
+            <div class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border border-mono-border rounded-lg shadow-sm">
                 <span class="w-2 h-2 rounded-full bg-mono-black"></span>
                 <span class="text-xs font-bold text-mono-black uppercase tracking-wider">План</span>
             </div>
 
-            <button onclick="openShareModal()" class="flex items-center gap-2 bg-mono-black text-white hover:bg-gray-800 px-4 py-2 rounded-xl text-sm font-bold transition shadow-md active:scale-95">
+            <button onclick="openShareModal()" class="flex-1 md:flex-none justify-center flex items-center gap-2 bg-mono-black text-white hover:bg-gray-800 px-4 py-2.5 rounded-xl text-sm font-bold transition shadow-md active:scale-95">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
                 Поделиться
             </button>
         </div>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
-        <div id='calendar' class="min-h-[750px] font-sans"></div>
+    <!-- Календарь -->
+    <div class="bg-white p-2 md:p-6 rounded-2xl shadow-card border border-transparent md:border-mono-border">
+        <div id='calendar' class="min-h-[600px] md:min-h-[750px] font-sans"></div>
     </div>
 
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО СОЗДАНИЯ/РЕДАКТИРОВАНИЯ РЕЙСА -->
-<div id="eventModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+<!-- МОДАЛКИ -->
 
-    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0 pointer-events-none">
-        <div class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full border border-mono-border">
+<!-- 1. Модалка РЕЙСА (Создание / Редактирование) -->
+<div id="eventModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+    
+    <div class="flex items-end md:items-center justify-center min-h-screen px-0 md:px-4 pt-4 pb-0 md:pb-20 pointer-events-none">
+        <!-- Панель: на мобильном снизу (bottom sheet), на ПК по центру -->
+        <div class="pointer-events-auto w-full md:w-auto inline-block bg-white rounded-t-2xl md:rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border-t border-mono-border md:border sm:max-w-md sm:w-full">
             
-            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg transition-colors duration-300">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-mono-black flex items-center gap-2" id="modal-title">
-                        Рейс
-                    </h3>
-                    <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1 rounded hover:bg-black/5">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
+            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center" style="border-left: 6px solid transparent;">
+                <h3 class="text-lg font-bold text-mono-black" id="modal-title">Рейс</h3>
+                <button onclick="closeModal()" class="p-2 bg-mono-bg rounded-full text-mono-gray hover:text-mono-black transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
             
-            <div class="p-6">
-                <form id="createEventForm" class="space-y-4">
+            <div class="p-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                <form id="createEventForm" class="space-y-5">
                     <input type="hidden" id="eventDate" name="date_str">
                     <input type="hidden" name="color" id="inpColor" value="#111111">
                     
                     <div>
-                        <label class="block text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-2">Цвет карточки</label>
-                        <div class="flex items-center gap-3">
-                            <button type="button" onclick="selectColor('#111111', this)" class="w-8 h-8 rounded-full bg-[#111111] ring-2 ring-offset-2 ring-mono-black transition shadow-sm color-btn"></button>
-                            <button type="button" onclick="selectColor('#3b82f6', this)" class="w-8 h-8 rounded-full bg-[#3b82f6] ring-2 ring-offset-2 ring-transparent hover:scale-110 transition shadow-sm color-btn"></button>
-                            <button type="button" onclick="selectColor('#10b981', this)" class="w-8 h-8 rounded-full bg-[#10b981] ring-2 ring-offset-2 ring-transparent hover:scale-110 transition shadow-sm color-btn"></button>
-                            <button type="button" onclick="selectColor('#ef4444', this)" class="w-8 h-8 rounded-full bg-[#ef4444] ring-2 ring-offset-2 ring-transparent hover:scale-110 transition shadow-sm color-btn"></button>
-                            <button type="button" onclick="selectColor('#f97316', this)" class="w-8 h-8 rounded-full bg-[#f97316] ring-2 ring-offset-2 ring-transparent hover:scale-110 transition shadow-sm color-btn"></button>
+                        <label class="block text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-3">Маркировка цветом</label>
+                        <div class="flex items-center justify-between px-2">
+                            <button type="button" onclick="selectColor('#111111', this)" class="w-8 h-8 rounded-full bg-[#111111] ring-2 ring-offset-2 ring-mono-black transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#3b82f6', this)" class="w-8 h-8 rounded-full bg-[#3b82f6] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#10b981', this)" class="w-8 h-8 rounded-full bg-[#10b981] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#ef4444', this)" class="w-8 h-8 rounded-full bg-[#ef4444] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#f97316', this)" class="w-8 h-8 rounded-full bg-[#f97316] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-mono-black mb-1.5">Сервис / Линия</label>
-                            <input type="text" name="service" id="inpService" required placeholder="FESCO Moscow" 
-                                   class="w-full px-4 py-3 bg-mono-bg border border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:border-mono-black focus:ring-0 transition outline-none text-sm font-medium">
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Сервис / Линия</label>
+                                <input type="text" name="service" id="inpService" required placeholder="FESCO Moscow" 
+                                       class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Назначение</label>
+                                <input type="text" name="destination" id="inpDest" required placeholder="Силикатная" 
+                                       class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Собственник</label>
+                                <input type="text" name="owner" id="inpOwner" placeholder="ТрансКонтейнер" 
+                                       class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Перегруз</label>
+                                <input type="text" name="overload_station" id="inpOverload" placeholder="Забайкальск" 
+                                       class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-mono-black mb-1.5">Назначение</label>
-                            <input type="text" name="destination" id="inpDest" required placeholder="Силикатная" 
-                                   class="w-full px-4 py-3 bg-mono-bg border border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:border-mono-black focus:ring-0 transition outline-none text-sm font-medium">
+                            <label class="block text-xs font-bold text-mono-black mb-1.5">Сток</label>
+                            <input type="text" name="stock" id="inpStock" placeholder="20 x 40'HC" 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
                         </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-mono-black mb-1.5">Собственник</label>
-                            <input type="text" name="owner" id="inpOwner" placeholder="ТрансКонтейнер" 
-                                   class="w-full px-4 py-3 bg-mono-bg border border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:border-mono-black focus:ring-0 transition outline-none text-sm font-medium">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-mono-black mb-1.5">Станция перегруза</label>
-                            <input type="text" name="overload_station" id="inpOverload" placeholder="Забайкальск" 
-                                   class="w-full px-4 py-3 bg-mono-bg border border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:border-mono-black focus:ring-0 transition outline-none text-sm font-medium">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-mono-black mb-1.5">Сток</label>
-                        <input type="text" name="stock" id="inpStock" placeholder="20 x 40'HC" 
-                               class="w-full px-4 py-3 bg-mono-bg border border-transparent rounded-xl text-mono-black placeholder-gray-400 focus:bg-white focus:border-mono-black focus:ring-0 transition outline-none text-sm font-medium">
                     </div>
                 </form>
             </div>
 
-            <div class="bg-mono-bg px-6 py-4 flex flex-row-reverse gap-3 border-t border-mono-border">
-                <button type="button" onclick="submitCreate()" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-mono-black px-6 py-2.5 text-sm font-bold text-white hover:bg-gray-800 transition shadow-md active:scale-95">
+            <div class="p-6 pt-2 pb-8 md:pb-6 flex flex-col gap-3">
+                <button type="button" onclick="submitCreate()" class="w-full bg-mono-black text-white py-3.5 rounded-xl font-bold text-sm hover:bg-gray-800 transition shadow-lg active:scale-95">
                     Сохранить
                 </button>
-                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden w-full sm:w-auto justify-center rounded-xl bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 text-sm font-bold hover:bg-red-100 transition">
-                    Удалить
-                </button>
-                <button type="button" onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-white border border-mono-border text-mono-black px-4 py-2.5 text-sm font-bold hover:bg-gray-50 transition">
-                    Отмена
+                <button id="btnDelete" type="button" onclick="deleteEvent()" class="hidden w-full bg-red-50 text-red-600 border border-red-200 py-3.5 rounded-xl font-bold text-sm hover:bg-red-100 transition">
+                    Удалить рейс
                 </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО "ПОДЕЛИТЬСЯ" -->
-<div id="shareModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+<!-- 2. Модалка ПОДЕЛИТЬСЯ -->
+<div id="shareModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
+    
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0 pointer-events-none">
         <div class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-mono-border">
             
@@ -233,16 +186,20 @@
                 <div class="flex gap-2 mb-6">
                     <input type="text" id="newLinkName" placeholder="Название (например: Партнеры)" 
                            class="flex-1 bg-mono-bg border-transparent rounded-xl px-4 py-2.5 text-sm text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black outline-none transition">
-                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">Создать</button>
+                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">
+                        Создать
+                    </button>
                 </div>
                 
                 <div class="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar" id="linksList">
-                    <!-- Ссылки подгружаются через JS -->
+                    <!-- Ссылки загружаются JS -->
                 </div>
             </div>
             
             <div class="bg-mono-bg px-6 py-3 flex justify-end border-t border-mono-border">
-                <button onclick="closeShareModal()" class="rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">Закрыть</button>
+                <button onclick="closeShareModal()" class="rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">
+                    Закрыть
+                </button>
             </div>
         </div>
     </div>
@@ -256,25 +213,32 @@
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
 
+        // Определяем, мобильное ли устройство
+        const isMobile = window.innerWidth < 768;
+
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'ru',
             firstDay: 1,
+            // Адаптивный хедер
             headerToolbar: {
-                left: 'prev,next today',
+                left: isMobile ? 'prev,next' : 'prev,next today',
                 center: 'title',
-                right: 'dayGridMonth,dayGridWeek'
+                right: isMobile ? '' : 'dayGridMonth,dayGridWeek'
             },
+            // Заголовок короче на мобильном
+            titleFormat: isMobile ? { month: 'short', year: 'numeric' } : { month: 'long', year: 'numeric' },
             buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя' },
-            dayMaxEvents: true, 
+            dayMaxEvents: false, // На мобильном показываем все точки
+            height: 'auto',      
+            contentHeight: 'auto',
+            
             events: '/admin/api/schedule/events', 
 
-            // --- НАСТРОЙКИ ПЕРЕТАСКИВАНИЯ ---
             editable: true,
             eventStartEditable: true,
             eventDurationEditable: false,
             droppable: true,
-            // --------------------------------
 
             dateClick: function(info) {
                 openModalForCreate(info.dateStr);
@@ -285,77 +249,65 @@
                 openModalForView(info.event);
             },
 
-            // 🔥 ЛОГИКА СМЕНЫ ДАТЫ
             eventDrop: function(info) {
-                // Если перемещение было визуально успешным, отправляем на сервер
                 updateEventDate(info.event.id, info.event.startStr);
             },
             
+            // 🔥 РЕНДЕРИНГ: Точки для мобил, Карточки для ПК
             eventContent: function(arg) {
                 let props = arg.event.extendedProps || {};
                 let bgColor = arg.event.backgroundColor || '#111111'; 
                 
                 let dest = props.dest || arg.event.title;
                 let service = props.service || 'Сервис';
-                let stock = props.stock || '';
                 let owner = props.owner || '';
-                let overload = props.overload || '';
-
-                // 🔥 ВАЖНО: Добавил select-none для корректного перетаскивания текста
-                let html = `
-                    <div class="flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 select-none overflow-hidden" 
+                
+                // 1. ДЕСКТОП ВЕРСИЯ (Карточка) - hidden md:flex
+                let desktopHtml = `
+                    <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 select-none overflow-hidden hover:shadow-md transition-shadow" 
                          style="border-left: 4px solid ${bgColor};">
-                        
-                        <div class="text-[11px] font-bold text-mono-black truncate leading-tight pointer-events-none">
-                            ${dest}
-                        </div>
-                        
-                        <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none">
-                            ${service}
-                        </div>
-
-                        ${owner || overload ? `
-                        <div class="flex flex-wrap gap-1 mt-1 pt-1 border-t border-mono-light/50 pointer-events-none">
-                            ${owner ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full">👤 ${owner}</span>` : ''}
-                            ${overload ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full">🔄 ${overload}</span>` : ''}
-                        </div>` : ''}
-
-                        ${stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-0.5 font-mono pointer-events-none">${stock}</div>` : ''}
+                        <div class="text-[11px] font-bold text-mono-black truncate leading-tight pointer-events-none">${dest}</div>
+                        <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none">${service}</div>
+                        ${owner ? `<div class="text-[9px] text-mono-gray/70 pt-1 pointer-events-none">👤 ${owner}</div>` : ''}
                     </div>
                 `;
-                return { html: html }
+
+                // 2. МОБИЛЬНАЯ ВЕРСИЯ (Точка) - md:hidden flex
+                let mobileHtml = `
+                    <div class="md:hidden flex justify-center items-center w-full py-0.5">
+                        <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
+                    </div>
+                `;
+
+                return { html: desktopHtml + mobileHtml }
             }
         });
         
         calendar.render();
     });
 
-    // --- ФУНКЦИИ МОДАЛОК ---
+    // --- ЛОГИКА ---
 
     function selectColor(color, btn) {
         document.querySelectorAll('.color-btn').forEach(b => {
-            b.classList.remove('ring-mono-black');
-            b.classList.add('ring-transparent');
+            b.classList.remove('ring-mono-black'); b.classList.add('ring-transparent');
         });
         document.getElementById('inpColor').value = color;
         const header = document.getElementById('modalHeader');
-        if(header) header.style.borderLeft = `4px solid ${color}`;
-        btn.classList.remove('ring-transparent');
-        btn.classList.add('ring-mono-black');
+        if(header) header.style.borderLeft = `6px solid ${color}`;
+        btn.classList.remove('ring-transparent'); btn.classList.add('ring-mono-black');
     }
-
+    
     function openModalForCreate(dateStr) {
         selectedEventId = null;
         document.getElementById('modal-title').innerText = 'Новый рейс';
         document.getElementById('eventDate').value = dateStr;
         document.getElementById('createEventForm').reset();
-        
         selectColor('#111111', document.querySelector('.color-btn')); 
-        
         document.getElementById('btnDelete').classList.add('hidden'); 
         document.getElementById('eventModal').classList.remove('hidden');
     }
-
+    
     function openModalForView(event) {
         selectedEventId = event.id;
         let props = event.extendedProps;
@@ -369,21 +321,16 @@
         document.getElementById('inpOverload').value = props.overload;
         
         let color = event.backgroundColor || '#111111';
-        let colorBtns = Array.from(document.querySelectorAll('.color-btn'));
-        let activeBtn = colorBtns.find(b => b.getAttribute('onclick').includes(color));
-        if (activeBtn) selectColor(color, activeBtn);
-        else selectColor(color, colorBtns[0]);
-
+        let activeBtn = Array.from(document.querySelectorAll('.color-btn')).find(b => b.getAttribute('onclick').includes(color));
+        if (activeBtn) selectColor(color, activeBtn); else selectColor(color, document.querySelector('.color-btn'));
+        
         document.getElementById('btnDelete').classList.remove('hidden');
         document.getElementById('eventModal').classList.remove('hidden');
     }
+    
+    function closeModal() { document.getElementById('eventModal').classList.add('hidden'); }
 
-    function closeModal() {
-        document.getElementById('eventModal').classList.add('hidden');
-    }
-
-    // --- API ЗАПРОСЫ ---
-
+    // --- API ---
     async function submitCreate() {
         if (selectedEventId) { await deleteEvent(true); } 
         const form = document.getElementById('createEventForm');
@@ -395,42 +342,29 @@
     }
 
     async function updateEventDate(id, dateStr) {
-        const formData = new FormData();
-        formData.append('new_date', dateStr);
-        try {
-            let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData });
-            if (!response.ok) { 
-                alert("Ошибка перемещения"); 
-                calendar.refetchEvents(); 
-            }
-        } catch (e) { 
-            console.error(e);
-            calendar.refetchEvents();
-        }
+        const formData = new FormData(); formData.append('new_date', dateStr);
+        try { let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData }); if (!response.ok) { alert("Ошибка"); calendar.refetchEvents(); } } catch (e) { console.error(e); calendar.refetchEvents(); }
     }
 
     async function deleteEvent(silent = false) {
         if (!selectedEventId) return;
         if (!silent && !confirm("Удалить рейс?")) return;
-        try {
-            let response = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' });
-            if (response.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } }
-        } catch (e) { console.error(e); }
+        try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } } } catch (e) { console.error(e); }
     }
     
-    // --- Share Logic ---
+    // --- SHARE LINKS ---
     function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
     function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
     async function loadLinks() { 
-        const list = document.getElementById('linksList');
-        list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>';
-        try {
-            let res = await fetch('/admin/api/schedule/links');
-            let links = await res.json();
-            if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; }
-            let html = '';
-            links.forEach(link => {
-                const fullUrl = window.location.origin + `/schedule/share/${link.token}`;
+        const list = document.getElementById('linksList'); 
+        list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; 
+        try { 
+            let res = await fetch('/admin/api/schedule/links'); 
+            let links = await res.json(); 
+            if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } 
+            let html = ''; 
+            links.forEach(link => { 
+                const fullUrl = window.location.origin + `/schedule/share/${link.token}`; 
                 html += `
                 <div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group">
                     <div class="overflow-hidden mr-3 w-full">
@@ -445,24 +379,24 @@
                     <button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
-                </div>`;
-            });
-            list.innerHTML = html;
-        } catch (e) { console.error(e); }
+                </div>`; 
+            }); 
+            list.innerHTML = html; 
+        } catch (e) { console.error(e); } 
     }
     
-    async function createLink() {
-        const nameInput = document.getElementById('newLinkName');
-        const name = nameInput.value.trim();
-        if (!name) return alert("Введите название");
-        const formData = new FormData();
-        formData.append('name', name);
-        try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); }
+    async function createLink() { 
+        const nameInput = document.getElementById('newLinkName'); 
+        const name = nameInput.value.trim(); 
+        if (!name) return alert("Введите название"); 
+        const formData = new FormData(); 
+        formData.append('name', name); 
+        try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } 
     }
     
-    async function deleteLink(id) {
-        if (!confirm("Удалить ссылку?")) return;
-        try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); }
+    async function deleteLink(id) { 
+        if (!confirm("Удалить ссылку?")) return; 
+        try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); } 
     }
 </script>
 {% endblock %}
