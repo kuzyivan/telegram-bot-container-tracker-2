@@ -41,11 +41,11 @@
             --fc-button-hover-border-color: #E5E5EA;
             --fc-button-active-bg-color: #111111;
             --fc-button-active-border-color: #111111;
-            --fc-button-active-text-color: #FFFFFF; /* Белый текст активной кнопки */
+            --fc-button-active-text-color: #FFFFFF;
             --fc-today-bg-color: #FAFAFA;
         }
 
-        /* Кнопки (Месяц, Неделя, Сегодня) */
+        /* Кнопки */
         .fc .fc-button-primary {
             background-color: #FFFFFF !important;
             border-color: #E5E5EA !important;
@@ -57,23 +57,13 @@
             box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
             transition: all 0.2s !important;
         }
-        
-        .fc .fc-button-primary:hover {
-            background-color: #F5F5F7 !important;
-            border-color: #d1d5db !important;
-        }
+        .fc .fc-button-primary:hover { background-color: #F5F5F7 !important; border-color: #d1d5db !important; }
+        .fc .fc-button-active { background-color: #111111 !important; border-color: #111111 !important; color: #FFFFFF !important; }
 
-        /* Активная кнопка - Черная с белым текстом */
-        .fc .fc-button-active {
-            background-color: #111111 !important;
-            border-color: #111111 !important;
-            color: #FFFFFF !important;
-        }
-
-        /* События (Карточки на сетке) */
+        /* События */
         .fc-event {
             background-color: #FFFFFF !important;
-            border: none !important; /* Убираем дефолтную рамку */
+            border: none !important;
             border-radius: 6px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.02);
             margin-bottom: 4px !important;
@@ -88,7 +78,7 @@
         }
         .fc-daygrid-event { white-space: normal !important; }
         
-        /* Типографика календаря */
+        /* Типографика */
         .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 700 !important; color: #111111; letter-spacing: -0.02em; }
         .fc-col-header-cell-cushion { color: #8E8E93; text-transform: uppercase; font-size: 0.7rem; font-weight: 700; padding: 12px !important; }
         .fc-daygrid-day-number { color: #111111; font-weight: 600; padding: 8px !important; }
@@ -100,6 +90,9 @@
         .modal-closed #modalPanel { transform: scale(0.95) translateY(10px); opacity: 0; }
         .modal-open { opacity: 1; pointer-events: auto; }
         .modal-open #modalPanel { transform: scale(1) translateY(0); opacity: 1; }
+        
+        /* Блокировка скролла фона */
+        body.modal-open-body { overflow: hidden; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -130,12 +123,14 @@
         </div>
     </div>
 
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ -->
     <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center px-4 modal-closed">
-        <div class="absolute inset-0 bg-mono-black/30 backdrop-blur-sm" onclick="closeModal()"></div>
+        <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
 
-        <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-mono-light">
+        <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-mono-light flex flex-col max-h-[85vh]">
             
-            <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center" style="border-left: 6px solid transparent;">
+            <!-- Хедер -->
+            <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
                 <div>
                     <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
                     <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Информация о рейсе</h2>
@@ -145,33 +140,40 @@
                 </button>
             </div>
 
-            <div class="p-6 space-y-5">
+            <!-- Контент -->
+            <div class="p-6 space-y-5 overflow-y-auto custom-scrollbar">
                 
                 <div>
                     <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
-                    <p class="text-2xl font-bold text-mono-black tracking-tight" id="modalDest">Dest</p>
+                    <p class="text-2xl font-bold text-mono-black tracking-tight leading-tight" id="modalDest">Dest</p>
                 </div>
 
-                <div class="grid grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 gap-6">
                     <div>
                         <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
                         <p class="text-sm font-medium text-mono-black" id="modalService">Service</p>
                     </div>
                     
-                    <div id="blockOwner">
+                    <div id="blockOwner" class="hidden">
                         <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
-                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-3 py-1 rounded-lg text-sm font-medium text-mono-black border border-mono-border">
-                            <svg class="w-3.5 h-3.5 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-3 py-1.5 rounded-lg text-sm font-medium text-mono-black border border-mono-border">
+                            <!-- Heroicon: user -->
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-mono-gray">
+                              <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                            </svg>
                             <span id="modalOwner">Owner</span>
                         </div>
                     </div>
-                </div>
 
-                <div id="blockOverload" class="hidden">
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Перегруз</p>
-                    <div class="inline-flex items-center gap-2 bg-mono-black text-white px-3 py-2 rounded-lg text-sm font-bold shadow-sm">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
-                        <span id="modalOverload">Station</span>
+                    <div id="blockOverload" class="hidden">
+                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Перегруз</p>
+                        <div class="inline-flex items-center gap-2 bg-mono-black text-white px-3 py-2 rounded-lg text-sm font-bold shadow-sm">
+                            <!-- Heroicon: arrow-path -->
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                              <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
+                            </svg>
+                            <span id="modalOverload">Station</span>
+                        </div>
                     </div>
                 </div>
 
@@ -188,8 +190,9 @@
                 </div>
             </div>
             
-            <div class="bg-mono-light/30 px-6 py-4 border-t border-mono-light flex justify-end">
-                <button onclick="closeModal()" class="px-6 py-2.5 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-border rounded-xl transition shadow-sm">
+            <!-- Футер -->
+            <div class="bg-mono-light/30 px-6 py-4 border-t border-mono-light flex justify-end shrink-0">
+                <button onclick="closeModal()" class="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-border rounded-xl transition shadow-sm">
                     Закрыть
                 </button>
             </div>
@@ -197,14 +200,11 @@
     </div>
 
     <script>
-    let calendar;
-    let selectedEventId = null;
-
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
 
-        calendar = new FullCalendar.Calendar(calendarEl, {
+        var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'ru',
             firstDay: 1,
@@ -215,202 +215,125 @@
             },
             buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя' },
             dayMaxEvents: true, 
-            events: '/admin/api/schedule/events', 
+            
+            // Используем токен из контекста шаблона для публичного API
+            events: '/api/share/{{ token }}/events', 
 
-            // --- 🔥 ВКЛЮЧАЕМ ПЕРЕТАСКИВАНИЕ ---
-            editable: true,             // Разрешает редактирование
-            eventStartEditable: true,   // Разрешает перетаскивание по датам
-            eventDurationEditable: false, // Запрещает растягивать событие (меняем только дату старта)
-            // ----------------------------------
+            // ОТКЛЮЧАЕМ редактирование для публичного вида
+            editable: false, 
+            selectable: false,
 
-            dateClick: function(info) {
-                openModalForCreate(info.dateStr);
-            },
-
+            // ОБРАБОТЧИК КЛИКА ПО СОБЫТИЮ
             eventClick: function(info) {
                 info.jsEvent.preventDefault();
-                openModalForView(info.event);
-            },
-
-            // Обработчик перетаскивания
-            eventDrop: function(info) {
-                // info.event.startStr уже содержит дату в формате 'YYYY-MM-DD' для событий на весь день
-                // Это надежнее, чем toISOString(), который может сдвинуть дату из-за часового пояса
-                updateEventDate(info.event.id, info.event.startStr);
+                openModal(info.event);
             },
             
+            // Отрисовка карточки с Heroicons
             eventContent: function(arg) {
                 let props = arg.event.extendedProps || {};
                 let bgColor = arg.event.backgroundColor || '#111111'; 
-                
                 let dest = props.dest || arg.event.title;
                 let service = props.service || 'Сервис';
-                let stock = props.stock || '';
                 let owner = props.owner || '';
                 let overload = props.overload || '';
 
-                let html = `
-                    <div class="flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
+                let desktopHtml = `
+                    <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
                          style="border-left: 4px solid ${bgColor};">
                         
-                        <div class="text-[11px] font-bold text-mono-black truncate leading-tight">
+                        <div class="text-[11px] font-bold text-mono-black truncate leading-tight pointer-events-none">
                             ${dest}
                         </div>
                         
-                        <div class="text-[10px] text-mono-gray truncate leading-tight">
+                        <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none">
                             ${service}
                         </div>
 
-                        ${owner || overload ? `
-                        <div class="flex flex-wrap gap-1 mt-1 pt-1 border-t border-mono-light/50">
-                            ${owner ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full" title="Собственник">👤 ${owner}</span>` : ''}
-                            ${overload ? `<span class="inline-flex items-center gap-0.5 text-[9px] text-mono-black font-medium bg-mono-light px-1 rounded truncate max-w-full" title="Перегруз">🔄 ${overload}</span>` : ''}
+                        ${owner ? `
+                        <div class="flex items-center gap-1 text-[9px] text-mono-gray/70 pt-1 pointer-events-none truncate border-t border-mono-light/50 mt-0.5">
+                            <!-- Heroicon: user -->
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
+                              <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                            </svg>
+                            <span class="truncate">${owner}</span>
                         </div>` : ''}
 
-                        ${stock ? `<div class="text-[9px] text-mono-gray/70 truncate mt-0.5 font-mono">${stock}</div>` : ''}
+                        ${overload ? `
+                        <div class="flex items-center gap-1 text-[9px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">
+                            <!-- Heroicon: arrow-path -->
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
+                              <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
+                            </svg>
+                            <span class="truncate">${overload}</span>
+                        </div>` : ''}
                     </div>
                 `;
-                return { html: html }
+
+                let mobileHtml = `
+                    <div class="md:hidden flex justify-center items-center w-full py-0.5">
+                        <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
+                    </div>
+                `;
+
+                return { html: desktopHtml + mobileHtml }
             }
         });
         
         calendar.render();
     });
 
-    // --- Логика модалок ---
+    // --- Логика модального окна ---
 
-    function selectColor(color, btn) {
-        document.querySelectorAll('.color-btn').forEach(b => {
-            b.classList.remove('ring-mono-black');
-            b.classList.add('ring-transparent');
-        });
-        document.getElementById('inpColor').value = color;
-        const header = document.getElementById('modalHeader');
-        if(header) header.style.borderLeft = `4px solid ${color}`;
-        btn.classList.remove('ring-transparent');
-        btn.classList.add('ring-mono-black');
-    }
-
-    function openModalForCreate(dateStr) {
-        selectedEventId = null;
-        document.getElementById('modal-title').innerText = 'Новый рейс';
-        document.getElementById('eventDate').value = dateStr;
-        document.getElementById('createEventForm').reset();
-        
-        selectColor('#111111', document.querySelector('.color-btn')); 
-        
-        document.getElementById('btnDelete').classList.add('hidden'); 
-        document.getElementById('eventModal').classList.remove('hidden');
-    }
-
-    function openModalForView(event) {
-        selectedEventId = event.id;
+    function openModal(event) {
         let props = event.extendedProps;
-        document.getElementById('modal-title').innerText = 'Редактирование';
-        document.getElementById('eventDate').value = event.startStr;
+        let startStr = event.startStr || event.start.toISOString().split('T')[0];
         
-        document.getElementById('inpService').value = props.service;
-        document.getElementById('inpDest').value = props.dest;
-        document.getElementById('inpStock').value = props.stock;
-        document.getElementById('inpOwner').value = props.owner;
-        document.getElementById('inpOverload').value = props.overload;
+        // Заполняем данные
+        document.getElementById('modalDest').innerText = props.dest || '—';
+        document.getElementById('modalService').innerText = props.service || '—';
         
-        let color = event.backgroundColor || '#111111';
-        let colorBtns = Array.from(document.querySelectorAll('.color-btn'));
-        let activeBtn = colorBtns.find(b => b.getAttribute('onclick').includes(color));
-        if (activeBtn) selectColor(color, activeBtn);
-        else selectColor(color, colorBtns[0]);
+        // Красивая дата
+        let dateObj = new Date(startStr);
+        document.getElementById('modalDate').innerText = dateObj.toLocaleDateString('ru-RU', {
+            day: 'numeric', month: 'long', year: 'numeric'
+        });
 
-        document.getElementById('btnDelete').classList.remove('hidden');
-        document.getElementById('eventModal').classList.remove('hidden');
+        // Собственник
+        document.getElementById('modalOwner').innerText = props.owner || '—';
+        document.getElementById('blockOwner').classList.toggle('hidden', !props.owner);
+
+        // Перегруз
+        document.getElementById('modalOverload').innerText = props.overload || '—';
+        document.getElementById('blockOverload').classList.toggle('hidden', !props.overload);
+
+        // Сток
+        document.getElementById('modalStock').innerText = props.stock || '—';
+        document.getElementById('blockStock').classList.toggle('hidden', !props.stock);
+        
+        // Комментарий
+        if (document.getElementById('modalComment')) {
+            document.getElementById('modalComment').innerText = props.comment || '';
+            document.getElementById('blockComment').classList.toggle('hidden', !props.comment);
+        }
+
+        // Цветная полоска слева
+        const header = document.getElementById('modalHeader');
+        if(header) {
+            let color = event.backgroundColor || '#111111';
+            header.style.borderLeft = `6px solid ${color}`;
+        }
+
+        // Показываем окно
+        document.getElementById('modalOverlay').classList.remove('modal-closed');
+        document.getElementById('modalOverlay').classList.add('modal-open');
+        document.body.classList.add('modal-open-body');
     }
 
     function closeModal() {
-        document.getElementById('eventModal').classList.add('hidden');
-    }
-
-    // --- API ---
-    async function submitCreate() {
-        if (selectedEventId) { await deleteEvent(true); } 
-        const form = document.getElementById('createEventForm');
-        const formData = new FormData(form);
-        try {
-            let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData });
-            if (response.ok) { closeModal(); calendar.refetchEvents(); } else { alert("Ошибка сохранения"); }
-        } catch (e) { console.error(e); }
-    }
-
-    // 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ДАТЫ
-    async function updateEventDate(id, dateStr) {
-        // dateStr приходит уже в формате YYYY-MM-DD, конвертация не нужна
-        const formData = new FormData();
-        formData.append('new_date', dateStr);
-        try {
-            let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData });
-            if (!response.ok) { 
-                alert("Ошибка перемещения"); 
-                calendar.refetchEvents(); // Возвращаем назад при ошибке
-            }
-        } catch (e) { 
-            console.error(e);
-            calendar.refetchEvents();
-        }
-    }
-
-    async function deleteEvent(silent = false) {
-        if (!selectedEventId) return;
-        if (!silent && !confirm("Удалить рейс?")) return;
-        try {
-            let response = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' });
-            if (response.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } }
-        } catch (e) { console.error(e); }
-    }
-    
-    // --- Share Logic ---
-    function openShareModal() { document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); }
-    function closeShareModal() { document.getElementById('shareModal').classList.add('hidden'); }
-    async function loadLinks() { 
-        const list = document.getElementById('linksList');
-        list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>';
-        try {
-            let res = await fetch('/admin/api/schedule/links');
-            let links = await res.json();
-            if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; }
-            let html = '';
-            links.forEach(link => {
-                const fullUrl = window.location.origin + `/schedule/share/${link.token}`;
-                html += `
-                <div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group">
-                    <div class="overflow-hidden mr-3 w-full">
-                        <p class="text-sm font-bold text-mono-black">${link.name}</p>
-                        <div class="flex items-center gap-2 mt-1">
-                            <input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()">
-                            <a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                            </a>
-                        </div>
-                    </div>
-                    <button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
-                </div>`;
-            });
-            list.innerHTML = html;
-        } catch (e) { console.error(e); }
-    }
-    
-    async function createLink() {
-        const nameInput = document.getElementById('newLinkName');
-        const name = nameInput.value.trim();
-        if (!name) return alert("Введите название");
-        const formData = new FormData();
-        formData.append('name', name);
-        try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); }
-    }
-    
-    async function deleteLink(id) {
-        if (!confirm("Удалить ссылку?")) return;
-        try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); }
+        document.getElementById('modalOverlay').classList.remove('modal-open');
+        document.getElementById('modalOverlay').classList.add('modal-closed');
+        document.body.classList.remove('modal-open-body');
     }
 </script>
 </body>
