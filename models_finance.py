@@ -52,11 +52,27 @@ class RailTariffRate(Base):
     station_from_code: Mapped[str] = mapped_column(String(6), index=True)
     station_to_code: Mapped[str] = mapped_column(String(6), index=True)
     container_type: Mapped[str] = mapped_column(String(10))
+    
+    # ✅ НОВОЕ ПОЛЕ: Тип сервиса (TRAIN по умолчанию)
+    # create_type=False важно, так как тип servicetype уже создан в таблице calculations
+    service_type: Mapped[ServiceType] = mapped_column(
+        PgEnum(ServiceType, name="servicetype", create_type=False), 
+        default=ServiceType.TRAIN,
+        nullable=False
+    )
+    
     rate_no_vat: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # ✅ ОБНОВЛЕННАЯ УНИКАЛЬНОСТЬ: Теперь уникальна связка с учетом ТИПА СЕРВИСА
     __table_args__ = (
-        UniqueConstraint('station_from_code', 'station_to_code', 'container_type', name='uq_tariff_route_type'),
+        UniqueConstraint(
+            'station_from_code', 
+            'station_to_code', 
+            'container_type', 
+            'service_type',  # <-- Добавили сюда
+            name='uq_tariff_route_type_service' # <-- Новое имя ограничения
+        ),
     )
 
 # --- Модели Калькулятора ---
