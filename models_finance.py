@@ -19,12 +19,12 @@ if TYPE_CHECKING:
 # --- Enums ---
 
 class ServiceType(str, enum.Enum):
-    TRAIN = "TRAIN"
-    SINGLE = "SINGLE"
+    TRAIN = "TRAIN"       # Контейнерный поезд
+    SINGLE = "SINGLE"     # Повагонная отправка
 
 class WagonType(str, enum.Enum):
-    PLATFORM = "PLATFORM"
-    GONDOLA = "GONDOLA"
+    PLATFORM = "PLATFORM" # Фитинговая платформа
+    GONDOLA = "GONDOLA"   # Полувагон
 
 class CalculationStatus(str, enum.Enum):
     DRAFT = "DRAFT"
@@ -32,8 +32,8 @@ class CalculationStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
 
 class MarginType(str, enum.Enum):
-    FIX = "FIX"
-    PERCENT = "PERCENT"
+    FIX = "FIX"           # Фиксированная сумма
+    PERCENT = "PERCENT"   # Процент
 
 # --- Модели Справочников ---
 
