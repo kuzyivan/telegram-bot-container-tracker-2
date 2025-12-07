@@ -8,11 +8,16 @@ from config import DATABASE_URL, TARIFF_DATABASE_URL
 from db_base import Base 
 
 # Импортируем ВСЕ МОДЕЛИ, чтобы Base.metadata.create_all их увидел.
+# И чтобы Registry знало о существовании классов.
 from models import (
     Subscription, Tracking, User, UserEmail, SubscriptionEmail, UserRequest, 
-    StationsCache, TrainEventLog, VerificationCode
+    StationsCache, TrainEventLog, VerificationCode, Train, Company, CompanyContainer, 
+    EventAlertRule, ScheduledTrain, ScheduleShareLink, TrackingHistory
 )
 from model.terminal_container import TerminalContainer 
+
+# ✅ ВАЖНО: Добавляем импорт финансового модуля, чтобы SQLAlchemy увидела ContainerFinance
+import models_finance 
 
 # --- 2. Создаем ДВА движка ---
 # Движок для основной БД (пользователи, подписки)
