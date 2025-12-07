@@ -13,6 +13,7 @@ from alembic import context
 from db_base import Base
 import models # Импортирует все модели из models.py
 import model.terminal_container # Импортирует модель TerminalContainer
+import models_finance # ✅ ДОБАВЛЯЕМ ЭТУ СТРОКУ
 
 # импортируем переменную DATABASE_URL из config.py
 import sys

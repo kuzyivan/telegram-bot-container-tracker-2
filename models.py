@@ -202,6 +202,7 @@ class Train(Base):
     __tablename__ = "trains"
     id: Mapped[int] = mapped_column(primary_key=True)
     terminal_train_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    service_provider: Mapped[str | None] = mapped_column(String) # Например: "ТрансКонтейнер"
     container_count: Mapped[int | None] = mapped_column(Integer)
     destination_station: Mapped[str | None] = mapped_column(String, index=True)
     departure_date: Mapped[date | None] = mapped_column(Date)
@@ -216,7 +217,7 @@ class Train(Base):
     eta_days: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-
+    
 class EventAlertRule(Base):
     __tablename__ = "event_alert_rules"
     id: Mapped[int] = mapped_column(primary_key=True)
