@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import List, Optional, TYPE_CHECKING
 
 from sqlalchemy import (
-    String, Integer, Float, Boolean, Date, ForeignKey, 
+    String, Integer, Float, Boolean, Date, DateTime, ForeignKey, 
     Enum as PgEnum, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
