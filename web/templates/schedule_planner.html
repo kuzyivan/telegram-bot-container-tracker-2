@@ -334,12 +334,18 @@
                 let service = props.service || 'Сервис';
                 let owner = props.owner || '';
                 
+                // 1. 👇 Достаем станцию перегруза
+                let overload = props.overload || ''; 
+                
                 let desktopHtml = `
                     <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 select-none overflow-hidden hover:shadow-md transition-shadow" 
                          style="border-left: 4px solid ${bgColor};">
                         <div class="text-[11px] font-bold text-mono-black truncate leading-tight pointer-events-none">${dest}</div>
                         <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none">${service}</div>
-                        ${owner ? `<div class="text-[9px] text-mono-gray/70 pt-1 pointer-events-none">👤 ${owner}</div>` : ''}
+                        
+                        ${owner ? `<div class="text-[9px] text-mono-gray/70 pt-1 pointer-events-none truncate">👤 ${owner}</div>` : ''}
+                        
+                        ${overload ? `<div class="text-[9px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">🔄 ${overload}</div>` : ''}
                     </div>
                 `;
 
