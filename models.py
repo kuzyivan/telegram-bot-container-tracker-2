@@ -247,12 +247,12 @@ class ScheduledTrain(Base):
     # Цвет события
     color: Mapped[str] = mapped_column(String, default="#111111", nullable=False)
     
-    # ✅ НОВОЕ ПОЛЕ: Станция перегруза
+    # Станция перегруза
     overload_station: Mapped[str | None] = mapped_column(String, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-# --- 6. ССЫЛКИ ДЛЯ ПУБЛИЧНОГО ДОСТУПА (Новое) ---
+# --- 6. ССЫЛКИ ДЛЯ ПУБЛИЧНОГО ДОСТУПА ---
 
 class ScheduleShareLink(Base):
     """
@@ -265,7 +265,9 @@ class ScheduleShareLink(Base):
     name: Mapped[str] = mapped_column(String, nullable=False) # Кому дали
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    class TrackingHistory(Base):
+# --- 7. ИСТОРИЯ (НОВОЕ) ---
+
+class TrackingHistory(Base):
     """
     Полная история перемещений контейнера.
     Заполняется каждый раз, когда меняется статус в основной таблице Tracking.
@@ -281,13 +283,12 @@ class ScheduleShareLink(Base):
     current_station: Mapped[str | None] = mapped_column(String)
     operation_road: Mapped[str | None] = mapped_column(String)
     
-    # Дополнительные данные (опционально, чтобы было красиво)
+    # Дополнительные данные
     wagon_number: Mapped[str | None] = mapped_column(String)
     train_number: Mapped[str | None] = mapped_column(String)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Уникальность события, чтобы не дублировать одинаковые записи при повторном импорте того же файла
     __table_args__ = (
         UniqueConstraint('container_number', 'operation_date', 'operation', name='uq_tracking_history_event'),
     )
