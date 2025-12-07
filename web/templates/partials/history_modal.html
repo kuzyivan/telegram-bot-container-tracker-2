@@ -1,0 +1,93 @@
+<!-- 
+  Контекст: 
+  - container_number: str
+  - history: List[Tracking] (отсортированный по дате убывания)
+-->
+<div class="fixed inset-0 z-[100] flex items-end md:items-start justify-center md:pt-20 px-4 pb-0 md:pb-4 animate-fade-in" role="dialog" aria-modal="true">
+    
+    <!-- Затемнение фона (Закрывает модалку при клике) -->
+    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" 
+         onclick="document.getElementById('history-modal-container').innerHTML = ''"></div>
+
+    <!-- Само окно -->
+    <div class="bg-white w-full max-w-lg rounded-t-2xl md:rounded-2xl shadow-2xl relative z-10 flex flex-col max-h-[85vh] md:max-h-[80vh] overflow-hidden transform transition-all animate-slide-up">
+        
+        <!-- Шапка (Фиксированная) -->
+        <div class="px-6 py-4 border-b border-mono-border flex justify-between items-center bg-white shrink-0 z-20">
+            <div>
+                <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-0.5">История движения</p>
+                <h2 class="text-xl font-bold text-mono-black font-mono tracking-tight">{{ container_number }}</h2>
+            </div>
+            
+            <button onclick="document.getElementById('history-modal-container').innerHTML = ''" 
+                    class="p-2 bg-mono-bg rounded-full text-mono-gray hover:text-mono-black transition hover:bg-mono-border">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <!-- Контент (Скроллируемый) -->
+        <div class="overflow-y-auto p-6 custom-scrollbar bg-mono-white">
+            
+            {% if history %}
+            <div class="relative pl-2">
+                <!-- Вертикальная линия -->
+                <div class="absolute top-2 left-[21px] h-full w-px bg-mono-border"></div>
+
+                <div class="space-y-8">
+                    {% for event in history %}
+                    <div class="relative flex gap-6 group">
+                        
+                        <!-- Точка на таймлайне -->
+                        <div class="absolute left-[17px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm z-10
+                                    {% if loop.first %} bg-mono-black ring-4 ring-mono-black/10 {% else %} bg-mono-gray/40 {% endif %}">
+                        </div>
+
+                        <!-- Контент события -->
+                        <div class="pl-10 w-full">
+                            <!-- Дата -->
+                            <div class="flex items-baseline gap-2 mb-1">
+                                <span class="text-xs font-bold font-mono text-mono-black">
+                                    {{ event.operation_date.strftime('%d.%m.%Y') if event.operation_date else '—' }}
+                                </span>
+                                <span class="text-[10px] font-mono text-mono-gray">
+                                    {{ event.operation_date.strftime('%H:%M') if event.operation_date else '' }}
+                                </span>
+                            </div>
+
+                            <!-- Карточка операции -->
+                            <div class="bg-mono-bg/50 rounded-xl p-3 border border-transparent hover:border-mono-border transition">
+                                <div class="font-bold text-sm text-mono-black mb-1">
+                                    {{ event.operation }}
+                                </div>
+                                <div class="text-xs text-mono-dark font-medium flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                    {{ event.current_station }}
+                                </div>
+                                {% if event.operation_road %}
+                                <div class="text-[10px] text-mono-gray mt-1 ml-5">
+                                    {{ event.operation_road }} ж.д.
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-10 text-mono-gray text-sm">
+                История операций пуста.
+            </div>
+            {% endif %}
+
+        </div>
+        
+        <!-- Футер (опционально, для закрытия на мобильных) -->
+        <div class="p-4 border-t border-mono-border bg-white md:hidden">
+            <button onclick="document.getElementById('history-modal-container').innerHTML = ''" 
+                    class="w-full bg-mono-black text-white font-bold py-3 rounded-xl active:scale-95 transition">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>

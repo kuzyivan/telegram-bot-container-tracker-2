@@ -2,9 +2,17 @@
 <tr class="hover:bg-mono-bg transition group">
     
     <td class="px-6 py-4 align-top">
-        <div class="font-bold text-mono-black font-mono text-sm tracking-wide">
+        <!-- 
+            🔥 ИЗМЕНЕНИЕ: Добавлен hx-get для загрузки модалки 
+            Предполагаемый роут: /client/history/{item.number}
+        -->
+        <div class="font-bold text-mono-black font-mono text-sm tracking-wide cursor-pointer hover:text-blue-600 transition border-b border-dashed border-mono-gray/50 hover:border-blue-600 w-fit"
+             hx-get="/client/history/{{ item.number }}" 
+             hx-target="#history-modal-container" 
+             hx-swap="innerHTML">
             {{ item.number }}
         </div>
+        
         {% if item.status and item.status.wagon_number %}
         <div class="text-xs text-mono-gray mt-1 flex items-center gap-1 font-mono opacity-80">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
