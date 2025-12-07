@@ -1,8 +1,8 @@
 """add_service_type_to_rates_manual
 
-Revision ID: <ОСТАВЬ_ТОТ_ЧТО_СГЕНЕРИРОВАЛСЯ>
+Revision ID: 84a01ea7c2aa
 Revises: 44c171840ca0
-Create Date: ...
+Create Date: 2025-12-08 08:30:00.000000
 
 """
 from typing import Sequence, Union
@@ -11,30 +11,27 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# !!! НЕ МЕНЯЙ revision ID, который был в файле !!!
-# revision = ... (оставь как есть)
-down_revision: Union[str, None] = '44c171840ca0' # Ссылка на предыдущую (Finance Full)
+# ✅ ВОТ ЭТИ СТРОКИ ОЧЕНЬ ВАЖНЫ:
+revision: str = '84a01ea7c2aa'          # ID текущего файла (из названия)
+down_revision: Union[str, None] = '44c171840ca0'  # ID предыдущего файла (finance_full)
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Создаем Enum тип, если его нет (checkfirst=True сложно в alembic, поэтому просто пробуем)
-    # Но так как ServiceType уже используется в calculations, тип в базе уже есть.
-    # Мы просто используем его имя 'servicetype'.
-
-    # 2. Добавляем колонку с дефолтным значением 'TRAIN'
-    # server_default нужен, чтобы заполнить существующие строки
+    # 1. Добавляем колонку service_type
+    # server_default='TRAIN' заполнит уже существующие строки значением TRAIN
     op.add_column('rail_tariff_rates', 
         sa.Column('service_type', postgresql.ENUM('TRAIN', 'SINGLE', name='servicetype', create_type=False), 
                   nullable=False, 
                   server_default='TRAIN')
     )
 
-    # 3. Удаляем старое ограничение уникальности (from + to + type)
+    # 2. Удаляем старое ограничение уникальности
+    # (Используем имя, которое было создано в предыдущей миграции)
     op.drop_constraint('uq_tariff_route_type', 'rail_tariff_rates', type_='unique')
 
-    # 4. Создаем новое ограничение (from + to + type + SERVICE)
+    # 3. Создаем новое ограничение (с учетом service_type)
     op.create_unique_constraint(
         'uq_tariff_route_type_service', 
         'rail_tariff_rates', 
@@ -43,7 +40,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Возвращаем как было
+    # Откат изменений
     op.drop_constraint('uq_tariff_route_type_service', 'rail_tariff_rates', type_='unique')
     op.create_unique_constraint('uq_tariff_route_type', 'rail_tariff_rates', ['station_from_code', 'station_to_code', 'container_type'])
     op.drop_column('rail_tariff_rates', 'service_type')
