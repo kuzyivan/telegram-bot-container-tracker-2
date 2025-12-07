@@ -7,21 +7,20 @@ from datetime import datetime, date
 from typing import Optional
 
 from fastapi import APIRouter, Request, Depends, Query
-from fastapi.responses import StreamingResponse, RedirectResponse, HTMLResponse 
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, desc 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # --- Импорты из корня проекта ---
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from db import SessionLocal
-from models import User, Company, CompanyContainer, Tracking
+# ✅ Добавлен TrackingHistory в импорты
+from models import User, Company, CompanyContainer, Tracking, TrackingHistory
 from model.terminal_container import TerminalContainer
 from web.auth import login_required
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
-from models import User, Company, CompanyContainer, Tracking, TrackingHistory
-
 
 router = APIRouter(prefix="/client", tags=["client"])
 
@@ -35,23 +34,39 @@ async def get_db():
 
 # --- Логика определения статуса ---
 def get_container_status_code(tracking: Tracking | None) -> str:
-    if not tracking: return 'terminal'
-    if tracking.km_left is not None and tracking.km_left == 0: return 'arrived'
+    """
+    Возвращает код статуса для фильтрации и UI.
+    Priority: terminal -> arrived -> transit
+    """
+    # 1. Если нет данных трекинга — значит еще не выехал (На терминале)
+    if not tracking:
+        return 'terminal'
+    
+    # 2. Если км осталось 0 — Прибыл
+    if tracking.km_left is not None and tracking.km_left == 0:
+        return 'arrived'
+    
+    # 3. Если станции совпадают — Прибыл
     if tracking.current_station and tracking.to_station:
-        if tracking.current_station.lower().strip() == tracking.to_station.lower().strip(): return 'arrived'
+        if tracking.current_station.lower().strip() == tracking.to_station.lower().strip():
+            return 'arrived'
+            
+    # 4. Иначе — В пути
     return 'transit'
 
-# --- Получение данных для клиента (Основная функция) ---
 async def get_client_data(
     session: AsyncSession, 
     company_id: int, 
-    query_str: str = "", 
+    query_str: str = "",
     status_filter: str = "all", 
-    train_filter: str = "", 
-    date_from: Optional[date] = None, 
+    train_filter: str = "",
+    date_from: Optional[date] = None,
     date_to: Optional[date] = None
 ):
-    # 1. Получаем список контейнеров компании
+    """
+    Умная выборка данных с фильтрацией на уровне Python (после SQL).
+    """
+    # 1. Запрос списка контейнеров и поездов
     stmt = (
         select(CompanyContainer.container_number, TerminalContainer.train)
         .join(TerminalContainer, TerminalContainer.container_number == CompanyContainer.container_number, isouter=True)
@@ -60,10 +75,12 @@ async def get_client_data(
     )
 
     if query_str:
-        stmt = stmt.where(CompanyContainer.container_number.contains(query_str.strip().upper()))
+        q = query_str.strip().upper()
+        stmt = stmt.where(CompanyContainer.container_number.contains(q))
         
     if train_filter:
-        stmt = stmt.where(TerminalContainer.train.contains(train_filter.strip().upper()))
+        t_q = train_filter.strip().upper()
+        stmt = stmt.where(TerminalContainer.train.contains(t_q))
 
     result = await session.execute(stmt)
     rows = result.all()
@@ -74,7 +91,7 @@ async def get_client_data(
     container_train_map = {row[0]: row[1] for row in rows}
     target_containers = list(container_train_map.keys())
 
-    # 2. Получаем актуальный трекинг для этих контейнеров
+    # 2. Получаем актуальный трекинг
     tracking_stmt = (
         select(Tracking)
         .where(Tracking.container_number.in_(target_containers))
@@ -84,25 +101,28 @@ async def get_client_data(
     tracking_res = await session.execute(tracking_stmt)
     all_trackings = tracking_res.scalars().all()
 
-    # Берем только последнюю запись для каждого контейнера
     latest_tracking_map = {}
     for t in all_trackings:
         if t.container_number not in latest_tracking_map:
             latest_tracking_map[t.container_number] = t
 
+    # 3. Сборка и Фильтрация
     final_data = []
     
-    # 3. Фильтрация и сборка данных
     for c_num in target_containers:
         track_obj = latest_tracking_map.get(c_num)
+        train_num = container_train_map.get(c_num)
+        
+        # Определяем статус
         current_status = get_container_status_code(track_obj)
 
-        # Фильтр по статусу
+        # --- Фильтр по Статусу ---
         if status_filter != 'all':
             if status_filter != current_status:
                 continue
 
-        # Фильтр по дате
+        # --- Фильтр по Дате ---
+        # Если фильтр включен, а контейнер "На терминале" (нет дат) -> он скрывается
         if date_from or date_to:
             check_date = None
             if track_obj:
@@ -116,7 +136,7 @@ async def get_client_data(
                 if date_to and check_date > date_to:
                     continue
             else:
-                # Если даты нет, но фильтр включен — пропускаем
+                # Нет даты для проверки -> пропускаем
                 continue
 
         # Расчет прогресса
@@ -129,17 +149,17 @@ async def get_client_data(
 
         final_data.append({
             "number": c_num,
-            "train": container_train_map.get(c_num),
+            "train": train_num,
             "status": track_obj,
             "progress": progress,
-            "status_code": current_status
+            "status_code": current_status # Важно для шаблона
         })
 
     return final_data
 
-# --- Расчет KPI ---
 async def get_client_kpi(session: AsyncSession, company_id: int):
-    # Получаем все данные (без фильтров) для корректного подсчета
+    """Считает статистику по 4 статусам."""
+    # Получаем все данные без фильтров
     data = await get_client_data(session, company_id)
     
     total = len(data)
@@ -154,7 +174,7 @@ async def get_client_kpi(session: AsyncSession, company_id: int):
         "arrived": arrived
     }
 
-# --- РОУТЫ ---
+# --- Роуты ---
 
 @router.get("/dashboard")
 async def client_dashboard(
@@ -167,6 +187,8 @@ async def client_dashboard(
 
     company = await db.get(Company, user.company_id)
     kpi_data = await get_client_kpi(db, user.company_id)
+    
+    # Первичная загрузка (все данные)
     containers_data = await get_client_data(db, user.company_id)
 
     return templates.TemplateResponse("client_dashboard.html", {
@@ -175,40 +197,6 @@ async def client_dashboard(
         "company": company,
         "containers": containers_data,
         "kpi": kpi_data
-    })
-
-# 🔥 ИСТОРИЯ ДВИЖЕНИЯ (НОВЫЙ РОУТ) 🔥
-@router.get("/history/{container_number}")
-async def get_container_history(
-    request: Request,
-    container_number: str,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(login_required)
-):
-    """
-    Возвращает HTML-модалку с полной историей контейнера.
-    """
-    if not user.company_id:
-        return HTMLResponse("<div>Нет доступа</div>")
-
-    # 1. Получаем всю историю операций (сортировка от новых к старым)
-    stmt = select(Tracking).where(Tracking.container_number == container_number).order_by(desc(Tracking.operation_date))
-    result = await db.execute(stmt)
-    history = result.scalars().all()
-    
-    if not history:
-        return HTMLResponse("<div class='p-4 text-center text-mono-gray'>История не найдена</div>")
-
-    # 2. Получаем номер поезда (для заголовка, чтобы было красиво)
-    stmt_train = select(TerminalContainer.train).where(TerminalContainer.container_number == container_number).limit(1)
-    train_res = await db.execute(stmt_train)
-    train_number = train_res.scalar_one_or_none()
-
-    return templates.TemplateResponse("partials/history_modal.html", {
-        "request": request,
-        "container_number": container_number,
-        "train_number": train_number,
-        "history": history
     })
 
 @router.get("/containers/search")
@@ -292,22 +280,21 @@ async def export_client_excel(
             'arrived': 'Прибыл'
         }.get(item['status_code'], 'Неизвестно')
 
+        cont_num = item['number']
+        train_num = item.get('train') or ""
+        from_st = t.from_station if t else ""
+        to_st = t.to_station if t else ""
+        curr_st = t.current_station if t else ""
+        oper = t.operation if t else ""
         op_date = t.operation_date.strftime('%d.%m.%Y %H:%M') if (t and t.operation_date) else ""
+        wagon = t.wagon_number if t else ""
         km_left = str(t.km_left) if (t and t.km_left is not None) else ""
         forecast = str(t.forecast_days) if (t and t.forecast_days is not None) else ""
 
         rows.append([
-            item['number'], 
-            item.get('train') or "", 
-            status_text, 
-            t.from_station if t else "", 
-            t.to_station if t else "", 
-            t.current_station if t else "", 
-            t.operation if t else "", 
-            op_date, 
-            t.wagon_number if t else "", 
-            km_left, 
-            forecast
+            cont_num, train_num, status_text, from_st, to_st, 
+            curr_st, oper, op_date, 
+            wagon, km_left, forecast
         ])
 
     file_path = await asyncio.to_thread(create_excel_file_from_strings, rows, headers)
@@ -324,3 +311,54 @@ async def export_client_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+# --- 🔥 НОВЫЙ РОУТ ДЛЯ ИСТОРИИ ---
+@router.get("/history/{container_number}")
+async def get_container_history(
+    request: Request,
+    container_number: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(login_required)
+):
+    """
+    Возвращает HTML-фрагмент модалки с историей движения.
+    Используется HTMX.
+    """
+    # 1. Проверяем доступ (Security Check)
+    if not user.company_id:
+        return "" 
+
+    has_access = await db.scalar(
+        select(CompanyContainer.id)
+        .where(CompanyContainer.container_number == container_number)
+        .where(CompanyContainer.company_id == user.company_id)
+    )
+    
+    if not has_access:
+        return templates.TemplateResponse("partials/history_modal.html", {
+            "request": request,
+            "container_number": container_number,
+            "history": [],
+            "error": "Нет доступа"
+        })
+
+    # 2. Получаем историю
+    stmt = (
+        select(TrackingHistory)
+        .where(TrackingHistory.container_number == container_number)
+        .order_by(TrackingHistory.operation_date.desc()) 
+    )
+    result = await db.execute(stmt)
+    history = result.scalars().all()
+
+    # Если история пока пустая, покажем хотя бы текущий статус
+    if not history:
+        current_tracking = await db.scalar(select(Tracking).where(Tracking.container_number == container_number))
+        if current_tracking:
+            history = [current_tracking] 
+
+    return templates.TemplateResponse("partials/history_modal.html", {
+        "request": request,
+        "container_number": container_number,
+        "history": history
+    })
