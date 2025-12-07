@@ -15,16 +15,25 @@
             </div>
         </div>
         
-        <form id="filter-form" class="flex items-center bg-white p-1 rounded-xl shadow-sm border border-mono-border">
+        <!-- 🔥 ИСПРАВЛЕНИЕ: Добавлены hx-get, hx-target, hx-include -->
+        <form id="filter-form" 
+              hx-get="/client/containers/search" 
+              hx-target="#containers-table-body" 
+              hx-swap="innerHTML"
+              hx-include="input[name='q'], input[name='train']"
+              class="flex items-center bg-white p-1 rounded-xl shadow-sm border border-mono-border">
+            
             <input type="text" name="date_from" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Начало">
             <div class="h-4 w-px bg-mono-border"></div>
             <input type="text" name="date_to" class="datepicker w-32 px-3 py-2 text-sm bg-transparent outline-none text-center font-medium placeholder-mono-gray" placeholder="Конец">
+            
             <button type="submit" class="ml-1 bg-mono-black text-white px-5 py-2 rounded-lg text-sm font-medium shadow-sm hover:bg-gray-800 transition">
                 OK
             </button>
         </form>
     </div>
 
+    <!-- Блоки KPI (Фильтры) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
         <div onclick="applyFilter('all')" 
@@ -143,7 +152,6 @@
 <div id="history-modal-container"></div>
 
 <script>
-    // Оборачиваем в слушатель события загрузки DOM
     document.addEventListener("DOMContentLoaded", function() {
         if (typeof flatpickr !== "undefined") {
             flatpickr(".datepicker", {
@@ -153,12 +161,9 @@
                 altFormat: "d.m.Y",
                 disableMobile: "true"
             });
-        } else {
-            console.warn("Flatpickr не загружен. Проверьте подключение скриптов.");
         }
     });
 
-    // Функции остаются в глобальной области видимости
     function applyFilter(status) {
         let input = document.getElementById('status-input');
         if(!input) {
