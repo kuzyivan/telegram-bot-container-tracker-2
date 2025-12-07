@@ -264,3 +264,30 @@ class ScheduleShareLink(Base):
     token: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False) # Уникальный код
     name: Mapped[str] = mapped_column(String, nullable=False) # Кому дали
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    class TrackingHistory(Base):
+    """
+    Полная история перемещений контейнера.
+    Заполняется каждый раз, когда меняется статус в основной таблице Tracking.
+    """
+    __tablename__ = "tracking_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    container_number: Mapped[str] = mapped_column(String(11), index=True, nullable=False)
+    
+    # Основные данные для таймлайна
+    operation_date: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    operation: Mapped[str | None] = mapped_column(String)
+    current_station: Mapped[str | None] = mapped_column(String)
+    operation_road: Mapped[str | None] = mapped_column(String)
+    
+    # Дополнительные данные (опционально, чтобы было красиво)
+    wagon_number: Mapped[str | None] = mapped_column(String)
+    train_number: Mapped[str | None] = mapped_column(String)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Уникальность события, чтобы не дублировать одинаковые записи при повторном импорте того же файла
+    __table_args__ = (
+        UniqueConstraint('container_number', 'operation_date', 'operation', name='uq_tracking_history_event'),
+    )

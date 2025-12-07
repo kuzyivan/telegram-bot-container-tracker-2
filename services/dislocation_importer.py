@@ -13,8 +13,8 @@ from datetime import datetime
 
 # --- Импорты из вашего проекта ---
 from db import SessionLocal
-# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ ---
-from models import Tracking, TrainEventLog, Train 
+# --- ✅ ОБНОВЛЕННЫЕ ИМПОРТЫ (Добавлен TrackingHistory) ---
+from models import Tracking, TrainEventLog, Train, TrackingHistory
 from model.terminal_container import TerminalContainer 
 from logger import get_logger 
 from telegram import Bot
@@ -144,7 +144,7 @@ def _read_excel_data(filepath: str) -> Optional[pd.DataFrame]:
 
 
 # =========================================================================
-# === 4. ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN ===
+# === 4. ОБНОВЛЕННАЯ ФУНКЦИЯ ОБНОВЛЕНИЯ ТАБЛИЦЫ TRAIN (без изменений) ===
 # =========================================================================
 
 async def update_train_statuses_from_tracking(
@@ -230,12 +230,12 @@ async def update_train_statuses_from_tracking(
 
 
 # =========================================================================
-# === 5. ОБНОВЛЕННЫЙ УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД ===
+# === 5. ОБНОВЛЕННЫЙ УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ БД (С ИСТОРИЕЙ) ===
 # =========================================================================
 
 async def process_dislocation_file(filepath: str):
     """
-    Обрабатывает файл дислокации, обновляет/вставляет данные в БД
+    Обрабатывает файл дислокации, обновляет/вставляет данные в БД (Tracking + TrackingHistory)
     и запускает обновление таблицы Train.
     """
     
@@ -377,6 +377,21 @@ async def process_dislocation_file(filepath: str):
                         
                         updated_count += 1
                         processed_tracking_objects.append(existing_entry) # <--- ✅ Сбор данных
+
+                        # 🔥 2. ДОБАВЛЯЕМ ЗАПИСЬ В ИСТОРИЮ (ПРИ ОБНОВЛЕНИИ)
+                        # Мы сохраняем новую точку в историю
+                        history_entry = TrackingHistory(
+                            container_number=container_number,
+                            operation_date=new_operation_date,
+                            operation=row_data.get('operation'),
+                            current_station=row_data.get('current_station'),
+                            operation_road=row_data.get('operation_road'),
+                            wagon_number=row_data.get('wagon_number'),
+                            train_number=row_data.get('train_number')
+                        )
+                        # Используем merge, чтобы избежать дубликатов (если unique constraint сработает)
+                        await session.merge(history_entry)
+
                 else:
                     # --- ЛОГИКА СОЗДАНИЯ ---
                     new_entry_data = {str(k): v for k, v in row_data.items()}
@@ -386,6 +401,19 @@ async def process_dislocation_file(filepath: str):
                     
                     inserted_count += 1
                     processed_tracking_objects.append(new_entry) # <--- ✅ Сбор данных
+
+                    # 🔥 3. ДОБАВЛЯЕМ ПЕРВУЮ ЗАПИСЬ В ИСТОРИЮ (ПРИ СОЗДАНИИ)
+                    if new_operation_date:
+                        history_entry = TrackingHistory(
+                            container_number=container_number,
+                            operation_date=new_operation_date,
+                            operation=row_data.get('operation'),
+                            current_station=row_data.get('current_station'),
+                            operation_road=row_data.get('operation_road'),
+                            wagon_number=row_data.get('wagon_number'),
+                            train_number=row_data.get('train_number')
+                        )
+                        session.add(history_entry)
         
         logger.info(f"Успешно сохранено в БД Tracking: {inserted_count} новых, {updated_count} обновленных.")
         
@@ -423,8 +451,6 @@ async def process_dislocation_file(filepath: str):
 # =========================================================================
 
 # --- ✅ ОБНОВЛЕННЫЙ ГИБКИЙ ФИЛЬТР ---
-# Ищет "Отчёт" + (1+ пробел) + "слежения" + (1+ пробел) + "TrackerBot" + (0+ пробелов) + "№"
-# Это позволяет находить "Ошибка...Отчёт слежения..." и "Отчёт  слежения TrackerBot№"
 SUBJECT_FILTER_DISLOCATION = r'Отчёт\s+слежения\s+TrackerBot\s*№'
 SENDER_FILTER_DISLOCATION = 'cargolk@gvc.rzd.ru'
 FILENAME_PATTERN_DISLOCATION = r'\.(xlsx|xls)$' # Допускаем оба расширения
@@ -446,7 +472,7 @@ async def check_and_process_dislocation(bot_instance: Bot):
         if filepath:
             logger.info(f"Обнаружен новый файл дислокации: {filepath}")
             try:
-                # 1. Обрабатываем файл (Обновляет Tracking И Train)
+                # 1. Обрабатываем файл (Обновляет Tracking, History И Train)
                 processed_count = await process_dislocation_file(filepath)
                 
                 # 2. Рассылаем уведомления (если что-то обработано)

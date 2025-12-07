@@ -20,6 +20,8 @@ from models import User, Company, CompanyContainer, Tracking
 from model.terminal_container import TerminalContainer
 from web.auth import login_required
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
+from models import User, Company, CompanyContainer, Tracking, TrackingHistory
+
 
 router = APIRouter(prefix="/client", tags=["client"])
 
