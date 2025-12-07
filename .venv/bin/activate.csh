@@ -9,7 +9,7 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelevant variables.
 deactivate nondestructive
 
-setenv VIRTUAL_ENV /Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/.venv
+setenv VIRTUAL_ENV /Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2/.venv
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"

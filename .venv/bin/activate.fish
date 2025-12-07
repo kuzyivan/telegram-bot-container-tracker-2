@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /Users/kuzy/Documents/GitHub/telegram-bot-container-tracker/.venv
+set -gx VIRTUAL_ENV /Users/kuzy/Documents/GitHub/telegram-bot-container-tracker-2/.venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH
