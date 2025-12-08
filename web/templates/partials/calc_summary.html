@@ -61,19 +61,28 @@
         </div>
         {% endif %}
         
-        <!-- Себестоимость -->
-        <div class="flex justify-between items-center pt-3 mt-1 border-t border-mono-border">
-            <span class="font-bold text-mono-black">Себестоимость:</span>
-            <span class="font-mono font-bold text-mono-black">{{ "{:,.0f}".format(total_cost).replace(',', ' ') }}</span>
+        <!-- 🔥 СЕБЕСТОИМОСТЬ (Двойная строка) -->
+        <div class="pt-3 mt-1 border-t border-mono-border">
+            <!-- Без НДС -->
+            <div class="flex justify-between items-center mb-1">
+                <span class="font-bold text-mono-black">Себестоимость (без НДС):</span>
+                <span class="font-mono font-bold text-mono-black">{{ "{:,.0f}".format(total_cost).replace(',', ' ') }}</span>
+            </div>
+            <!-- С НДС (Мелким шрифтом) -->
+            <div class="flex justify-between items-center text-xs text-mono-gray">
+                <span>с НДС {{ "{:,.0f}".format(vat_rate) }}%:</span>
+                <span class="font-mono font-medium">{{ "{:,.0f}".format(total_cost_with_vat).replace(',', ' ') }}</span>
+            </div>
         </div>
 
-        <div class="flex justify-between items-center pt-2">
+        <!-- ЦЕНА ПРОДАЖИ -->
+        <div class="flex justify-between items-center pt-2 border-t border-dashed border-mono-border mt-2">
             <span class="text-mono-gray">Цена (без НДС):</span>
             <span class="font-mono font-medium text-mono-black">{{ "{:,.0f}".format(sales_price_netto).replace(',', ' ') }}</span>
         </div>
         
         <div class="flex justify-between items-center text-xs text-mono-gray">
-            <span>НДС 20%:</span>
+            <span>НДС {{ "{:,.0f}".format(vat_rate) }}%:</span>
             <span class="font-mono">{{ "{:,.0f}".format(vat_amount).replace(',', ' ') }}</span>
         </div>
     </div>

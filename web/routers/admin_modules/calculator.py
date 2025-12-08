@@ -155,7 +155,7 @@ async def calculator_edit_page(
         default_prr = calculate_prr_cost_internal(calc.wagon_type, calc.container_type)
         if default_prr > 0:
             saved_prr = default_prr
-            # Флаг include_prr оставляем False
+            # Флаг include_prr оставляем False, чтобы пользователь сам решил включить
 
     return templates.TemplateResponse("admin_calculator_form.html", {
         "request": request, "user": user,
@@ -258,11 +258,15 @@ async def calculator_preview(
     # Тариф + ПРР + Сервис (вручную) + Допы
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
-    # 4. Цена продажи
-    sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
-    
+    # НДС
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
+    
+    # 🔥 Себестоимость С НДС
+    total_cost_with_vat = total_cost * (1 + vat_rate / 100)
+    
+    # 4. Цена продажи
+    sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
     vat_amount = sales_price_netto * (vat_rate / 100)
     total_price_with_vat = sales_price_netto + vat_amount
     
@@ -284,7 +288,11 @@ async def calculator_preview(
         
         # Итоги
         "extra_expenses": extra_expenses_total,
+        
         "total_cost": total_cost,
+        "total_cost_with_vat": total_cost_with_vat, # Для отображения с НДС
+        "vat_rate": vat_rate,
+        
         "sales_price_netto": sales_price_netto,
         "vat_amount": vat_amount,
         "total_price_with_vat": total_price_with_vat,
@@ -300,7 +308,7 @@ async def _save_calculation_logic(
     include_rail_tariff: bool, include_prr: bool,
     calc_id: Optional[int] = None
 ):
-    # Повторяем расчет для БД
+    # Повторяем расчет для БД (чтобы быть уверенными в цифрах)
     base_rate = 0.0
     adjusted_base_rate = 0.0
     
@@ -325,13 +333,13 @@ async def _save_calculation_logic(
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
 
     if calc_id:
-        # 🔥 ИСПРАВЛЕНИЕ: Используем selectinload для загрузки items, чтобы избежать MissingGreenlet
+        # 🔥 ИСПРАВЛЕНИЕ: Используем selectinload для загрузки items
         stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
         result = await db.execute(stmt)
         calc = result.scalar_one_or_none()
         
         if not calc: return None
-        # Теперь можно безопасно очистить список, т.к. данные загружены
+        # Теперь можно безопасно очистить список
         calc.items = []
     else:
         calc = Calculation(created_at=func.now())
