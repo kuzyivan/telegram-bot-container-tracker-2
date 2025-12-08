@@ -23,9 +23,10 @@
                 <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
                     <tr>
                         <th class="px-6 py-4">Название / Клиент</th>
-                        <!-- 🔥 Заменили "Маршрут" на "Поставщик сервиса" -->
                         <th class="px-6 py-4">Поставщик сервиса</th>
                         <th class="px-6 py-4">Тип</th>
+                        <!-- 🔥 Добавили колонку Себестоимость -->
+                        <th class="px-6 py-4 text-right">Себест. (с НДС)</th>
                         <th class="px-6 py-4 text-right">Итого (с НДС)</th>
                         <th class="px-6 py-4 text-right">Статус</th>
                     </tr>
@@ -38,7 +39,6 @@
                             <div class="text-xs text-mono-gray mt-0.5">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
                         </td>
                         
-                        <!-- 🔥 Выводим service_provider вместо кодов станций -->
                         <td class="px-6 py-4">
                             <div class="font-medium text-mono-black">{{ calc.service_provider }}</div>
                         </td>
@@ -48,11 +48,20 @@
                                 {{ calc.container_type }} / {{ calc.wagon_type.value }}
                             </span>
                         </td>
+
+                        <!-- 🔥 Выводим Себестоимость с НДС -->
+                        <td class="px-6 py-4 text-right">
+                            <div class="font-medium text-mono-gray text-xs">
+                                {{ "{:,.0f}".format(calc.total_cost * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
+                            </div>
+                        </td>
+
                         <td class="px-6 py-4 text-right">
                             <div class="font-bold text-mono-black">
                                 {{ "{:,.0f}".format(calc.total_price_netto * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
                             </div>
                         </td>
+
                         <td class="px-6 py-4 text-right">
                             <div class="flex items-center justify-end gap-3">
                                 {% if calc.status.value == 'DRAFT' %}
@@ -63,7 +72,7 @@
                                     <span class="text-gray-400 text-xs">Архив</span>
                                 {% endif %}
                                 
-                                <!-- Кнопка копирования (с остановкой всплытия события клика по строке) -->
+                                <!-- Кнопка копирования -->
                                 <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
                                     <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
@@ -74,7 +83,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="px-6 py-12 text-center text-mono-gray">
+                        <td colspan="6" class="px-6 py-12 text-center text-mono-gray">
                             Нет созданных расчетов. Нажмите "Создать расчет".
                         </td>
                     </tr>
