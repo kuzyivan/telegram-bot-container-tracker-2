@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-6xl mx-auto py-8">
+    <h1 class="text-2xl font-bold mb-6">Новый расчет стоимости</h1>
+    
+    <form action="/admin/calculator/create" method="POST" 
+          hx-post="/admin/api/calc/preview" 
+          hx-trigger="change" 
+          hx-target="#calc-summary">
+        
+        <div class="grid grid-cols-12 gap-6">
+            <div class="col-span-8 bg-white p-6 rounded-2xl shadow-sm space-y-6">
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Название расчета</label>
+                        <input type="text" name="title" class="w-full border rounded-lg p-2" placeholder="Например: КП для Вектор (Июнь)">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Сервис</label>
+                        <select name="service_type" class="w-full border rounded-lg p-2">
+                            <option value="TRAIN">Контейнерный Поезд</option>
+                            <option value="SINGLE">Одиночная отправка</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4 border-t pt-4">
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Откуда (Код)</label>
+                        <input type="text" name="station_from" class="w-full border rounded-lg p-2" placeholder="181102">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Куда (Код)</label>
+                        <input type="text" name="station_to" class="w-full border rounded-lg p-2" placeholder="980003">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Тип контейнера</label>
+                        <select name="container_type" class="w-full border rounded-lg p-2">
+                            <option value="40_STD">40' STD</option>
+                            <option value="20_STD">20' STD</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Тип вагона</label>
+                        <select name="wagon_type" class="w-full border rounded-lg p-2">
+                            <option value="PLATFORM">Фитинговая платформа</option>
+                            <option value="GONDOLA">Полувагон (Кэф {{ settings.gondola_coeff }})</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Доп. расходы (руб)</label>
+                        <input type="number" name="extra_expenses" value="0" class="w-full border rounded-lg p-2">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Тип маржи</label>
+                        <select name="margin_type" class="w-full border rounded-lg p-2">
+                            <option value="FIX">Фиксированная (RUB)</option>
+                            <option value="PERCENT">Процент (%)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Значение маржи</label>
+                        <input type="number" name="margin_value" value="{{ settings.default_margin_fix }}" class="w-full border rounded-lg p-2">
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="col-span-4">
+                <div id="calc-summary" class="sticky top-6">
+                    <div class="bg-white p-6 rounded-2xl shadow-sm text-center text-mono-gray">
+                        <p>Заполните параметры маршрута для расчета...</p>
+                    </div>
+                </div>
+                
+                <button type="submit" class="w-full mt-4 bg-mono-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">
+                    Сохранить Расчет
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

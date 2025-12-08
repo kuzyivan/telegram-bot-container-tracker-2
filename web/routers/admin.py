@@ -20,6 +20,12 @@ from models import User, UserRequest, Train, Company, UserRole, ScheduledTrain, 
 from model.terminal_container import TerminalContainer
 from web.auth import admin_required, get_current_user
 
+from models_finance import (
+    Calculation, CalculationItem, RailTariffRate, 
+    SystemSetting, ServiceType, WagonType, MarginType, CalculationStatus
+)
+from services.calculator_service import PriceCalculator
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 current_file = Path(__file__).resolve()
@@ -378,3 +384,129 @@ async def create_web_user(request: Request, login: str = Form(...), password: st
     db.add(new_user)
     await db.commit()
     return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
+
+# --- КАЛЬКУЛЯТОР (STAGE 3) ---
+
+@router.get("/calculator")
+async def calculator_list(
+    request: Request, 
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Список всех расчетов (КП)."""
+    stmt = select(Calculation).order_by(desc(Calculation.created_at))
+    result = await db.execute(stmt)
+    calculations = result.scalars().all()
+    
+    return templates.TemplateResponse("admin_calculator_list.html", {
+        "request": request,
+        "user": user,
+        "calculations": calculations,
+        "CalculationStatus": CalculationStatus
+    })
+
+@router.get("/calculator/new")
+async def calculator_create_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Страница конструктора нового расчета."""
+    # Загружаем настройки для JS (например, дефолтную маржу или НДС)
+    settings_stmt = select(SystemSetting)
+    settings_res = await db.execute(settings_stmt)
+    settings = {s.key: s.value for s in settings_res.scalars()}
+    
+    return templates.TemplateResponse("admin_calculator_form.html", {
+        "request": request,
+        "user": user,
+        "settings": settings,
+        "today": datetime.now().date(),
+        # Передаем Enums для селектов
+        "ServiceType": ServiceType,
+        "WagonType": WagonType,
+        "MarginType": MarginType
+    })
+
+# --- HTMX Эндпоинт для живого расчета ---
+
+@router.post("/api/calc/preview")
+async def calculator_preview(
+    request: Request,
+    station_from: str = Form(...),
+    station_to: str = Form(...),
+    container_type: str = Form(...),
+    service_type: str = Form(...),
+    wagon_type: str = Form(...),
+    margin_type: str = Form(...),
+    margin_value: float = Form(0.0),
+    extra_expenses: float = Form(0.0), # Сумма доп. расходов из таблицы
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    HTMX вызывает этот роут при любом изменении в форме.
+    Мы считаем математику на сервере и возвращаем HTML-фрагмент с итогами.
+    """
+    calc_service = PriceCalculator(db)
+    
+    # 1. Получаем базовый тариф
+    # ВАЖНО: В реальной форме station_from должен передавать КОД станции, а не имя
+    tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
+    
+    base_rate = tariff.rate_no_vat if tariff else 0.0
+    
+    # 2. Применяем коэффициенты (из настроек)
+    gondola_coeff = 1.0
+    if wagon_type == WagonType.GONDOLA:
+        # Получаем кэф из базы
+        setting = await db.get(SystemSetting, "gondola_coeff")
+        if setting:
+            gondola_coeff = float(setting.value)
+    
+    # Себестоимость тарифа с учетом типа вагона
+    adjusted_base_rate = base_rate * gondola_coeff
+    
+    # 3. Полная себестоимость (Тариф + Доп. расходы)
+    total_cost = adjusted_base_rate + extra_expenses
+    
+    # 4. Цена продажи (Netto)
+    sales_price_netto = 0.0
+    if margin_type == MarginType.FIX:
+        sales_price_netto = total_cost + margin_value
+    else: # PERCENT
+        # Маржа как наценка на себестоимость
+        sales_price_netto = total_cost * (1 + margin_value / 100)
+        
+    # 5. НДС
+    vat_setting = await db.get(SystemSetting, "vat_rate")
+    vat_rate = float(vat_setting.value) if vat_setting else 20.0
+    vat_amount = sales_price_netto * (vat_rate / 100)
+    total_price_with_vat = sales_price_netto + vat_amount
+    
+    # Возвращаем HTML фрагмент (карточку итогов)
+    return templates.TemplateResponse("partials/calc_summary.html", {
+        "request": request,
+        "base_rate": base_rate,
+        "gondola_coeff": gondola_coeff,
+        "adjusted_base_rate": adjusted_base_rate,
+        "extra_expenses": extra_expenses,
+        "total_cost": total_cost,
+        "sales_price_netto": sales_price_netto,
+        "vat_amount": vat_amount,
+        "total_price_with_vat": total_price_with_vat,
+        "tariff_found": bool(tariff)
+    })
+
+@router.post("/calculator/create")
+async def calculator_save(
+    request: Request,
+    title: str = Form(...),
+    station_from: str = Form(...),
+    station_to: str = Form(...),
+    # ... остальные поля формы ...
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    # Логика сохранения Calculation и CalculationItems в БД
+    # Реализуем после верстки формы
+    return RedirectResponse("/admin/calculator", status_code=303)

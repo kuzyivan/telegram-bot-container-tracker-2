@@ -1,0 +1,53 @@
+<div class="bg-white p-6 rounded-2xl shadow-lg border border-mono-border animate-fade-in">
+    <h3 class="text-lg font-bold text-mono-black mb-4 border-b pb-2">Итоги расчета</h3>
+    
+    <div class="space-y-3 text-sm">
+        <div class="flex justify-between">
+            <span class="text-mono-gray">Базовый тариф ЖД:</span>
+            <span class="font-mono">{{ "{:,.2f}".format(base_rate) }}</span>
+        </div>
+        
+        {% if gondola_coeff != 1.0 %}
+        <div class="flex justify-between text-blue-600">
+            <span>Полувагон (x{{ gondola_coeff }}):</span>
+            <span class="font-mono">{{ "{:,.2f}".format(adjusted_base_rate) }}</span>
+        </div>
+        {% endif %}
+
+        <div class="flex justify-between">
+            <span class="text-mono-gray">Доп. расходы:</span>
+            <span class="font-mono">{{ "{:,.2f}".format(extra_expenses) }}</span>
+        </div>
+        
+        <div class="flex justify-between pt-2 border-t font-bold text-mono-black">
+            <span>Себестоимость:</span>
+            <span>{{ "{:,.2f}".format(total_cost) }}</span>
+        </div>
+
+        <div class="flex justify-between pt-4">
+            <span class="text-mono-gray">Цена продажи (без НДС):</span>
+            <span class="font-mono font-bold">{{ "{:,.2f}".format(sales_price_netto) }}</span>
+        </div>
+        
+        <div class="flex justify-between text-xs text-mono-gray">
+            <span>НДС 20%:</span>
+            <span>{{ "{:,.2f}".format(vat_amount) }}</span>
+        </div>
+    </div>
+
+    <div class="mt-6 pt-4 border-t border-mono-black">
+        <div class="text-center">
+            <span class="block text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Итого клиенту</span>
+            <span class="block text-3xl font-extrabold text-mono-black tracking-tight">
+                {{ "{:,.2f}".format(total_price_with_vat) }}
+                <span class="text-base font-normal text-mono-gray">₽</span>
+            </span>
+        </div>
+    </div>
+
+    {% if not tariff_found %}
+    <div class="mt-4 p-3 bg-red-50 text-red-600 text-xs rounded-lg text-center font-medium">
+        ⚠️ Тариф для этого маршрута не найден в базе. Используется 0.
+    </div>
+    {% endif %}
+</div>
