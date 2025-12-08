@@ -17,6 +17,60 @@
         </a>
     </div>
 
+    {# --- МАКРОС ДЛЯ ОТРИСОВКИ ОДНОЙ СТРОКИ (чтобы не дублировать код) --- #}
+    {% macro render_row(calc) %}
+    <tr class="hover:bg-mono-bg transition group cursor-pointer border-b border-mono-border last:border-0" onclick="window.location='/admin/calculator/{{ calc.id }}'">
+        <td class="px-6 py-4">
+            <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
+            <div class="text-xs text-mono-gray mt-0.5 font-mono">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
+        </td>
+        
+        <td class="px-6 py-4">
+            <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-white text-xs font-medium text-mono-black whitespace-nowrap shadow-sm">
+                {% if calc.container_type == '20_REF' %} 20' Легкая
+                {% elif calc.container_type == '20_HEAVY' %} 20' Тяжелая
+                {% elif calc.container_type == '20_EXTRA' %} 20' Экстра
+                {% elif calc.container_type == '40_STD' %} 40' Легкая
+                {% elif calc.container_type == '40_HEAVY' %} 40' Тяжелая
+                {% else %} {{ calc.container_type.replace('_', "' ") }} {% endif %}
+                
+                <span class="text-mono-gray ml-1 opacity-50">/ {{ "ПВ" if calc.wagon_type.value == 'GONDOLA' else "ФИТ" }}</span>
+            </span>
+        </td>
+
+        <td class="px-6 py-4 text-right">
+            <div class="font-medium text-mono-gray text-xs">
+                {{ "{:,.0f}".format(calc.total_cost * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
+            </div>
+        </td>
+
+        <td class="px-6 py-4 text-right">
+            <div class="font-bold text-mono-black text-sm">
+                {{ "{:,.0f}".format(((calc.total_price_netto * (1 + calc.vat_rate/100)) / 1000) | round(0, 'ceil') * 1000).replace(',', ' ') }} ₽
+            </div>
+        </td>
+
+        <td class="px-6 py-4 text-right">
+            <div class="flex items-center justify-end gap-3">
+                {% if calc.status.value == 'DRAFT' %}
+                    <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Черновик</span>
+                {% elif calc.status.value == 'PUBLISHED' %}
+                    <span class="bg-[#39ff14] text-black shadow-[0_0_12px_#39ff14] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Активен</span>
+                {% else %}
+                    <span class="text-gray-400 text-[10px] uppercase font-bold">Архив</span>
+                {% endif %}
+                
+                <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
+                    <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                    </button>
+                </form>
+            </div>
+        </td>
+    </tr>
+    {% endmacro %}
+    {# --- КОНЕЦ МАКРОСА --- #}
+
     <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm text-left border-collapse">
@@ -30,84 +84,47 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-mono-border">
-                    {% for calc in calculations %}
-                    
-                        {% if loop.first or calculations[loop.index0 - 1].service_provider != calc.service_provider %}
-                        <tr class="bg-mono-bg/50 border-t-2 border-mono-border">
-                            <td colspan="5" class="px-6 py-3">
-                                <div class="flex items-center gap-3">
-                                    <div class="p-1.5 bg-mono-black rounded-lg text-white">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                                    </div>
-                                    <span class="text-sm font-extrabold text-mono-black tracking-tight uppercase">
-                                        {{ calc.service_provider }}
-                                    </span>
-                                </div>
-                            </td>
-                        </tr>
-                        {% endif %}
-
-                        <tr class="hover:bg-mono-bg transition group cursor-pointer border-b border-mono-border last:border-0" onclick="window.location='/admin/calculator/{{ calc.id }}'">
-                            <td class="px-6 py-4">
-                                <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
-                                <div class="text-xs text-mono-gray mt-0.5 font-mono">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
-                            </td>
+                    {% if calculations %}
+                        {# 1. Группируем по провайдеру #}
+                        {% for group in calculations|groupby('service_provider') %}
                             
-                            <td class="px-6 py-4">
-                                <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-white text-xs font-medium text-mono-black whitespace-nowrap shadow-sm">
-                                    {% if calc.container_type == '20_REF' %} 20' Легкая
-                                    {% elif calc.container_type == '20_STD' %} 20' Средняя
-                                    {% elif calc.container_type == '20_HEAVY' %} 20' Тяжелая
-                                    {% elif calc.container_type == '20_EXTRA' %} 20' Экстра
-                                    {% elif calc.container_type == '40_STD' %} 40' Легкая
-                                    {% elif calc.container_type == '40_HEAVY' %} 40' Тяжелая
-                                    {% elif calc.container_type == '40_HC' %} 40' HC
-                                    {% else %} {{ calc.container_type.replace('_', "' ") }} {% endif %}
-                                    
-                                    <span class="text-mono-gray ml-1 opacity-50">/ {{ "ПВ" if calc.wagon_type.value == 'GONDOLA' else "ФИТ" }}</span>
-                                </span>
-                            </td>
+                            {# Заголовок группы (Провайдер) #}
+                            <tr class="bg-mono-bg/50 border-t-2 border-mono-border">
+                                <td colspan="5" class="px-6 py-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="p-1.5 bg-mono-black rounded-lg text-white">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                                        </div>
+                                        <span class="text-sm font-extrabold text-mono-black tracking-tight uppercase">
+                                            {{ group.grouper }}
+                                        </span>
+                                    </div>
+                                </td>
+                            </tr>
 
-                            <td class="px-6 py-4 text-right">
-                                <div class="font-medium text-mono-gray text-xs">
-                                    <!-- Себестоимость оставляем точной для внутреннего контроля, или тоже округлить? Пока оставил точной. -->
-                                    {{ "{:,.0f}".format(calc.total_cost * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
-                                </div>
-                            </td>
+                            {# 2. Определяем порядок сортировки (приоритеты) #}
+                            {% set priority_order = ['40_STD', '40_HEAVY', '20_REF', '20_HEAVY', '20_EXTRA'] %}
 
-                            <td class="px-6 py-4 text-right">
-                                <div class="font-bold text-mono-black text-sm">
-                                    <!-- 🔥 ОКРУГЛЕНИЕ ДО ПОЛНОЙ ТЫСЯЧИ В БОЛЬШУЮ СТОРОНУ -->
-                                    <!-- (Сумма / 1000) -> round up -> * 1000 -->
-                                    {{ "{:,.0f}".format(((calc.total_price_netto * (1 + calc.vat_rate/100)) / 1000) | round(0, 'ceil') * 1000).replace(',', ' ') }} ₽
-                                </div>
-                            </td>
+                            {# 3. Проход 1: Выводим типы из списка приоритетов в нужном порядке #}
+                            {% for type_code in priority_order %}
+                                {% for calc in group.list if calc.container_type == type_code %}
+                                    {{ render_row(calc) }}
+                                {% endfor %}
+                            {% endfor %}
 
-                            <td class="px-6 py-4 text-right">
-                                <div class="flex items-center justify-end gap-3">
-                                    {% if calc.status.value == 'DRAFT' %}
-                                        <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Черновик</span>
-                                    {% elif calc.status.value == 'PUBLISHED' %}
-                                        <span class="bg-[#37db84] text-black shadow-[0_0_12px_#37db84] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Активен</span>
-                                    {% else %}
-                                        <span class="text-gray-400 text-[10px] uppercase font-bold">Архив</span>
-                                    {% endif %}
-                                    
-                                    <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
-                                        <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
-                                        </button>
-                                    </form>
-                                </div>
+                            {# 4. Проход 2: Выводим все остальные типы, которых нет в списке приоритетов (на всякий случай) #}
+                            {% for calc in group.list if calc.container_type not in priority_order %}
+                                {{ render_row(calc) }}
+                            {% endfor %}
+
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="px-6 py-12 text-center text-mono-gray">
+                                Нет созданных расчетов. Нажмите "Создать расчет".
                             </td>
                         </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="px-6 py-12 text-center text-mono-gray">
-                            Нет созданных расчетов. Нажмите "Создать расчет".
-                        </td>
-                    </tr>
-                    {% endfor %}
+                    {% endif %}
                 </tbody>
             </table>
         </div>
