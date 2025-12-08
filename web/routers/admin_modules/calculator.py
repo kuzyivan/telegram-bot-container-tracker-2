@@ -18,6 +18,40 @@ from .common import templates, get_db
 
 router = APIRouter()
 
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+
+def calculate_prr_cost(wagon_type: str, container_type: str) -> float:
+    """
+    Рассчитывает стоимость ПРР (Погрузо-разгрузочных работ).
+    Поддерживает: Полувагон (ПВ) и Фитинговую платформу.
+    """
+    # 1. Константы для ПРР в ПВ (Полувагон)
+    PRR_PV_20 = 15000.00
+    PRR_PV_40 = 21700.00
+    
+    # 2. Константы для ПРР на Платформе (Фитинговая)
+    PRR_PF_20 = 6700.00
+    PRR_PF_40 = 8350.00
+
+    # Приводим типы к верхнему регистру для надежности
+    c_type = container_type.upper()
+    
+    # Логика для Полувагона
+    if wagon_type == WagonType.GONDOLA:
+        if "20" in c_type:
+            return PRR_PV_20
+        elif "40" in c_type:
+            return PRR_PV_40
+            
+    # Логика для Платформы
+    elif wagon_type == WagonType.PLATFORM: 
+        if "20" in c_type:
+            return PRR_PF_20
+        elif "40" in c_type:
+            return PRR_PF_40
+    
+    return 0.0
+
 async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_from_code: str = None, service_type: str = None):
     """
     Возвращает список уникальных станций (код, имя).
@@ -46,9 +80,6 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
     async with TariffSessionLocal() as tariff_db:
         # Используем группировку, чтобы для одного кода взять одно имя
         # Берем имя минимальной длины (обычно это самое "чистое" название)
-        # PostgreSQL specific: DISTINCT ON (code) ORDER BY code, length(name)
-        
-        # Вариант с Python-обработкой (надежнее для небольших списков)
         stmt = select(TariffStation.code, TariffStation.name).where(TariffStation.code.in_(codes_list))
         res = await tariff_db.execute(stmt)
         rows = res.all()
@@ -135,10 +166,18 @@ async def calculator_preview(
     """
     extra_expenses_total = sum(expense_values)
     
-    # Если ключевые поля не заполнены, возвращаем нули, но НЕ ошибку
+    # 1. Рассчитываем ПРР
+    prr_cost = calculate_prr_cost(wagon_type, container_type)
+
+    # Если ключевые поля не заполнены, возвращаем нули + ПРР (если выбран вагон/контейнер)
     if not station_from or not station_to:
         return templates.TemplateResponse("partials/calc_summary.html", {
-            "request": request, "tariff_found": False, "base_rate": 0, "extra_expenses": extra_expenses_total
+            "request": request, 
+            "tariff_found": False, 
+            "base_rate": 0, 
+            "extra_expenses": extra_expenses_total,
+            "prr_cost": prr_cost, # Передаем ПРР в шаблон
+            "total_cost": extra_expenses_total + prr_cost
         })
 
     calc_service = PriceCalculator(db)
@@ -151,7 +190,9 @@ async def calculator_preview(
         if setting: gondola_coeff = float(setting.value)
     
     adjusted_base_rate = base_rate * gondola_coeff
-    total_cost = adjusted_base_rate + extra_expenses_total
+    
+    # 2. Суммируем: Тариф + Допы + ПРР
+    total_cost = adjusted_base_rate + extra_expenses_total + prr_cost
     
     sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
     
@@ -166,6 +207,7 @@ async def calculator_preview(
         "gondola_coeff": gondola_coeff,
         "adjusted_base_rate": adjusted_base_rate,
         "extra_expenses": extra_expenses_total,
+        "prr_cost": prr_cost, # <-- Передаем в шаблон для отображения
         "total_cost": total_cost,
         "sales_price_netto": sales_price_netto,
         "vat_amount": vat_amount,
@@ -197,7 +239,6 @@ async def calculator_save(
     calc_service = PriceCalculator(db)
     tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
     
-    # Если тариф не найден, но мы сохраняем - это возможно, но пометим как 0
     base_rate = tariff.rate_no_vat if tariff else 0.0
     
     gondola_coeff = 1.0
@@ -206,8 +247,14 @@ async def calculator_save(
         if setting: gondola_coeff = float(setting.value)
     
     adjusted_base_rate = base_rate * gondola_coeff
+    
+    # Расчет ПРР
+    prr_cost = calculate_prr_cost(wagon_type, container_type)
+    
     extra_expenses_total = sum(expense_values)
-    total_cost = adjusted_base_rate + extra_expenses_total
+    
+    # Итоговая себестоимость
+    total_cost = adjusted_base_rate + extra_expenses_total + prr_cost
     
     sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
     vat_setting = await db.get(SystemSetting, "vat_rate")
@@ -220,7 +267,6 @@ async def calculator_save(
         service_type=service_type,
         wagon_type=wagon_type,
         container_type=container_type,
-        # Запишем имена станций для удобства, если получится, но пока пишем коды
         station_from=station_from,
         station_to=station_to,
         valid_from=datetime.now().date(),
@@ -243,10 +289,25 @@ async def calculator_save(
         cost_price=adjusted_base_rate,
         is_auto_calculated=True
     ))
+
+    # ПРР как отдельная строка (если есть)
+    if prr_cost > 0:
+        prr_label = "ПРР"
+        if wagon_type == WagonType.GONDOLA:
+            prr_label = f"ПРР в ПВ ({container_type})"
+        elif wagon_type == WagonType.PLATFORM:
+            prr_label = f"ПРР на Платформе ({container_type})"
+            
+        db.add(CalculationItem(
+            calculation_id=new_calc.id,
+            name=prr_label,
+            cost_price=prr_cost,
+            is_auto_calculated=True
+        ))
     
     # Доп расходы
     for name, cost in zip(expense_names, expense_values):
-        if name and name.strip(): # Сохраняем только непустые
+        if name and name.strip(): 
             db.add(CalculationItem(
                 calculation_id=new_calc.id,
                 name=name.strip(),
