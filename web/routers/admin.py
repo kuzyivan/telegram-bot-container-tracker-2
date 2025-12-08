@@ -4,7 +4,7 @@ import json
 import secrets
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Request, Depends, Query, Form, status
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# ✅ ИМПОРТЫ БАЗЫ ДАННЫХ (включая TariffSessionLocal)
+# ✅ ИМПОРТЫ БАЗЫ ДАННЫХ
 from db import SessionLocal, TariffSessionLocal
 from models import User, UserRequest, Train, Company, UserRole, ScheduledTrain, ScheduleShareLink, Tracking
 from model.terminal_container import TerminalContainer
@@ -148,6 +148,8 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
         if filter_from_code:
             query = query.where(RailTariffRate.station_from_code == filter_from_code)
         if service_type:
+            # Преобразуем строковый enum в тип базы, если нужно, или передаем как есть
+            # Для надежности можно использовать cast, но обычно работает и так
             query = query.where(RailTariffRate.service_type == service_type)
 
     result_codes = await session.execute(query)
@@ -197,11 +199,12 @@ async def calculator_create_page(
     user: User = Depends(admin_required)
 ):
     """Страница конструктора нового расчета."""
+    # 1. Загружаем настройки (кэфы, НДС)
     settings_stmt = select(SystemSetting)
     settings_res = await db.execute(settings_stmt)
     settings = {s.key: s.value for s in settings_res.scalars()}
     
-    # Загружаем список станций ОТПРАВЛЕНИЯ
+    # 2. Загружаем список станций ОТПРАВЛЕНИЯ (безопасным способом)
     stations_from = await get_tariff_stations(db, is_departure=True)
     
     return templates.TemplateResponse("admin_calculator_form.html", {
@@ -250,21 +253,29 @@ async def calculator_preview(
     wagon_type: str = Form(...),
     margin_type: str = Form(...),
     margin_value: float = Form(0.0),
-    extra_expenses: float = Form(0.0),
+    # Списки для динамических расходов (параметры с одним именем собираются в список)
+    expense_names: List[str] = Form([]),
+    expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """HTMX: Живой расчет цены."""
+    """HTMX: Живой расчет цены с учетом динамических расходов."""
+    
+    # 1. Сумма доп. расходов
+    extra_expenses_total = sum(expense_values)
+
     if not station_to:
         return templates.TemplateResponse("partials/calc_summary.html", {
-            "request": request, "tariff_found": False, "base_rate": 0
+            "request": request, "tariff_found": False, "base_rate": 0, "extra_expenses": extra_expenses_total
         })
 
     calc_service = PriceCalculator(db)
     
+    # 2. Тариф
     tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
     base_rate = tariff.rate_no_vat if tariff else 0.0
     
+    # 3. Коэффициенты
     gondola_coeff = 1.0
     if wagon_type == WagonType.GONDOLA:
         setting = await db.get(SystemSetting, "gondola_coeff")
@@ -272,8 +283,11 @@ async def calculator_preview(
             gondola_coeff = float(setting.value)
     
     adjusted_base_rate = base_rate * gondola_coeff
-    total_cost = adjusted_base_rate + extra_expenses
     
+    # 4. Итоговая себестоимость
+    total_cost = adjusted_base_rate + extra_expenses_total
+    
+    # 5. Маржа и НДС
     sales_price_netto = 0.0
     if margin_type == MarginType.FIX:
         sales_price_netto = total_cost + margin_value
@@ -290,7 +304,7 @@ async def calculator_preview(
         "base_rate": base_rate,
         "gondola_coeff": gondola_coeff,
         "adjusted_base_rate": adjusted_base_rate,
-        "extra_expenses": extra_expenses,
+        "extra_expenses": extra_expenses_total,
         "total_cost": total_cost,
         "sales_price_netto": sales_price_netto,
         "vat_amount": vat_amount,
@@ -302,10 +316,95 @@ async def calculator_preview(
 async def calculator_save(
     request: Request,
     title: str = Form(...),
+    station_from: str = Form(...),
+    station_to: str = Form(...),
+    container_type: str = Form(...),
+    service_type: str = Form(...),
+    wagon_type: str = Form(...),
+    margin_type: str = Form(...),
+    margin_value: float = Form(0.0),
+    service_provider: str = Form(...),
+    # Списки расходов
+    expense_names: List[str] = Form([]),
+    expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    # Заглушка. Логика сохранения будет добавлена по требованию.
+    """
+    Сохраняет расчет и его детали (расходы) в базу данных.
+    """
+    
+    # 1. Повторный расчет (для надежности)
+    calc_service = PriceCalculator(db)
+    tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
+    base_rate = tariff.rate_no_vat if tariff else 0.0
+    
+    gondola_coeff = 1.0
+    if wagon_type == WagonType.GONDOLA:
+        setting = await db.get(SystemSetting, "gondola_coeff")
+        if setting: gondola_coeff = float(setting.value)
+    
+    adjusted_base_rate = base_rate * gondola_coeff
+    
+    extra_expenses_total = sum(expense_values)
+    total_cost = adjusted_base_rate + extra_expenses_total
+    
+    sales_price_netto = 0.0
+    if margin_type == MarginType.FIX:
+        sales_price_netto = total_cost + margin_value
+    else: 
+        sales_price_netto = total_cost * (1 + margin_value / 100)
+        
+    vat_setting = await db.get(SystemSetting, "vat_rate")
+    vat_rate = float(vat_setting.value) if vat_setting else 20.0
+
+    # 2. Создание объекта Calculation
+    # Для улучшения UX можно было бы найти имена станций по кодам, но пока сохраняем коды
+    
+    new_calc = Calculation(
+        title=title,
+        service_provider=service_provider,
+        service_type=service_type,
+        wagon_type=wagon_type,
+        container_type=container_type,
+        station_from=station_from,
+        station_to=station_to,
+        valid_from=datetime.now().date(),
+        total_cost=total_cost,
+        margin_type=margin_type,
+        margin_value=margin_value,
+        total_price_netto=sales_price_netto,
+        vat_rate=vat_rate,
+        status=CalculationStatus.PUBLISHED # По умолчанию публикуем
+    )
+    
+    db.add(new_calc)
+    await db.flush() # Чтобы получить ID нового расчета
+    
+    # 3. Сохранение строк расходов (CalculationItems)
+    
+    # А) Системная строка: ЖД Тариф (с учетом кэфа вагона)
+    db.add(CalculationItem(
+        calculation_id=new_calc.id,
+        name="Железнодорожный тариф",
+        cost_price=adjusted_base_rate,
+        is_auto_calculated=True
+    ))
+    
+    # Б) Пользовательские строки
+    for name, cost in zip(expense_names, expense_values):
+        # Сохраняем, только если есть имя и цена > 0 (или просто цена)
+        if name.strip(): 
+            db.add(CalculationItem(
+                calculation_id=new_calc.id,
+                name=name.strip(),
+                cost_price=cost,
+                is_auto_calculated=False
+            ))
+            
+    await db.commit()
+    
+    # Перенаправляем на список расчетов
     return RedirectResponse("/admin/calculator", status_code=303)
 
 

@@ -12,14 +12,20 @@
         <h1 class="text-2xl font-bold text-mono-black tracking-tight">Конструктор расчета</h1>
     </div>
 
+    <!-- 
+        hx-include: Включает данные из динамических инпутов расходов при обновлении превью 
+    -->
     <form action="/admin/calculator/create" method="POST" 
           class="grid grid-cols-1 lg:grid-cols-12 gap-8"
+          id="calcForm"
           hx-post="/admin/api/calc/preview" 
-          hx-trigger="change, keyup delay:500ms from:input, load" 
+          hx-trigger="change, keyup delay:500ms from:input, load, updatesummary from:body" 
           hx-target="#calc-summary">
         
+        <!-- ЛЕВАЯ КОЛОНКА: ПАРАМЕТРЫ -->
         <div class="lg:col-span-8 space-y-6">
             
+            <!-- Блок 1: Основное -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Общая информация</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -38,6 +44,7 @@
                 </div>
             </div>
 
+            <!-- Блок 2: Логистика -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Логистика</h3>
                 
@@ -96,32 +103,58 @@
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Контейнер</label>
+                        <!-- ✅ ИСПРАВЛЕННЫЕ ТИПЫ КОНТЕЙНЕРОВ (КАК В БАЗЕ) -->
                         <select name="container_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-post="/admin/api/calc/preview"
                                 hx-trigger="change">
                             <option value="40_STD">40' STD</option>
-                            <option value="20_STD">20' STD</option>
-                            <option value="40_HC">40' HC</option>
+                            <option value="40_HEAVY">40' HEAVY</option>
+                            <option value="20_REF">20' REF</option>
+                            <option value="20_HEAVY">20' HEAVY</option>
+                            <option value="20_EXTRA">20' EXTRA</option>
                         </select>
                     </div>
                 </div>
             </div>
 
+            <!-- 🔥 БЛОК 3: ЭКОНОМИКА (С ДИНАМИЧЕСКИМИ РАСХОДАМИ) -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Экономика</h3>
                 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="space-y-1.5">
-                        <label class="text-xs font-bold text-mono-black ml-1">Доп. расходы (руб)</label>
-                        <input type="number" name="extra_expenses" value="0" step="100"
-                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
-                        <p class="text-[10px] text-mono-gray ml-1">Охрана, подача/уборка, авто</p>
+                <!-- Контейнер для строк расходов -->
+                <div id="expenses-container" class="space-y-3 mb-6">
+                    <!-- Первая строка (Обязательная или пример) -->
+                    <div class="grid grid-cols-12 gap-3 items-center expense-row">
+                        <div class="col-span-6">
+                            <input type="text" name="expense_names" placeholder="Название (например: ПРР)" 
+                                   class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm outline-none focus:ring-1 focus:ring-mono-black">
+                        </div>
+                        <div class="col-span-4">
+                            <input type="number" name="expense_values" placeholder="0" step="100" value="0"
+                                   oninput="triggerUpdate()"
+                                   class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm font-mono outline-none focus:ring-1 focus:ring-mono-black">
+                        </div>
+                        <div class="col-span-2 text-right">
+                            <button type="button" class="text-mono-gray hover:text-red-500 transition" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
                     </div>
-                    
+                </div>
+
+                <!-- Кнопка добавления -->
+                <button type="button" onclick="addExpenseRow()" 
+                        class="text-xs font-bold text-mono-black border border-mono-border bg-white hover:bg-mono-bg px-4 py-2 rounded-lg transition mb-6 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Добавить расход
+                </button>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-mono-border">
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Тип маржи</label>
-                        <select name="margin_type" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none">
+                        <select name="margin_type" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-post="/admin/api/calc/preview" hx-trigger="change">
                             <option value="FIX">Фикс (RUB)</option>
                             <option value="PERCENT">Процент (%)</option>
                         </select>
@@ -130,19 +163,20 @@
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Значение маржи</label>
                         <input type="number" name="margin_value" value="{{ settings.default_margin_fix }}" step="100"
-                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none"
+                               hx-post="/admin/api/calc/preview" hx-trigger="keyup delay:500ms">
                     </div>
                 </div>
             </div>
 
         </div>
 
+        <!-- ПРАВАЯ КОЛОНКА: ИТОГИ -->
         <div class="lg:col-span-4">
             <div class="sticky top-24 space-y-4">
-                
                 <div id="calc-summary">
                     <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent text-center animate-pulse">
-                        <span class="text-sm text-mono-gray">Выберите маршрут для расчета...</span>
+                        <span class="text-sm text-mono-gray">Выберите маршрут...</span>
                     </div>
                 </div>
 
@@ -156,13 +190,44 @@
     </form>
 </div>
 
+<!-- JS для динамических строк -->
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        // Вызываем событие change на "Откуда", чтобы подгрузить "Куда" сразу для первой станции
         const fromSelect = document.querySelector('select[name="station_from"]');
-        if(fromSelect) {
-            htmx.trigger(fromSelect, 'change');
-        }
+        if(fromSelect) htmx.trigger(fromSelect, 'change');
     });
+
+    function triggerUpdate() {
+        // Вызываем событие, которое слушает HTMX на форме (updatesummary)
+        document.body.dispatchEvent(new Event('updatesummary'));
+    }
+
+    function addExpenseRow() {
+        const container = document.getElementById('expenses-container');
+        const div = document.createElement('div');
+        div.className = 'grid grid-cols-12 gap-3 items-center expense-row animate-slide-up';
+        div.innerHTML = `
+            <div class="col-span-6">
+                <input type="text" name="expense_names" placeholder="Название" 
+                       class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm outline-none focus:ring-1 focus:ring-mono-black">
+            </div>
+            <div class="col-span-4">
+                <input type="number" name="expense_values" placeholder="0" step="100" value="0"
+                       oninput="triggerUpdate()"
+                       class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm font-mono outline-none focus:ring-1 focus:ring-mono-black">
+            </div>
+            <div class="col-span-2 text-right">
+                <button type="button" onclick="removeRow(this)" class="text-mono-gray hover:text-red-500 transition p-2 hover:bg-red-50 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+        `;
+        container.appendChild(div);
+    }
+
+    function removeRow(btn) {
+        btn.closest('.expense-row').remove();
+        triggerUpdate(); // Пересчитываем сумму
+    }
 </script>
 {% endblock %}
