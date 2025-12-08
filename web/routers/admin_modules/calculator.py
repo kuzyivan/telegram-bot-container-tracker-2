@@ -88,9 +88,15 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
 @router.get("/calculator")
 async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     """Список расчетов."""
-    stmt = select(Calculation).order_by(desc(Calculation.created_at))
+    # 🔥 ИЗМЕНЕНИЕ: Сортируем сначала по Провайдеру, потом по Типу контейнера, потом по Дате
+    stmt = select(Calculation).order_by(
+        Calculation.service_provider,   # Группировка
+        Calculation.container_type,     # Порядок внутри группы
+        desc(Calculation.created_at)
+    )
     result = await db.execute(stmt)
     calculations = result.scalars().all()
+    
     return templates.TemplateResponse("admin_calculator_list.html", {
         "request": request, "user": user, "calculations": calculations, "CalculationStatus": CalculationStatus
     })
