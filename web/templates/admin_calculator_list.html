@@ -45,7 +45,8 @@
                         
                         <td class="px-6 py-4">
                             <span class="inline-flex items-center px-2 py-1 rounded border border-mono-border bg-white text-xs font-mono text-mono-gray">
-                                {{ calc.container_type }} / {{ calc.wagon_type.value }}
+                                <!-- 🔥 Убрали вагон, оставили только контейнер с заменой _ на ' -->
+                                {{ calc.container_type.replace('_', "' ") }}
                             </span>
                         </td>
 
