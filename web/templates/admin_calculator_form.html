@@ -14,9 +14,6 @@
         </h1>
     </div>
 
-    <!-- 
-        ОСНОВНАЯ ФОРМА 
-    -->
     <form action="{{ '/admin/calculator/' + calc.id|string + '/update' if calc else '/admin/calculator/create' }}" 
           method="POST" 
           class="grid grid-cols-1 lg:grid-cols-12 gap-8"
@@ -32,7 +29,6 @@
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Общая информация</h3>
                 <div class="grid grid-cols-1 gap-6">
-                    <!-- Оставили только название, Провайдера перенесли в Логистику -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Название расчета</label>
                         <input type="text" name="title" value="{{ calc.title if calc else '' }}" required 
@@ -42,14 +38,13 @@
                 </div>
             </div>
 
-            <!-- 2. Логистика (Сгруппировали сервисные параметры) -->
+            <!-- 2. Логистика -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Логистика</h3>
                 
                 <!-- Ряд 1: Поставщик, Тип отправки, Подвижной состав -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                     
-                    <!-- Перенесенное поле: Поставщик сервиса -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Поставщик сервиса</label>
                         <input type="text" name="service_provider" value="{{ calc.service_provider if calc else '' }}" required 
@@ -57,8 +52,8 @@
                                placeholder="Например: ТрансКонтейнер">
                     </div>
 
-                    <!-- Переименованное поле: Тип отправки -->
                     <div class="space-y-1.5">
+                        <!-- 🔥 Переименовали: Тип сервиса -> Тип отправки -->
                         <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
                         <select name="service_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
@@ -149,7 +144,6 @@
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <!-- ПРР -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-gray uppercase ml-1">ПРР (Терминал)</label>
                         <div id="prr_container">
@@ -160,7 +154,6 @@
                         </div>
                     </div>
                     
-                    <!-- Ставка Сервиса -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black uppercase ml-1">Ставка Сервиса / ТК</label>
                         <input type="number" name="service_rate_value" 
@@ -228,9 +221,10 @@
 
         </div>
 
-        <!-- ПРАВАЯ КОЛОНКА (Sticky Summary) -->
+        <!-- ПРАВАЯ КОЛОНКА -->
         <div class="lg:col-span-4">
             <div class="sticky top-24 space-y-4">
+                
                 <div id="calc-summary">
                     <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent text-center animate-pulse">
                         <p class="text-sm text-mono-gray font-medium">Загрузка расчета...</p>

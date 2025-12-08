@@ -23,7 +23,8 @@
                 <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
                     <tr>
                         <th class="px-6 py-4">Название / Клиент</th>
-                        <th class="px-6 py-4">Маршрут</th>
+                        <!-- 🔥 Заменили "Маршрут" на "Поставщик сервиса" -->
+                        <th class="px-6 py-4">Поставщик сервиса</th>
                         <th class="px-6 py-4">Тип</th>
                         <th class="px-6 py-4 text-right">Итого (с НДС)</th>
                         <th class="px-6 py-4 text-right">Статус</th>
@@ -36,13 +37,12 @@
                             <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
                             <div class="text-xs text-mono-gray mt-0.5">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
                         </td>
+                        
+                        <!-- 🔥 Выводим service_provider вместо кодов станций -->
                         <td class="px-6 py-4">
-                            <div class="flex items-center gap-2 text-mono-black font-medium">
-                                <span>{{ calc.station_from }}</span>
-                                <span class="text-mono-gray">→</span>
-                                <span>{{ calc.station_to }}</span>
-                            </div>
+                            <div class="font-medium text-mono-black">{{ calc.service_provider }}</div>
                         </td>
+                        
                         <td class="px-6 py-4">
                             <span class="inline-flex items-center px-2 py-1 rounded border border-mono-border bg-white text-xs font-mono text-mono-gray">
                                 {{ calc.container_type }} / {{ calc.wagon_type.value }}
@@ -54,13 +54,22 @@
                             </div>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            {% if calc.status.value == 'DRAFT' %}
-                                <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">Черновик</span>
-                            {% elif calc.status.value == 'PUBLISHED' %}
-                                <span class="bg-mono-black text-white px-2 py-1 rounded text-xs font-bold">Активен</span>
-                            {% else %}
-                                <span class="text-gray-400 text-xs">Архив</span>
-                            {% endif %}
+                            <div class="flex items-center justify-end gap-3">
+                                {% if calc.status.value == 'DRAFT' %}
+                                    <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">Черновик</span>
+                                {% elif calc.status.value == 'PUBLISHED' %}
+                                    <span class="bg-mono-black text-white px-2 py-1 rounded text-xs font-bold">Активен</span>
+                                {% else %}
+                                    <span class="text-gray-400 text-xs">Архив</span>
+                                {% endif %}
+                                
+                                <!-- Кнопка копирования (с остановкой всплытия события клика по строке) -->
+                                <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
+                                    <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% else %}

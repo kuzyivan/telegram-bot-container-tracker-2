@@ -171,6 +171,63 @@ async def calculator_edit_page(
         "include_prr": include_prr
     })
 
+# 🔥 НОВЫЙ РОУТ: КОПИРОВАНИЕ РАСЧЕТА
+@router.post("/calculator/{calc_id}/copy")
+async def calculator_copy(
+    calc_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """
+    Создает копию расчета и перенаправляет на его редактирование.
+    """
+    # 1. Загружаем оригинал со строками
+    stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
+    result = await db.execute(stmt)
+    original_calc = result.scalar_one_or_none()
+    
+    if not original_calc:
+        return RedirectResponse("/admin/calculator", status_code=303)
+
+    # 2. Создаем копию объекта Calculation
+    new_calc = Calculation(
+        title=f"{original_calc.title} (копия)", # Добавляем "копия"
+        service_provider=original_calc.service_provider,
+        service_type=original_calc.service_type,
+        wagon_type=original_calc.wagon_type,
+        container_type=original_calc.container_type,
+        station_from=original_calc.station_from,
+        station_to=original_calc.station_to,
+        valid_from=datetime.now().date(), # Обновляем дату начала на сегодня
+        valid_to=original_calc.valid_to,
+        total_cost=original_calc.total_cost,
+        margin_type=original_calc.margin_type,
+        margin_value=original_calc.margin_value,
+        total_price_netto=original_calc.total_price_netto,
+        vat_rate=original_calc.vat_rate,
+        status=CalculationStatus.DRAFT, # Копия создается как черновик (безопаснее)
+        created_at=func.now()
+    )
+    
+    db.add(new_calc)
+    await db.flush() # Чтобы получить новый ID
+
+    # 3. Копируем строки (CalculationItem)
+    for item in original_calc.items:
+        new_item = CalculationItem(
+            calculation_id=new_calc.id,
+            name=item.name,
+            cost_price=item.cost_price,
+            is_auto_calculated=item.is_auto_calculated
+        )
+        db.add(new_item)
+        
+    await db.commit()
+    
+    # 4. Редирект на редактирование новой копии
+    return RedirectResponse(f"/admin/calculator/{new_calc.id}", status_code=303)
+
+
 # 🔥 HTMX: Получение значения ПРР для инпута
 @router.get("/api/calc/get_prr_input")
 async def get_prr_input_html(
