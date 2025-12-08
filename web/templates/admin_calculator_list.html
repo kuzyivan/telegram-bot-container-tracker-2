@@ -20,10 +20,17 @@
             </button>
 
             <!-- Кнопка создания нового расчета -->
-            <a href="/admin/calculator/new" class="group flex items-center gap-2 bg-mono-black text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 transition active:scale-95">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                Создать расчет
-            </a>
+            <<div class="flex items-center gap-2 bg-mono-bg p-1 rounded-xl border border-mono-border">
+                <a href="/admin/calculator/new?type=TRAIN" class="group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition hover:bg-white hover:shadow-sm text-mono-gray hover:text-mono-black">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                    КП (Поезд)
+                </a>
+                <div class="w-px h-4 bg-mono-border"></div>
+                <a href="/admin/calculator/new?type=SINGLE" class="group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition hover:bg-white hover:shadow-sm text-mono-gray hover:text-mono-black">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
+                    Одиночная
+                </a>
+            </div>
         </div>
     </div>
 

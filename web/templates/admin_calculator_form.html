@@ -54,14 +54,23 @@
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
+                        <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
                         <select name="service_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-get="/admin/api/calc/destinations"
                                 hx-include="[name='station_from']"
                                 hx-target="#station_to_select">
-                            <option value="TRAIN" {% if calc and calc.service_type.value == 'TRAIN' %}selected{% endif %}>Контейнерный Поезд (КП)</option>
-                            <option value="SINGLE" {% if calc and calc.service_type.value == 'SINGLE' %}selected{% endif %}>Одиночная отправка</option>
+                            <option value="TRAIN" 
+                                {% if (calc and calc.service_type.value == 'TRAIN') or (not calc and default_service_type == 'TRAIN') %}selected{% endif %}>
+                                Контейнерный Поезд (КП)
+                            </option>
+                            <option value="SINGLE" 
+                                {% if (calc and calc.service_type.value == 'SINGLE') or (not calc and default_service_type == 'SINGLE') %}selected{% endif %}>
+                                Одиночная отправка
+                            </option>
                         </select>
+                    </div>
                     </div>
 
                     <div class="space-y-1.5">

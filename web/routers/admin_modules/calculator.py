@@ -103,7 +103,13 @@ async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), 
     })
 
 @router.get("/calculator/new")
-async def calculator_create_page(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
+async def calculator_create_page(
+    request: Request, 
+    # 👇 Добавляем параметр type (по умолчанию TRAIN)
+    type: str = Query("TRAIN"), 
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required)
+):
     """Страница создания нового расчета."""
     settings_stmt = select(SystemSetting)
     settings_res = await db.execute(settings_stmt)
@@ -117,7 +123,8 @@ async def calculator_create_page(request: Request, db: AsyncSession = Depends(ge
         "today": datetime.now().date(),
         "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, 
         "stations_from": stations_from,
-        "calc": None # Маркер создания
+        "calc": None,
+        "default_service_type": type.upper() # 👇 Передаем в шаблон
     })
 
 @router.get("/calculator/{calc_id}")
@@ -545,3 +552,4 @@ async def upload_tariffs_excel(
         url=f"/admin/calculator?success_msg={success_msg}", 
         status_code=303
     )
+
