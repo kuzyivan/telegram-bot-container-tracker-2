@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy import select, desc, distinct, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from services.tariff_importer_service import process_tariff_import
 
 from models import User
 from models_finance import (
