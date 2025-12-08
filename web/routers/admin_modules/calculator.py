@@ -1,11 +1,10 @@
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Request, Depends, Query, Form, status
+from fastapi import APIRouter, Request, Depends, Query, Form, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
-from sqlalchemy import select, desc, distinct
+from sqlalchemy import select, desc, distinct, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Импорты проекта
 from models import User
 from models_finance import (
     Calculation, CalculationItem, RailTariffRate, 
@@ -19,10 +18,12 @@ from .common import templates, get_db
 
 router = APIRouter()
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
-
 async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_from_code: str = None, service_type: str = None):
-    """Возвращает список станций (код, имя) из тарифной БД."""
+    """
+    Возвращает список уникальных станций (код, имя).
+    Для дублей кодов выбирает самое короткое название (чтобы убрать '(экспорт)' и т.д.).
+    """
+    # 1. Получаем список уникальных КОДОВ из таблицы тарифов
     target_col = RailTariffRate.station_from_code if is_departure else RailTariffRate.station_to_code
     query = select(target_col).distinct()
 
@@ -38,41 +39,48 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
     if not codes_list:
         return []
 
+    # 2. Получаем имена для кодов из Тарифной БД
     if not TariffSessionLocal:
-        return [{"code": c, "name": f"Station {c}"} for c in codes_list]
+        return [{"code": c, "name": f"Станция {c}"} for c in codes_list]
 
     async with TariffSessionLocal() as tariff_db:
+        # Используем группировку, чтобы для одного кода взять одно имя
+        # Берем имя минимальной длины (обычно это самое "чистое" название)
+        # PostgreSQL specific: DISTINCT ON (code) ORDER BY code, length(name)
+        
+        # Вариант с Python-обработкой (надежнее для небольших списков)
         stmt = select(TariffStation.code, TariffStation.name).where(TariffStation.code.in_(codes_list))
         res = await tariff_db.execute(stmt)
         rows = res.all()
 
-    return [{"code": row.code, "name": row.name} for row in rows]
+    # 3. Фильтрация дублей в Python (оставляем самое короткое название для каждого кода)
+    unique_stations = {}
+    for code, name in rows:
+        clean_name = name.strip()
+        if code not in unique_stations:
+            unique_stations[code] = clean_name
+        else:
+            # Если новое имя короче уже сохраненного - берем его (Угловая < Угловая (эксп))
+            if len(clean_name) < len(unique_stations[code]):
+                unique_stations[code] = clean_name
 
-# --- РОУТЫ ---
+    # Превращаем в список и сортируем по алфавиту
+    result_list = [{"code": k, "name": v} for k, v in unique_stations.items()]
+    result_list.sort(key=lambda x: x['name'])
+    
+    return result_list
 
 @router.get("/calculator")
-async def calculator_list(
-    request: Request, 
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     stmt = select(Calculation).order_by(desc(Calculation.created_at))
     result = await db.execute(stmt)
     calculations = result.scalars().all()
-    
     return templates.TemplateResponse("admin_calculator_list.html", {
-        "request": request,
-        "user": user,
-        "calculations": calculations,
-        "CalculationStatus": CalculationStatus
+        "request": request, "user": user, "calculations": calculations, "CalculationStatus": CalculationStatus
     })
 
 @router.get("/calculator/new")
-async def calculator_create_page(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
-):
+async def calculator_create_page(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     settings_stmt = select(SystemSetting)
     settings_res = await db.execute(settings_stmt)
     settings = {s.key: s.value for s in settings_res.scalars()}
@@ -80,37 +88,38 @@ async def calculator_create_page(
     stations_from = await get_tariff_stations(db, is_departure=True)
     
     return templates.TemplateResponse("admin_calculator_form.html", {
-        "request": request,
-        "user": user,
-        "settings": settings,
-        "today": datetime.now().date(),
-        "ServiceType": ServiceType,
-        "WagonType": WagonType,
-        "MarginType": MarginType,
-        "stations_from": stations_from 
+        "request": request, "user": user, "settings": settings, "today": datetime.now().date(),
+        "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, "stations_from": stations_from 
     })
 
 @router.get("/api/calc/destinations")
 async def get_available_destinations(
-    request: Request,
-    station_from: str = Query(...),
-    service_type: str = Query(None),
-    db: AsyncSession = Depends(get_db),
+    request: Request, 
+    station_from: Optional[str] = Query(None), # Может быть пустым
+    service_type: Optional[str] = Query(None), 
+    db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
 ):
+    if not station_from:
+        return HTMLResponse('<option value="" disabled selected>Сначала выберите пункт отправления</option>')
+
     destinations = await get_tariff_stations(db, is_departure=False, filter_from_code=station_from, service_type=service_type)
+    
     options_html = '<option value="" disabled selected>— Выберите станцию —</option>'
     for st in destinations:
         options_html += f'<option value="{st["code"]}">{st["name"]}</option>'
+    
     if not destinations:
         options_html = '<option value="" disabled>Нет тарифов для этого направления</option>'
+        
     return HTMLResponse(options_html)
 
 @router.post("/api/calc/preview")
 async def calculator_preview(
     request: Request,
-    station_from: str = Form(...),
-    station_to: str = Form(None), 
+    # Делаем поля Optional, чтобы избежать 422 ошибок при частичном заполнении
+    station_from: Optional[str] = Form(None),
+    station_to: Optional[str] = Form(None), 
     container_type: str = Form(...),
     service_type: str = Form(...),
     wagon_type: str = Form(...),
@@ -121,8 +130,13 @@ async def calculator_preview(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
+    """
+    HTMX: Живой расчет цены.
+    """
     extra_expenses_total = sum(expense_values)
-    if not station_to:
+    
+    # Если ключевые поля не заполнены, возвращаем нули, но НЕ ошибку
+    if not station_from or not station_to:
         return templates.TemplateResponse("partials/calc_summary.html", {
             "request": request, "tariff_found": False, "base_rate": 0, "extra_expenses": extra_expenses_total
         })
@@ -140,7 +154,7 @@ async def calculator_preview(
     total_cost = adjusted_base_rate + extra_expenses_total
     
     sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
-        
+    
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
     vat_amount = sales_price_netto * (vat_rate / 100)
@@ -176,9 +190,14 @@ async def calculator_save(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    # 1. Расчет
+    """
+    Сохраняет расчет.
+    """
+    # 1. Повторный расчет
     calc_service = PriceCalculator(db)
     tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
+    
+    # Если тариф не найден, но мы сохраняем - это возможно, но пометим как 0
     base_rate = tariff.rate_no_vat if tariff else 0.0
     
     gondola_coeff = 1.0
@@ -191,17 +210,17 @@ async def calculator_save(
     total_cost = adjusted_base_rate + extra_expenses_total
     
     sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
-        
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
 
-    # 2. Сохранение заголовка
+    # 2. Создаем запись
     new_calc = Calculation(
         title=title,
         service_provider=service_provider,
         service_type=service_type,
         wagon_type=wagon_type,
         container_type=container_type,
+        # Запишем имена станций для удобства, если получится, но пока пишем коды
         station_from=station_from,
         station_to=station_to,
         valid_from=datetime.now().date(),
@@ -216,7 +235,8 @@ async def calculator_save(
     db.add(new_calc)
     await db.flush()
     
-    # 3. Сохранение строк
+    # 3. Сохраняем строки
+    # ЖД Тариф
     db.add(CalculationItem(
         calculation_id=new_calc.id,
         name="Железнодорожный тариф",
@@ -224,8 +244,9 @@ async def calculator_save(
         is_auto_calculated=True
     ))
     
+    # Доп расходы
     for name, cost in zip(expense_names, expense_values):
-        if name.strip(): 
+        if name and name.strip(): # Сохраняем только непустые
             db.add(CalculationItem(
                 calculation_id=new_calc.id,
                 name=name.strip(),
@@ -234,4 +255,5 @@ async def calculator_save(
             ))
             
     await db.commit()
+    
     return RedirectResponse("/admin/calculator", status_code=303)
