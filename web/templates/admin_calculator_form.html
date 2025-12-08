@@ -16,7 +16,8 @@
 
     <!-- 
         ОСНОВНАЯ ФОРМА 
-        Action меняется в зависимости от того, редактируем мы или создаем
+        Action меняется динамически.
+        hx-post отправляет данные на превью при любом изменении.
     -->
     <form action="{{ '/admin/calculator/' + calc.id|string + '/update' if calc else '/admin/calculator/create' }}" 
           method="POST" 
@@ -26,7 +27,7 @@
           hx-trigger="change, keyup delay:500ms from:input, updatesummary from:body, load" 
           hx-target="#calc-summary">
         
-        <!-- ЛЕВАЯ КОЛОНКА (8 колонок) -->
+        <!-- ЛЕВАЯ КОЛОНКА (Настройки) -->
         <div class="lg:col-span-8 space-y-6">
             
             <!-- 1. Основное -->
@@ -67,7 +68,7 @@
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Подвижной состав</label>
-                        <!-- Добавлены hx-get для обновления поля ПРР -->
+                        <!-- При смене вагона обновляем инпут ПРР -->
                         <select name="wagon_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-get="/admin/api/calc/get_prr_input"
@@ -110,7 +111,7 @@
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Контейнер</label>
-                        <!-- Добавлены hx-get для обновления поля ПРР -->
+                        <!-- При смене контейнера обновляем инпут ПРР -->
                         <select name="container_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-get="/admin/api/calc/get_prr_input"
@@ -123,40 +124,63 @@
                         </select>
                     </div>
                 </div>
-
-                <!-- 🔥 НОВОЕ ПОЛЕ: ПРР (Терминал) -->
-                <div class="p-4 bg-mono-bg rounded-xl border border-transparent">
-                    <div class="flex items-center justify-between">
-                        <div class="space-y-1">
-                            <label class="text-xs font-bold text-mono-black uppercase">ПРР (Терминал)</label>
-                            <p class="text-[10px] text-mono-gray">Автоматически подставляется по типу вагона, но можно изменить.</p>
-                        </div>
-                        <div class="w-40" id="prr_container">
-                            <!-- 
-                                Этот инпут обновляется через HTMX при смене вагона/контейнера.
-                                При инициализации (редактировании) подставляем значение из БД.
-                            -->
-                            <input type="number" name="prr_value" id="prr_input" 
-                                   value="{{ saved_prr if saved_prr is defined else 0 }}" step="100"
-                                   class="w-full px-4 py-3 bg-white border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none shadow-sm">
-                        </div>
-                    </div>
-                </div>
-
             </div>
 
-            <!-- 3. Экономика -->
+            <!-- 3. Экономика (СВОБОДНЫЙ КОНСТРУКТОР) -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Экономика</h3>
                 
+                <!-- 🔥 Чекбоксы управления составом цены -->
+                <div class="flex gap-6 mb-6 p-4 bg-mono-bg rounded-xl">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="include_rail_tariff" class="w-4 h-4 text-mono-black rounded focus:ring-mono-black border-gray-300 transition" 
+                               {% if not calc or include_rail_tariff %}checked{% endif %} 
+                               onchange="triggerUpdate()">
+                        <span class="text-sm font-bold text-mono-black">Включить ЖД Тариф (Авто)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="include_prr" class="w-4 h-4 text-mono-black rounded focus:ring-mono-black border-gray-300 transition"
+                               {% if not calc or include_prr %}checked{% endif %} 
+                               onchange="triggerUpdate()">
+                        <span class="text-sm font-bold text-mono-black">Включить ПРР</span>
+                    </label>
+                </div>
+
+                <!-- Блок ПРР и Сервис -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- ПРР (Отображается всегда, но учитывается только если чекбокс активен) -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">ПРР (Терминал)</label>
+                        <div id="prr_container">
+                            <!-- Этот инпут перезагружается через HTMX -->
+                            <input type="number" name="prr_value" id="prr_input" 
+                                   value="{{ saved_prr if saved_prr is defined else 0 }}" step="100"
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none"
+                                   oninput="triggerUpdate()">
+                        </div>
+                    </div>
+                    
+                    <!-- Ставка Сервиса (для All-in) -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black uppercase ml-1">Ставка Сервиса / ТК</label>
+                        <input type="number" name="service_rate_value" 
+                               value="{{ saved_service_rate if saved_service_rate is defined else 0 }}" step="100"
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none font-bold"
+                               placeholder="0" oninput="triggerUpdate()">
+                        <p class="text-[10px] text-mono-gray ml-1">Заполнять, если тариф включен в ставку провайдера (All-in).</p>
+                    </div>
+                </div>
+
+                <hr class="border-mono-border my-6">
+
+                <!-- Дополнительные расходы -->
                 <div class="mb-2 grid grid-cols-12 gap-3 text-[10px] uppercase font-bold text-mono-gray tracking-wider">
-                    <div class="col-span-6 pl-1">Наименование расхода</div>
+                    <div class="col-span-6 pl-1">Доп. расходы</div>
                     <div class="col-span-4 pl-1">Стоимость (₽)</div>
                     <div class="col-span-2"></div>
                 </div>
 
                 <div id="expenses-container" class="space-y-3 mb-6">
-                    <!-- Если редактируем, выводим существующие расходы -->
                     {% if calc %}
                         {% for item in calc.items %}
                             {% if not item.is_auto_calculated %}
@@ -205,12 +229,12 @@
 
         </div>
 
-        <!-- ПРАВАЯ КОЛОНКА -->
+        <!-- ПРАВАЯ КОЛОНКА (Sticky Summary) -->
         <div class="lg:col-span-4">
             <div class="sticky top-24 space-y-4">
                 
                 <div id="calc-summary">
-                    <!-- Сюда прилетит превью при загрузке страницы (благодаря hx-trigger="load") -->
+                    <!-- Загрушка пока HTMX не подтянет данные -->
                     <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent text-center animate-pulse">
                         <p class="text-sm text-mono-gray font-medium">Загрузка расчета...</p>
                     </div>
@@ -229,13 +253,12 @@
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         const fromSelect = document.querySelector('select[name="station_from"]');
-        // Если это новый расчет и "Куда" еще пустое — триггерим загрузку
         const toSelect = document.querySelector('select[name="station_to"]');
+        // Если это новый расчет (нет "Куда"), дергаем список
         if(fromSelect && (!toSelect.value || toSelect.value === "")) {
             htmx.trigger(fromSelect, 'change');
         }
-        
-        // Триггерим первоначальный расчет (Preview), чтобы заполнить правый блок
+        // Запускаем первичный расчет превью
         triggerUpdate();
     });
 

@@ -1,39 +1,55 @@
 <div class="bg-white p-6 rounded-2xl shadow-lg border border-mono-border animate-fade-in relative overflow-hidden">
     
+    <!-- Декоративная полоса сверху -->
     <div class="absolute top-0 left-0 w-full h-1 bg-mono-black"></div>
 
+    <!-- Заголовок и Статус тарифа -->
     <h3 class="text-base font-bold text-mono-black mb-5 flex justify-between items-center">
         Итоги расчета
-        {% if tariff_found %}
+        {% if tariff_found and include_rail_tariff %}
             <span class="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Тариф найден</span>
         {% else %}
-            <span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Нет тарифа</span>
+            {% if include_rail_tariff %}
+                <span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Нет тарифа</span>
+            {% else %}
+                <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Спецставка</span>
+            {% endif %}
         {% endif %}
     </h3>
     
     <div class="space-y-3 text-sm">
-        <!-- Базовый тариф -->
-        <div class="flex justify-between items-center group">
-            <span class="text-mono-gray border-b border-dashed border-gray-200 group-hover:border-mono-gray transition cursor-help" title="Базовая ставка ЖД из базы данных">Тариф ЖД (База):</span>
-            <span class="font-mono font-medium text-mono-black">{{ "{:,.0f}".format(base_rate).replace(',', ' ') }}</span>
-        </div>
         
-        <!-- Наценка на полувагон -->
-        {% if gondola_coeff != 1.0 %}
-        <div class="flex justify-between items-center text-blue-600 bg-blue-50 px-2 py-1 -mx-2 rounded">
-            <span class="text-xs font-bold">Полувагон (x{{ gondola_coeff }}):</span>
-            <span class="font-mono font-bold text-xs">+{{ "{:,.0f}".format(adjusted_base_rate - base_rate).replace(',', ' ') }}</span>
-        </div>
+        <!-- БЛОК АВТОМАТИЧЕСКОГО ТАРИФА (Скрывается, если галочка выключена) -->
+        {% if include_rail_tariff %}
+            <div class="flex justify-between items-center group">
+                <span class="text-mono-gray border-b border-dashed border-gray-200 group-hover:border-mono-gray transition cursor-help" title="Базовая ставка ЖД из базы данных">Тариф ЖД (База):</span>
+                <span class="font-mono font-medium text-mono-black">{{ "{:,.0f}".format(base_rate).replace(',', ' ') }}</span>
+            </div>
+            
+            {% if gondola_coeff != 1.0 %}
+            <div class="flex justify-between items-center text-blue-600 bg-blue-50 px-2 py-1 -mx-2 rounded">
+                <span class="text-xs font-bold">Полувагон (x{{ gondola_coeff }}):</span>
+                <span class="font-mono font-bold text-xs">+{{ "{:,.0f}".format(adjusted_base_rate - base_rate).replace(',', ' ') }}</span>
+            </div>
+            {% endif %}
         {% endif %}
 
-        <!-- 🔥 НОВЫЙ БЛОК: ПРР (отображается только если > 0) -->
-        {% if prr_cost and prr_cost > 0 %}
+        <!-- ПРР (Скрывается, если галочка выключена или сумма 0) -->
+        {% if include_prr and prr_cost > 0 %}
         <div class="flex justify-between items-center text-mono-black bg-gray-50 px-2 py-1 -mx-2 rounded border border-gray-100">
             <span class="text-xs font-bold flex items-center gap-1">
                 <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                 ПРР:
             </span>
             <span class="font-mono font-bold text-xs">{{ "{:,.0f}".format(prr_cost).replace(',', ' ') }}</span>
+        </div>
+        {% endif %}
+
+        <!-- СТАВКА СЕРВИСА (Показываем только если > 0) -->
+        {% if service_rate > 0 %}
+        <div class="flex justify-between items-center text-mono-black font-bold border-l-2 border-mono-black pl-2 -ml-2 bg-gray-50 py-1 pr-1 rounded-r">
+            <span class="text-xs uppercase tracking-tight">Ставка Сервиса:</span>
+            <span class="font-mono">{{ "{:,.0f}".format(service_rate).replace(',', ' ') }}</span>
         </div>
         {% endif %}
 
@@ -48,7 +64,6 @@
         <!-- Себестоимость -->
         <div class="flex justify-between items-center pt-3 mt-1 border-t border-mono-border">
             <span class="font-bold text-mono-black">Себестоимость:</span>
-            <!-- total_cost уже включает в себя ПРР, так как мы сложили это в Python -->
             <span class="font-mono font-bold text-mono-black">{{ "{:,.0f}".format(total_cost).replace(',', ' ') }}</span>
         </div>
 
@@ -74,7 +89,8 @@
         </div>
     </div>
 
-    {% if not tariff_found %}
+    <!-- Предупреждение, если тариф включен, но не найден -->
+    {% if include_rail_tariff and not tariff_found %}
     <div class="mt-4 p-3 bg-red-50 text-red-600 text-xs rounded-lg text-center font-medium border border-red-100 animate-pulse">
         ⚠️ Тариф для этого направления не найден в базе. Используется 0.
     </div>
