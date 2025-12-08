@@ -89,14 +89,24 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
 # --- РОУТЫ ---
 
 @router.get("/calculator")
-async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
-    """Список расчетов."""
-    # Сортируем сначала по Провайдеру, потом по Типу контейнера, потом по Дате
-    stmt = select(Calculation).order_by(
+async def calculator_list(
+    request: Request, 
+    # Параметр фильтрации (по умолчанию TRAIN)
+    type: str = Query("TRAIN"),
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required)
+):
+    """Список расчетов с фильтрацией по типу (КП/Одиночная)."""
+    
+    # Фильтруем по типу сервиса
+    stmt = select(Calculation).where(
+        Calculation.service_type == type.upper()
+    ).order_by(
         Calculation.service_provider,   # Группировка
         Calculation.container_type,     # Порядок внутри группы
         desc(Calculation.created_at)
     )
+    
     result = await db.execute(stmt)
     calculations = result.scalars().all()
     
@@ -105,13 +115,14 @@ async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), 
         "user": user, 
         "calculations": calculations, 
         "CalculationStatus": CalculationStatus,
-        "today": datetime.now().date() # Передаем текущую дату для проверки просрочки
+        "today": datetime.now().date(), # Для проверки срока действия (неон)
+        "current_type": type.upper()    # Для активной вкладки
     })
 
 @router.get("/calculator/new")
 async def calculator_create_page(
     request: Request, 
-    # Добавляем параметр type (по умолчанию TRAIN) для UX разделения кнопок
+    # Параметр type для предустановки селекта (UX)
     type: str = Query("TRAIN"), 
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
@@ -130,7 +141,7 @@ async def calculator_create_page(
         "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, 
         "stations_from": stations_from,
         "calc": None,
-        "default_service_type": type.upper() # Передаем в шаблон для автовыбора
+        "default_service_type": type.upper() # Передаем в шаблон
     })
 
 @router.get("/calculator/{calc_id}")
@@ -155,7 +166,7 @@ async def calculator_edit_page(
     stations_from = await get_tariff_stations(db, is_departure=True)
     stations_to = await get_tariff_stations(db, is_departure=False, filter_from_code=calc.station_from, service_type=calc.service_type)
 
-    # Восстанавливаем состояние чекбоксов и значений из сохраненных строк (CalculationItems)
+    # Восстанавливаем состояние чекбоксов и значений из сохраненных строк
     saved_prr = 0.0
     saved_service_rate = 0.0
     include_rail_tariff = False
@@ -170,12 +181,11 @@ async def calculator_edit_page(
         elif "Ставка сервиса" in item.name or "Транспортный сервис" in item.name:
             saved_service_rate = item.cost_price
 
-    # Для старых расчетов (без явных строк) включаем ПРР, если оно > 0 по умолчанию
+    # Для старых расчетов (без явных строк) включаем ПРР по умолчанию, если сумма > 0
     if not include_prr and saved_prr == 0:
         default_prr = calculate_prr_cost_internal(calc.wagon_type, calc.container_type)
         if default_prr > 0:
             saved_prr = default_prr
-            # Флаг include_prr оставляем False, чтобы пользователь сам решил включить
 
     return templates.TemplateResponse("admin_calculator_form.html", {
         "request": request, "user": user,
@@ -197,10 +207,7 @@ async def calculator_copy(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """
-    Создает копию расчета и перенаправляет на его редактирование.
-    """
-    # 1. Загружаем оригинал со строками
+    """Создает копию расчета."""
     stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
     result = await db.execute(stmt)
     original_calc = result.scalar_one_or_none()
@@ -208,9 +215,8 @@ async def calculator_copy(
     if not original_calc:
         return RedirectResponse("/admin/calculator", status_code=303)
 
-    # 2. Создаем копию объекта Calculation
     new_calc = Calculation(
-        title=f"{original_calc.title} (копия)", # Добавляем "копия"
+        title=f"{original_calc.title} (копия)",
         service_provider=original_calc.service_provider,
         service_type=original_calc.service_type,
         wagon_type=original_calc.wagon_type,
@@ -224,14 +230,13 @@ async def calculator_copy(
         margin_value=original_calc.margin_value,
         total_price_netto=original_calc.total_price_netto,
         vat_rate=original_calc.vat_rate,
-        status=CalculationStatus.DRAFT, # Копия создается как черновик (безопаснее)
+        status=CalculationStatus.DRAFT,
         created_at=func.now()
     )
     
     db.add(new_calc)
-    await db.flush() # Чтобы получить новый ID
+    await db.flush()
 
-    # 3. Копируем строки (CalculationItem)
     for item in original_calc.items:
         new_item = CalculationItem(
             calculation_id=new_calc.id,
@@ -242,8 +247,6 @@ async def calculator_copy(
         db.add(new_item)
         
     await db.commit()
-    
-    # 4. Редирект на редактирование новой копии
     return RedirectResponse(f"/admin/calculator/{new_calc.id}", status_code=303)
 
 
@@ -253,7 +256,6 @@ async def get_prr_input_html(
     wagon_type: str = Query(...),
     container_type: str = Query(...)
 ):
-    """Возвращает HTML-инпут с обновленным значением ПРР при смене типа вагона/контейнера."""
     cost = calculate_prr_cost_internal(wagon_type, container_type)
     return HTMLResponse(f"""
         <input type="number" name="prr_value" id="prr_input" value="{cost}" step="100"
@@ -283,7 +285,7 @@ async def get_available_destinations(
         
     return HTMLResponse(options_html)
 
-# ПРЕВЬЮ: Основная логика расчета с учетом флагов
+# ПРЕВЬЮ: Основная логика расчета (HTMX)
 @router.post("/api/calc/preview")
 async def calculator_preview(
     request: Request,
@@ -304,10 +306,10 @@ async def calculator_preview(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """HTMX: Живой расчет цены."""
+    """Живой расчет цены."""
     extra_expenses_total = sum(expense_values)
     
-    # 1. ЖД Тариф (учитывается только если включен чекбокс)
+    # 1. ЖД Тариф
     base_rate = 0.0
     tariff_found = False
     gondola_coeff = 1.0
@@ -320,25 +322,23 @@ async def calculator_preview(
             base_rate = tariff.rate_no_vat
             tariff_found = True
         
-        # Коэффициент на вагон применяем к базе
+        # Коэффициент на вагон
         if wagon_type == WagonType.GONDOLA:
             setting = await db.get(SystemSetting, "gondola_coeff")
             if setting: gondola_coeff = float(setting.value)
         
         adjusted_base_rate = base_rate * gondola_coeff
     
-    # 2. ПРР (учитывается только если включен чекбокс)
+    # 2. ПРР
     final_prr_cost = prr_value if include_prr else 0.0
 
     # 3. Итоговая себестоимость
-    # Тариф + ПРР + Сервис (вручную) + Допы
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
     # НДС
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
     
-    # 🔥 Себестоимость С НДС
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
     # 4. Цена продажи
@@ -348,33 +348,24 @@ async def calculator_preview(
     
     return templates.TemplateResponse("partials/calc_summary.html", {
         "request": request,
-        # Данные тарифа
         "base_rate": base_rate,
         "gondola_coeff": gondola_coeff,
         "adjusted_base_rate": adjusted_base_rate,
         "include_rail_tariff": include_rail_tariff,
         "tariff_found": tariff_found or (not include_rail_tariff),
-        
-        # Данные ПРР
         "prr_cost": final_prr_cost,
         "include_prr": include_prr,
-        
-        # Данные Сервиса
         "service_rate": service_rate_value,
-        
-        # Итоги
         "extra_expenses": extra_expenses_total,
-        
         "total_cost": total_cost,
-        "total_cost_with_vat": total_cost_with_vat, # Для отображения с НДС
+        "total_cost_with_vat": total_cost_with_vat,
         "vat_rate": vat_rate,
-        
         "sales_price_netto": sales_price_netto,
         "vat_amount": vat_amount,
         "total_price_with_vat": total_price_with_vat,
     })
 
-# ЛОГИКА СОХРАНЕНИЯ
+# ЛОГИКА СОХРАНЕНИЯ (Внутренняя функция)
 async def _save_calculation_logic(
     db: AsyncSession,
     title: str, station_from: str, station_to: str, container_type: str,
@@ -382,11 +373,10 @@ async def _save_calculation_logic(
     service_provider: str, expense_names: List[str], expense_values: List[float],
     prr_value: float, service_rate_value: float,
     include_rail_tariff: bool, include_prr: bool,
-    # Параметр для даты окончания действия
-    valid_until: Optional[str] = None,
+    valid_until: Optional[str] = None, # Дата окончания
     calc_id: Optional[int] = None
 ):
-    # Повторяем расчет для БД (чтобы быть уверенными в цифрах)
+    # Повторяем расчет для БД
     base_rate = 0.0
     adjusted_base_rate = 0.0
     
@@ -414,9 +404,7 @@ async def _save_calculation_logic(
         stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
         result = await db.execute(stmt)
         calc = result.scalar_one_or_none()
-        
         if not calc: return None
-        # Теперь можно безопасно очистить список
         calc.items = []
     else:
         calc = Calculation(created_at=func.now())
@@ -430,7 +418,7 @@ async def _save_calculation_logic(
         except ValueError:
             pass
 
-    # Обновляем поля объекта
+    # Обновляем поля
     calc.title = title
     calc.service_provider = service_provider
     calc.service_type = service_type
@@ -439,8 +427,7 @@ async def _save_calculation_logic(
     calc.station_from = station_from
     calc.station_to = station_to
     calc.valid_from = datetime.now().date()
-    # Обновляем дату окончания
-    calc.valid_to = valid_to_date
+    calc.valid_to = valid_to_date # Сохраняем дату
     
     calc.total_cost = total_cost
     calc.margin_type = margin_type
@@ -451,9 +438,7 @@ async def _save_calculation_logic(
 
     await db.flush()
 
-    # Сохраняем детализацию расходов (CalculationItems)
-    
-    # 1. Тариф
+    # Сохраняем детализацию
     if include_rail_tariff:
         db.add(CalculationItem(
             calculation_id=calc.id, 
@@ -462,12 +447,8 @@ async def _save_calculation_logic(
             is_auto_calculated=True
         ))
 
-    # 2. ПРР
     if include_prr and final_prr_cost > 0:
-        prr_label = "ПРР"
-        if wagon_type == WagonType.GONDOLA: prr_label = f"ПРР в ПВ ({container_type})"
-        elif wagon_type == WagonType.PLATFORM: prr_label = f"ПРР на Платформе ({container_type})"
-        
+        prr_label = f"ПРР в ПВ ({container_type})" if wagon_type == WagonType.GONDOLA else f"ПРР на Платформе ({container_type})"
         db.add(CalculationItem(
             calculation_id=calc.id, 
             name=prr_label, 
@@ -475,7 +456,6 @@ async def _save_calculation_logic(
             is_auto_calculated=True
         ))
         
-    # 3. Сервис
     if service_rate_value > 0:
         db.add(CalculationItem(
             calculation_id=calc.id, 
@@ -484,7 +464,6 @@ async def _save_calculation_logic(
             is_auto_calculated=True
         ))
     
-    # 4. Допы
     for name, cost in zip(expense_names, expense_values):
         if name and name.strip(): 
             db.add(CalculationItem(
@@ -505,7 +484,7 @@ async def calculator_create(
     margin_type: str = Form(...), margin_value: float = Form(0.0), service_provider: str = Form(...),
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
-    # Принимаем дату из формы
+    # Принимаем valid_until
     valid_until: Optional[str] = Form(None),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
@@ -521,7 +500,7 @@ async def calculator_update(
     margin_type: str = Form(...), margin_value: float = Form(0.0), service_provider: str = Form(...),
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
-    # Принимаем дату из формы
+    # Принимаем valid_until
     valid_until: Optional[str] = Form(None),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
@@ -545,16 +524,16 @@ async def upload_tariffs_excel(
     result = await process_tariff_import(content, db)
     
     if "error" in result:
-        # Для простоты редиректим обратно с ошибкой в query params
+        # Редирект с ошибкой
         error_msg = f"Ошибка: {result['error']}"
         return RedirectResponse(
             url=f"/admin/calculator?error_msg={error_msg}", 
             status_code=303
         )
     
-    # Формируем сообщение об успехе
+    # Успех
     count = result['inserted']
-    stations_preview = list(result['stations_found'])[:5] # Покажем первые 5
+    stations_preview = list(result['stations_found'])[:5]
     stations_str = ", ".join(stations_preview)
     if len(result['stations_found']) > 5:
         stations_str += "..."
