@@ -16,8 +16,6 @@
 
     <!-- 
         ОСНОВНАЯ ФОРМА 
-        Action меняется динамически.
-        hx-post отправляет данные на превью при любом изменении.
     -->
     <form action="{{ '/admin/calculator/' + calc.id|string + '/update' if calc else '/admin/calculator/create' }}" 
           method="POST" 
@@ -27,35 +25,41 @@
           hx-trigger="change, keyup delay:500ms from:input, updatesummary from:body, load" 
           hx-target="#calc-summary">
         
-        <!-- ЛЕВАЯ КОЛОНКА (Настройки) -->
+        <!-- ЛЕВАЯ КОЛОНКА (8 колонок) -->
         <div class="lg:col-span-8 space-y-6">
             
             <!-- 1. Основное -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Общая информация</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 gap-6">
+                    <!-- Оставили только название, Провайдера перенесли в Логистику -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Название расчета</label>
                         <input type="text" name="title" value="{{ calc.title if calc else '' }}" required 
                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
                                placeholder="Например: КП для Вектор (Июнь)">
                     </div>
+                </div>
+            </div>
+
+            <!-- 2. Логистика (Сгруппировали сервисные параметры) -->
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Логистика</h3>
+                
+                <!-- Ряд 1: Поставщик, Тип отправки, Подвижной состав -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    
+                    <!-- Перенесенное поле: Поставщик сервиса -->
                     <div class="space-y-1.5">
-                        <label class="text-xs font-bold text-mono-black ml-1">Провайдер / Линия</label>
+                        <label class="text-xs font-bold text-mono-black ml-1">Поставщик сервиса</label>
                         <input type="text" name="service_provider" value="{{ calc.service_provider if calc else '' }}" required 
                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
                                placeholder="Например: ТрансКонтейнер">
                     </div>
-                </div>
-            </div>
 
-            <!-- 2. Логистика -->
-            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
-                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Логистика</h3>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Переименованное поле: Тип отправки -->
                     <div class="space-y-1.5">
-                        <label class="text-xs font-bold text-mono-black ml-1">Тип сервиса</label>
+                        <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
                         <select name="service_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-get="/admin/api/calc/destinations"
@@ -68,7 +72,6 @@
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Подвижной состав</label>
-                        <!-- При смене вагона обновляем инпут ПРР -->
                         <select name="wagon_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-get="/admin/api/calc/get_prr_input"
@@ -81,6 +84,7 @@
                     </div>
                 </div>
 
+                <!-- Ряд 2: Маршрут и Контейнер -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Откуда</label>
@@ -111,7 +115,6 @@
 
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Контейнер</label>
-                        <!-- При смене контейнера обновляем инпут ПРР -->
                         <select name="container_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
                                 hx-get="/admin/api/calc/get_prr_input"
@@ -126,11 +129,10 @@
                 </div>
             </div>
 
-            <!-- 3. Экономика (СВОБОДНЫЙ КОНСТРУКТОР) -->
+            <!-- 3. Экономика -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Экономика</h3>
                 
-                <!-- 🔥 Чекбоксы управления составом цены -->
                 <div class="flex gap-6 mb-6 p-4 bg-mono-bg rounded-xl">
                     <label class="flex items-center gap-2 cursor-pointer select-none">
                         <input type="checkbox" name="include_rail_tariff" class="w-4 h-4 text-mono-black rounded focus:ring-mono-black border-gray-300 transition" 
@@ -146,13 +148,11 @@
                     </label>
                 </div>
 
-                <!-- Блок ПРР и Сервис -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <!-- ПРР (Отображается всегда, но учитывается только если чекбокс активен) -->
+                    <!-- ПРР -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-gray uppercase ml-1">ПРР (Терминал)</label>
                         <div id="prr_container">
-                            <!-- Этот инпут перезагружается через HTMX -->
                             <input type="number" name="prr_value" id="prr_input" 
                                    value="{{ saved_prr if saved_prr is defined else 0 }}" step="100"
                                    class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none"
@@ -160,7 +160,7 @@
                         </div>
                     </div>
                     
-                    <!-- Ставка Сервиса (для All-in) -->
+                    <!-- Ставка Сервиса -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black uppercase ml-1">Ставка Сервиса / ТК</label>
                         <input type="number" name="service_rate_value" 
@@ -173,7 +173,6 @@
 
                 <hr class="border-mono-border my-6">
 
-                <!-- Дополнительные расходы -->
                 <div class="mb-2 grid grid-cols-12 gap-3 text-[10px] uppercase font-bold text-mono-gray tracking-wider">
                     <div class="col-span-6 pl-1">Доп. расходы</div>
                     <div class="col-span-4 pl-1">Стоимость (₽)</div>
@@ -232,9 +231,7 @@
         <!-- ПРАВАЯ КОЛОНКА (Sticky Summary) -->
         <div class="lg:col-span-4">
             <div class="sticky top-24 space-y-4">
-                
                 <div id="calc-summary">
-                    <!-- Загрушка пока HTMX не подтянет данные -->
                     <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent text-center animate-pulse">
                         <p class="text-sm text-mono-gray font-medium">Загрузка расчета...</p>
                     </div>
@@ -254,11 +251,9 @@
     document.addEventListener("DOMContentLoaded", function() {
         const fromSelect = document.querySelector('select[name="station_from"]');
         const toSelect = document.querySelector('select[name="station_to"]');
-        // Если это новый расчет (нет "Куда"), дергаем список
         if(fromSelect && (!toSelect.value || toSelect.value === "")) {
             htmx.trigger(fromSelect, 'change');
         }
-        // Запускаем первичный расчет превью
         triggerUpdate();
     });
 
