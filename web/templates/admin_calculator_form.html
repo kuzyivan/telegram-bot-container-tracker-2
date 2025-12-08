@@ -1,90 +1,168 @@
 {% extends "base.html" %}
+
+{% block title %}Новый расчет — Logistrail{% endblock %}
+
 {% block content %}
-<div class="max-w-6xl mx-auto py-8">
-    <h1 class="text-2xl font-bold mb-6">Новый расчет стоимости</h1>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
     
+    <div class="flex items-center gap-4 mb-8">
+        <a href="/admin/calculator" class="p-2 rounded-xl bg-white border border-mono-border text-mono-gray hover:text-mono-black hover:border-mono-black transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+        </a>
+        <h1 class="text-2xl font-bold text-mono-black tracking-tight">Конструктор расчета</h1>
+    </div>
+
     <form action="/admin/calculator/create" method="POST" 
+          class="grid grid-cols-1 lg:grid-cols-12 gap-8"
           hx-post="/admin/api/calc/preview" 
-          hx-trigger="change" 
+          hx-trigger="change, keyup delay:500ms from:input, load" 
           hx-target="#calc-summary">
         
-        <div class="grid grid-cols-12 gap-6">
-            <div class="col-span-8 bg-white p-6 rounded-2xl shadow-sm space-y-6">
-                
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Название расчета</label>
-                        <input type="text" name="title" class="w-full border rounded-lg p-2" placeholder="Например: КП для Вектор (Июнь)">
+        <div class="lg:col-span-8 space-y-6">
+            
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Общая информация</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Название (для себя)</label>
+                        <input type="text" name="title" required 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
+                               placeholder="КП для Вектор (Июнь)">
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Сервис</label>
-                        <select name="service_type" class="w-full border rounded-lg p-2">
-                            <option value="TRAIN">Контейнерный Поезд</option>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Провайдер / Линия</label>
+                        <input type="text" name="service_provider" required 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
+                               placeholder="ТрансКонтейнер">
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Логистика</h3>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Тип сервиса</label>
+                        <select name="service_type" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-get="/admin/api/calc/destinations"
+                                hx-include="[name='station_from']"
+                                hx-target="#station_to_select"
+                                hx-post="/admin/api/calc/preview" 
+                                hx-trigger="change">
+                            <option value="TRAIN" selected>Контейнерный Поезд (КП)</option>
                             <option value="SINGLE">Одиночная отправка</option>
                         </select>
                     </div>
-                </div>
 
-                <div class="grid grid-cols-3 gap-4 border-t pt-4">
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Откуда (Код)</label>
-                        <input type="text" name="station_from" class="w-full border rounded-lg p-2" placeholder="181102">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Куда (Код)</label>
-                        <input type="text" name="station_to" class="w-full border rounded-lg p-2" placeholder="980003">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Тип контейнера</label>
-                        <select name="container_type" class="w-full border rounded-lg p-2">
-                            <option value="40_STD">40' STD</option>
-                            <option value="20_STD">20' STD</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4 border-t pt-4">
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Тип вагона</label>
-                        <select name="wagon_type" class="w-full border rounded-lg p-2">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Подвижной состав</label>
+                        <select name="wagon_type" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-post="/admin/api/calc/preview"
+                                hx-trigger="change">
                             <option value="PLATFORM">Фитинговая платформа</option>
                             <option value="GONDOLA">Полувагон (Кэф {{ settings.gondola_coeff }})</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Доп. расходы (руб)</label>
-                        <input type="number" name="extra_expenses" value="0" class="w-full border rounded-lg p-2">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Откуда</label>
+                        <select name="station_from" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-get="/admin/api/calc/destinations"
+                                hx-include="[name='service_type']"
+                                hx-target="#station_to_select"
+                                hx-post="/admin/api/calc/preview" 
+                                hx-trigger="change">
+                            {% for st in stations_from %}
+                                <option value="{{ st.code }}">{{ st.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Куда</label>
+                        <select name="station_to" id="station_to_select" required
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-post="/admin/api/calc/preview"
+                                hx-trigger="change">
+                            <option value="" disabled selected>— Выберите отправление —</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Контейнер</label>
+                        <select name="container_type" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-post="/admin/api/calc/preview"
+                                hx-trigger="change">
+                            <option value="40_STD">40' STD</option>
+                            <option value="20_STD">20' STD</option>
+                            <option value="40_HC">40' HC</option>
+                        </select>
                     </div>
                 </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Экономика</h3>
                 
-                <div class="grid grid-cols-2 gap-4 border-t pt-4">
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Тип маржи</label>
-                        <select name="margin_type" class="w-full border rounded-lg p-2">
-                            <option value="FIX">Фиксированная (RUB)</option>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Доп. расходы (руб)</label>
+                        <input type="number" name="extra_expenses" value="0" step="100"
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                        <p class="text-[10px] text-mono-gray ml-1">Охрана, подача/уборка, авто</p>
+                    </div>
+                    
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Тип маржи</label>
+                        <select name="margin_type" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none">
+                            <option value="FIX">Фикс (RUB)</option>
                             <option value="PERCENT">Процент (%)</option>
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1">Значение маржи</label>
-                        <input type="number" name="margin_value" value="{{ settings.default_margin_fix }}" class="w-full border rounded-lg p-2">
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Значение маржи</label>
+                        <input type="number" name="margin_value" value="{{ settings.default_margin_fix }}" step="100"
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
                     </div>
                 </div>
-
             </div>
 
-            <div class="col-span-4">
-                <div id="calc-summary" class="sticky top-6">
-                    <div class="bg-white p-6 rounded-2xl shadow-sm text-center text-mono-gray">
-                        <p>Заполните параметры маршрута для расчета...</p>
+        </div>
+
+        <div class="lg:col-span-4">
+            <div class="sticky top-24 space-y-4">
+                
+                <div id="calc-summary">
+                    <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent text-center animate-pulse">
+                        <span class="text-sm text-mono-gray">Выберите маршрут для расчета...</span>
                     </div>
                 </div>
-                
-                <button type="submit" class="w-full mt-4 bg-mono-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">
-                    Сохранить Расчет
+
+                <button type="submit" class="w-full bg-mono-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg active:scale-95 flex justify-center items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                    Сохранить КП
                 </button>
             </div>
         </div>
+
     </form>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Вызываем событие change на "Откуда", чтобы подгрузить "Куда" сразу для первой станции
+        const fromSelect = document.querySelector('select[name="station_from"]');
+        if(fromSelect) {
+            htmx.trigger(fromSelect, 'change');
+        }
+    });
+</script>
 {% endblock %}
