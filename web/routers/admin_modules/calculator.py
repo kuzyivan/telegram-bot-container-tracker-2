@@ -96,15 +96,24 @@ async def calculator_list(
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
 ):
-    """Список расчетов с фильтрацией по типу (КП/Одиночная)."""
+    """Список расчетов с фильтрацией по типу и ДИНАМИЧЕСКОЙ СОРТИРОВКОЙ."""
     
-    # Фильтруем по типу сервиса
+    current_type_upper = type.upper()
+
+    # 🔥 ОПРЕДЕЛЯЕМ ПОЛЕ ДЛЯ ГРУППИРОВКИ (СОРТИРОВКИ)
+    # Если SINGLE -> Группируем по Станции назначения (station_to)
+    # Если TRAIN -> Группируем по Поставщику (service_provider)
+    
+    primary_sort_field = Calculation.service_provider
+    if current_type_upper == 'SINGLE':
+        primary_sort_field = Calculation.station_to
+
     stmt = select(Calculation).where(
-        Calculation.service_type == type.upper()
+        Calculation.service_type == current_type_upper
     ).order_by(
-        Calculation.service_provider,   # Группировка
-        Calculation.container_type,     # Порядок внутри группы
-        desc(Calculation.created_at)
+        primary_sort_field,             # 1. Группировка (динамическая)
+        Calculation.container_type,     # 2. Порядок внутри группы
+        desc(Calculation.created_at)    # 3. Самые свежие сверху
     )
     
     result = await db.execute(stmt)
@@ -116,7 +125,7 @@ async def calculator_list(
         "calculations": calculations, 
         "CalculationStatus": CalculationStatus,
         "today": datetime.now().date(), # Для проверки срока действия (неон)
-        "current_type": type.upper()    # Для активной вкладки
+        "current_type": current_type_upper # Для активной вкладки и логики в шаблоне
     })
 
 @router.get("/calculator/new")
@@ -367,7 +376,7 @@ async def calculator_preview(
         "total_price_with_vat": total_price_with_vat,
     })
 
-# 🔥 ЛОГИКА СОХРАНЕНИЯ С УЧЕТОМ СТАТУСА
+# ЛОГИКА СОХРАНЕНИЯ С УЧЕТОМ СТАТУСА
 async def _save_calculation_logic(
     db: AsyncSession,
     title: str, station_from: str, station_to: str, container_type: str,
@@ -376,7 +385,7 @@ async def _save_calculation_logic(
     prr_value: float, service_rate_value: float,
     include_rail_tariff: bool, include_prr: bool,
     valid_until: Optional[str] = None,
-    # 👇 Принимаем статус
+    # Принимаем статус
     status: Optional[str] = "PUBLISHED", 
     calc_id: Optional[int] = None
 ):
@@ -442,7 +451,7 @@ async def _save_calculation_logic(
     calc.margin_value = margin_value
     calc.total_price_netto = sales_price_netto
     calc.vat_rate = vat_rate
-    # 👇 Записываем статус в БД
+    # Записываем статус в БД
     calc.status = status_enum 
 
     await db.flush()
@@ -473,7 +482,7 @@ async def calculator_create(
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
     valid_until: Optional[str] = Form(None),
-    # 👇 Принимаем статус из формы
+    # Принимаем статус из формы
     status: str = Form("PUBLISHED"),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
@@ -490,7 +499,7 @@ async def calculator_update(
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
     valid_until: Optional[str] = Form(None),
-    # 👇 Принимаем статус из формы
+    # Принимаем статус из формы
     status: str = Form("PUBLISHED"),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
@@ -505,7 +514,12 @@ async def upload_tariffs_excel(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
+    """
+    Принимает Excel файл, обрабатывает и сохраняет тарифы.
+    """
     content = await file.read()
+    
+    # Запуск логики импорта
     result = await process_tariff_import(content, db)
     
     if "error" in result:

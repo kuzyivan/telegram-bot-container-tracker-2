@@ -19,14 +19,14 @@
         </button>
     </div>
 
-    <!-- 🔥 НОВЫЙ ПЕРЕКЛЮЧАТЕЛЬ (TABS) -->
+    <!-- ТАБЫ ПЕРЕКЛЮЧЕНИЯ (TABS) -->
     <div class="bg-mono-bg p-1.5 rounded-2xl flex relative mb-8 shadow-inner">
         <!-- Таб 1: Контейнерные поезда -->
         <a href="/admin/calculator?type=TRAIN" 
            class="flex-1 flex flex-col justify-center items-center py-4 rounded-xl transition-all duration-300 group {{ 'bg-white shadow-md ring-1 ring-black/5' if current_type == 'TRAIN' else 'hover:bg-white/50' }}">
             <div class="flex items-center gap-2 mb-1">
                 <svg class="w-5 h-5 {{ 'text-mono-black' if current_type == 'TRAIN' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'TRAIN' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Контейнерный поезд</span>
+                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'TRAIN' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Контейнерная отправка</span>
             </div>
             <span class="text-[10px] uppercase tracking-widest font-bold {{ 'text-mono-gray' if current_type == 'TRAIN' else 'text-gray-400' }}">В составе поезда (КП)</span>
         </a>
@@ -36,13 +36,13 @@
            class="flex-1 flex flex-col justify-center items-center py-4 rounded-xl transition-all duration-300 group {{ 'bg-white shadow-md ring-1 ring-black/5' if current_type == 'SINGLE' else 'hover:bg-white/50' }}">
             <div class="flex items-center gap-2 mb-1">
                 <svg class="w-5 h-5 {{ 'text-mono-black' if current_type == 'SINGLE' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
-                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'SINGLE' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Повагонная отправка</span>
+                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'SINGLE' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Вагонная отправка</span>
             </div>
             <span class="text-[10px] uppercase tracking-widest font-bold {{ 'text-mono-gray' if current_type == 'SINGLE' else 'text-gray-400' }}">Одиночная / Повагонная</span>
         </a>
     </div>
 
-    <!-- Кнопка создания (Зависит от выбранной вкладки) -->
+    <!-- Кнопка создания -->
     <div class="flex justify-end mb-6 animate-fade-in">
         <a href="/admin/calculator/new?type={{ current_type }}" 
            class="group flex items-center gap-2 bg-mono-black text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 transition active:scale-95">
@@ -51,7 +51,7 @@
         </a>
     </div>
 
-    <!-- Уведомления об успехе/ошибке -->
+    <!-- Уведомления -->
     {% if request.query_params.get('success_msg') %}
     <div class="mb-6 p-4 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-medium animate-fade-in flex items-center gap-2">
         <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -65,9 +65,14 @@
     </div>
     {% endif %}
 
-    <!-- МАКРОС СТРОКИ ТАБЛИЦЫ -->
+    <!-- МАКРОС СТРОКИ -->
     {% macro render_row(calc) %}
-    <tr class="hover:bg-mono-bg transition group cursor-pointer border-b border-mono-border last:border-0" onclick="window.location='/admin/calculator/{{ calc.id }}'">
+    <tr class="hover:bg-mono-bg transition group cursor-pointer border-b border-mono-border last:border-0 filter-row" 
+        onclick="window.location='/admin/calculator/{{ calc.id }}'"
+        data-route="{{ calc.title }} {{ calc.station_from }} {{ calc.station_to }}"
+        data-provider="{{ calc.service_provider }}"
+        data-type="{{ calc.container_type }}">
+        
         <!-- Назначение -->
         <td class="px-6 py-4">
             <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
@@ -116,24 +121,35 @@
         <td class="px-6 py-4 text-right">
             <div class="flex items-center justify-end gap-3">
                 {% if calc.valid_to and today and calc.valid_to < today %}
-                    <!-- СТАТУС: ЗАПРЕТ (Красный неон) -->
-                    <span class="bg-red-950 text-red-500 border border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                        ЗАПРЕТ
-                    </span>
+                    <div class="group relative">
+                        <span class="bg-red-950 text-red-500 border border-red-500 shadow-[0_0_8px_#ef4444] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse cursor-help">
+                            ЗАПРЕТ
+                        </span>
+                        <div class="absolute bottom-full mb-2 right-0 hidden group-hover:block bg-mono-black text-white text-[10px] py-1 px-2 rounded whitespace-nowrap z-10 shadow-lg">
+                            Истек: {{ calc.valid_to.strftime('%d.%m.%Y') }}
+                        </div>
+                    </div>
                 {% elif calc.status.value == 'DRAFT' %}
                     <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Черновик</span>
                 {% elif calc.status.value == 'PUBLISHED' %}
-                    <span class="bg-[#39ff14]/10 text-[#008000] border border-[#39ff14]/50 shadow-[0_0_8px_rgba(57,255,20,0.3)] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
-                        Активен
-                    </span>
+                    <div class="group relative">
+                        <span class="bg-[#39ff14]/10 text-[#008000] border border-[#39ff14]/50 shadow-[0_0_8px_rgba(57,255,20,0.3)] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider cursor-help">
+                            АКТИВЕН
+                        </span>
+                        {% if calc.valid_to %}
+                        <div class="absolute bottom-full mb-2 right-0 hidden group-hover:block bg-mono-black text-white text-[10px] py-1 px-2 rounded whitespace-nowrap z-10 shadow-lg">
+                            До: {{ calc.valid_to.strftime('%d.%m.%Y') }}
+                        </div>
+                        {% endif %}
+                    </div>
                 {% else %}
                     <span class="text-gray-400 text-[10px] uppercase font-bold">Архив</span>
                 {% endif %}
                 
                 <!-- Кнопка копирования -->
                 <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
-                    <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                    <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm group" title="Создать копию" onclick="event.stopPropagation()">
+                        <svg class="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
                     </button>
                 </form>
             </div>
@@ -144,31 +160,68 @@
     <!-- ТАБЛИЦА -->
     <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left border-collapse">
+            <table class="w-full text-sm text-left border-collapse" id="calcTable">
                 <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
+                    <!-- ЗАГОЛОВКИ -->
                     <tr>
-                        <th class="px-6 py-4 w-1/3">Назначение / Маршрут</th>
-                        <th class="px-6 py-4">Поставщик</th>
-                        <th class="px-6 py-4">Тип</th>
-                        <th class="px-6 py-4 text-right">Себест. (с НДС)</th>
-                        <th class="px-6 py-4 text-right">Итого (с НДС)</th>
-                        <th class="px-6 py-4 text-right">Статус</th>
+                        <th class="px-6 pt-4 pb-2 w-1/3">Назначение / Маршрут</th>
+                        <th class="px-6 pt-4 pb-2">Поставщик</th>
+                        <th class="px-6 pt-4 pb-2">Тип</th>
+                        <th class="px-6 pt-4 pb-2 text-right">Себест. (с НДС)</th>
+                        <th class="px-6 pt-4 pb-2 text-right">Итого (с НДС)</th>
+                        <th class="px-6 pt-4 pb-2 text-right">Статус</th>
+                    </tr>
+                    <!-- 🔥 СТРОКА ФИЛЬТРОВ -->
+                    <tr class="bg-mono-bg border-b border-mono-border">
+                        <!-- Фильтр: Назначение -->
+                        <th class="px-6 pb-4 pt-1">
+                            <input type="text" id="filterRoute" onkeyup="filterTable()" placeholder="Поиск..." 
+                                   class="w-full px-3 py-1.5 rounded-lg border-none bg-white text-xs text-mono-black focus:ring-2 focus:ring-mono-black/10 placeholder-gray-400 outline-none transition shadow-sm">
+                        </th>
+                        <!-- Фильтр: Поставщик -->
+                        <th class="px-6 pb-4 pt-1">
+                            <input type="text" id="filterProvider" onkeyup="filterTable()" placeholder="Все" 
+                                   class="w-full px-3 py-1.5 rounded-lg border-none bg-white text-xs text-mono-black focus:ring-2 focus:ring-mono-black/10 placeholder-gray-400 outline-none transition shadow-sm">
+                        </th>
+                        <!-- Фильтр: Тип -->
+                        <th class="px-6 pb-4 pt-1">
+                            <input type="text" id="filterType" onkeyup="filterTable()" placeholder="Все" 
+                                   class="w-full px-3 py-1.5 rounded-lg border-none bg-white text-xs text-mono-black focus:ring-2 focus:ring-mono-black/10 placeholder-gray-400 outline-none transition shadow-sm">
+                        </th>
+                        <!-- Пустые ячейки для цен и статуса -->
+                        <th colspan="3" class="px-6 pb-4 pt-1"></th>
                     </tr>
                 </thead>
+                
                 <tbody class="divide-y divide-mono-border">
                     {% if calculations %}
-                        {% for group in calculations|groupby('service_provider') %}
-                            <!-- Разделитель группы (Поставщик) - теперь менее заметный, так как есть колонка -->
-                            <tr class="bg-mono-bg/20 border-t-2 border-mono-border">
-                                <td colspan="6" class="px-6 py-2">
-                                    <span class="text-[10px] font-bold text-mono-gray uppercase tracking-widest">{{ group.grouper }}</span>
+                        {# ДИНАМИЧЕСКАЯ ГРУППИРОВКА #}
+                        {% set groupby_field = 'station_to' if current_type == 'SINGLE' else 'service_provider' %}
+                        
+                        {% for group in calculations|groupby(groupby_field) %}
+                            
+                            <!-- Разделитель группы -->
+                            <tr class="bg-mono-bg/30 border-t-2 border-mono-border group-header" data-group-name="{{ group.grouper }}">
+                                <td colspan="6" class="px-6 py-2.5">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-2 h-2 rounded-full bg-mono-black"></div>
+                                        {% if current_type == 'SINGLE' %}
+                                            <span class="text-xs font-bold text-mono-gray uppercase tracking-wide">Станция:</span>
+                                        {% else %}
+                                            <span class="text-xs font-bold text-mono-gray uppercase tracking-wide">Поставщик:</span>
+                                        {% endif %}
+                                        <span class="text-sm font-extrabold text-mono-black tracking-wide uppercase">{{ group.grouper }}</span>
+                                    </div>
                                 </td>
                             </tr>
+                            
+                            <!-- Данные внутри группы -->
                             {% set priority_order = ['40_STD', '40_HEAVY', '20_REF', '20_HEAVY', '20_EXTRA'] %}
                             {% for type_code in priority_order %}
                                 {% for calc in group.list if calc.container_type == type_code %}{{ render_row(calc) }}{% endfor %}
                             {% endfor %}
                             {% for calc in group.list if calc.container_type not in priority_order %}{{ render_row(calc) }}{% endfor %}
+                        
                         {% endfor %}
                     {% else %}
                         <tr>
@@ -187,66 +240,45 @@
     </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО ЗАГРУЗКИ ТАРИФОВ -->
+<!-- МОДАЛЬНОЕ ОКНО ЗАГРУЗКИ ТАРИФОВ (код без изменений) -->
 <div id="tariffModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
     <div class="fixed inset-0 z-10 overflow-y-auto">
         <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-100 animate-slide-up">
-                
-                <!-- Заголовок -->
                 <div class="bg-white px-6 py-5 border-b border-gray-100 flex justify-between items-center">
                     <h3 class="text-lg font-bold leading-6 text-mono-black" id="modal-title">Загрузка тарифов ЖД</h3>
                     <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 outline-none p-1 rounded-lg hover:bg-gray-100 transition">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
-
-                <!-- Форма -->
                 <form action="/admin/tariffs/upload" method="POST" enctype="multipart/form-data" id="uploadForm" onsubmit="showLoading()">
                     <div class="px-6 py-6">
-                        
-                        <!-- Drag & Drop Area -->
                         <div class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-500 hover:bg-green-50 transition-all cursor-pointer group" id="drop-zone">
                             <input type="file" name="file" id="file-upload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx, .xls" required onchange="updateFileName(this)">
-                            
                             <div class="space-y-4 pointer-events-none" id="upload-content">
                                 <div class="mx-auto w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center group-hover:bg-white group-hover:shadow-md transition">
                                     <svg class="w-7 h-7 text-gray-400 group-hover:text-green-600 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 </div>
                                 <div>
-                                    <div class="text-sm font-bold text-mono-black mb-1" id="file-label">
-                                        Выберите файл Excel
-                                    </div>
+                                    <div class="text-sm font-bold text-mono-black mb-1" id="file-label">Выберите файл Excel</div>
                                     <p class="text-xs text-gray-500">Перетащите сюда или нажмите для выбора</p>
                                 </div>
                             </div>
-                            
-                            <!-- Спиннер загрузки -->
                             <div id="upload-spinner" class="hidden flex-col items-center justify-center py-4">
-                                <svg class="animate-spin h-8 w-8 text-mono-black mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
+                                <svg class="animate-spin h-8 w-8 text-mono-black mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                 <span class="text-sm font-bold text-mono-black">Обработка файла...</span>
                                 <span class="text-xs text-gray-500 mt-1">Это может занять несколько секунд</span>
                             </div>
                         </div>
-
                         <div class="mt-4 flex items-center justify-between text-[10px] text-gray-400 px-1">
                             <span>Поддерживается .xlsx</span>
                             <span>Размер до 10 МБ</span>
                         </div>
                     </div>
-
-                    <!-- Кнопки -->
                     <div class="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row-reverse gap-3 rounded-b-2xl border-t border-gray-100">
-                        <button type="submit" id="submit-btn" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-mono-black px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-gray-800 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
-                            Загрузить
-                        </button>
-                        <button type="button" class="w-full sm:w-auto mt-3 sm:mt-0 inline-flex justify-center rounded-xl bg-white px-6 py-2.5 text-sm font-bold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition active:scale-95" onclick="closeModal()">
-                            Отмена
-                        </button>
+                        <button type="submit" id="submit-btn" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-mono-black px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-gray-800 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">Загрузить</button>
+                        <button type="button" class="w-full sm:w-auto mt-3 sm:mt-0 inline-flex justify-center rounded-xl bg-white px-6 py-2.5 text-sm font-bold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition active:scale-95" onclick="closeModal()">Отмена</button>
                     </div>
                 </form>
             </div>
@@ -268,5 +300,57 @@
     function resetUI() { label.textContent = 'Выберите файл Excel'; label.classList.remove('text-green-600'); dropZone.classList.remove('border-green-500', 'bg-green-50'); dropZone.classList.add('border-gray-300'); spinner.classList.add('hidden'); content.classList.remove('hidden'); submitBtn.disabled = false; submitBtn.innerText = 'Загрузить'; }
     function showLoading() { content.classList.add('hidden'); spinner.classList.remove('hidden'); submitBtn.disabled = true; submitBtn.innerText = 'Загрузка...'; }
     document.addEventListener('keydown', function(event) { if (event.key === "Escape" && !modal.classList.contains('hidden')) { closeModal(); } });
+
+    // 🔥 СКРИПТ ФИЛЬТРАЦИИ 🔥
+    function filterTable() {
+        // Получаем значения инпутов
+        const routeFilter = document.getElementById('filterRoute').value.toLowerCase();
+        const providerFilter = document.getElementById('filterProvider').value.toLowerCase();
+        const typeFilter = document.getElementById('filterType').value.toLowerCase();
+        
+        // Все строки с данными (не заголовки групп)
+        const rows = document.querySelectorAll('tr.filter-row');
+        // Все заголовки групп
+        const groupHeaders = document.querySelectorAll('tr.group-header');
+        
+        // Массив для хранения статуса видимости каждой группы
+        // Инициализируем: считаем все группы скрытыми (false)
+        // Будем ставить true, если найдем хотя бы одну видимую строку в группе
+        let groupsVisibility = new Map();
+        groupHeaders.forEach(header => groupsVisibility.set(header, false));
+
+        rows.forEach(row => {
+            // Данные строки
+            const route = row.getAttribute('data-route').toLowerCase();
+            const provider = row.getAttribute('data-provider').toLowerCase();
+            const type = row.getAttribute('data-type').toLowerCase();
+            
+            // Проверяем совпадение
+            const matchRoute = route.includes(routeFilter);
+            const matchProvider = provider.includes(providerFilter);
+            const matchType = type.includes(typeFilter);
+            
+            if (matchRoute && matchProvider && matchType) {
+                row.style.display = '';
+                // Находим заголовок группы, к которой относится эта строка
+                // Логика: идем вверх по DOM, пока не найдем предыдущий tr.group-header
+                let prev = row.previousElementSibling;
+                while (prev) {
+                    if (prev.classList.contains('group-header')) {
+                        groupsVisibility.set(prev, true); // Группа должна быть видима
+                        break;
+                    }
+                    prev = prev.previousElementSibling;
+                }
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Показываем/скрываем заголовки групп
+        groupsVisibility.forEach((isVisible, header) => {
+            header.style.display = isVisible ? '' : 'none';
+        });
+    }
 </script>
 {% endblock %}
