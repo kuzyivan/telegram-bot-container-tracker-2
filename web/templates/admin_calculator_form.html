@@ -6,9 +6,14 @@
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
     
     <div class="flex items-center gap-4 mb-8">
-        <a href="/admin/calculator" class="p-2 rounded-xl bg-white border border-mono-border text-mono-gray hover:text-mono-black hover:border-mono-black transition">
+        <!-- 🔥 УМНАЯ КНОПКА НАЗАД -->
+        <!-- Возвращает на вкладку TRAIN или SINGLE в зависимости от контекста -->
+        <a href="/admin/calculator?type={{ calc.service_type.value if calc else default_service_type }}" 
+           class="p-2 rounded-xl bg-white border border-mono-border text-mono-gray hover:text-mono-black hover:border-mono-black transition"
+           title="Вернуться к списку">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
         </a>
+        
         <h1 class="text-2xl font-bold text-mono-black tracking-tight">
             {{ 'Редактирование расчета #' + calc.id|string if calc else 'Конструктор расчета' }}
         </h1>
@@ -51,7 +56,7 @@
                         </div>
                     </div>
 
-                    <!-- Статус (Новое поле) -->
+                    <!-- Статус -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Статус</label>
                         <select name="status" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none">
@@ -149,14 +154,12 @@
                                 hx-swap="innerHTML">
                             <!-- Обновленные названия -->
                             <option value="20_REF" {% if calc and calc.container_type == '20_REF' %}selected{% endif %}>20' Легкая</option>
-                            <option value="20_STD" {% if calc and calc.container_type == '20_STD' %}selected{% endif %}>20' Средняя</option>
                             <option value="20_HEAVY" {% if calc and calc.container_type == '20_HEAVY' %}selected{% endif %}>20' Тяжелая</option>
                             <option value="20_EXTRA" {% if calc and calc.container_type == '20_EXTRA' %}selected{% endif %}>20' Экстра</option>
                             
                             <option disabled>──────────</option>
 
                             <option value="40_STD" {% if calc and calc.container_type == '40_STD' %}selected{% endif %}>40' Легкая</option>
-                            <option value="40_HC" {% if calc and calc.container_type == '40_HC' %}selected{% endif %}>40' HC</option>
                             <option value="40_HEAVY" {% if calc and calc.container_type == '40_HEAVY' %}selected{% endif %}>40' Тяжелая</option>
                         </select>
                     </div>

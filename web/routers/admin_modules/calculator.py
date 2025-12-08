@@ -482,13 +482,14 @@ async def calculator_create(
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
     valid_until: Optional[str] = Form(None),
-    # Принимаем статус из формы
     status: str = Form("PUBLISHED"),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
     await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, status, None)
-    return RedirectResponse("/admin/calculator", status_code=303)
+    
+    # 🔥 ИЗМЕНЕНИЕ: Редирект на нужную вкладку
+    return RedirectResponse(f"/admin/calculator?type={service_type}", status_code=303)
 
 @router.post("/calculator/{calc_id}/update")
 async def calculator_update(
@@ -499,13 +500,14 @@ async def calculator_update(
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
     valid_until: Optional[str] = Form(None),
-    # Принимаем статус из формы
     status: str = Form("PUBLISHED"),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
     await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, status, calc_id)
-    return RedirectResponse("/admin/calculator", status_code=303)
+    
+    # 🔥 ИЗМЕНЕНИЕ: Редирект на нужную вкладку
+    return RedirectResponse(f"/admin/calculator?type={service_type}", status_code=303)
 
 @router.post("/tariffs/upload")
 async def upload_tariffs_excel(
