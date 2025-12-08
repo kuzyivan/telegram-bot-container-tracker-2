@@ -12,11 +12,13 @@
     </h3>
     
     <div class="space-y-3 text-sm">
+        <!-- Базовый тариф -->
         <div class="flex justify-between items-center group">
             <span class="text-mono-gray border-b border-dashed border-gray-200 group-hover:border-mono-gray transition cursor-help" title="Базовая ставка ЖД из базы данных">Тариф ЖД (База):</span>
             <span class="font-mono font-medium text-mono-black">{{ "{:,.0f}".format(base_rate).replace(',', ' ') }}</span>
         </div>
         
+        <!-- Наценка на полувагон -->
         {% if gondola_coeff != 1.0 %}
         <div class="flex justify-between items-center text-blue-600 bg-blue-50 px-2 py-1 -mx-2 rounded">
             <span class="text-xs font-bold">Полувагон (x{{ gondola_coeff }}):</span>
@@ -24,6 +26,18 @@
         </div>
         {% endif %}
 
+        <!-- 🔥 НОВЫЙ БЛОК: ПРР (отображается только если > 0) -->
+        {% if prr_cost and prr_cost > 0 %}
+        <div class="flex justify-between items-center text-mono-black bg-gray-50 px-2 py-1 -mx-2 rounded border border-gray-100">
+            <span class="text-xs font-bold flex items-center gap-1">
+                <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                ПРР:
+            </span>
+            <span class="font-mono font-bold text-xs">{{ "{:,.0f}".format(prr_cost).replace(',', ' ') }}</span>
+        </div>
+        {% endif %}
+
+        <!-- Дополнительные расходы -->
         {% if extra_expenses > 0 %}
         <div class="flex justify-between items-center text-mono-dark font-medium bg-mono-bg px-2 py-1 -mx-2 rounded">
             <span class="text-xs">Доп. расходы (Сумма):</span>
@@ -31,8 +45,10 @@
         </div>
         {% endif %}
         
+        <!-- Себестоимость -->
         <div class="flex justify-between items-center pt-3 mt-1 border-t border-mono-border">
             <span class="font-bold text-mono-black">Себестоимость:</span>
+            <!-- total_cost уже включает в себя ПРР, так как мы сложили это в Python -->
             <span class="font-mono font-bold text-mono-black">{{ "{:,.0f}".format(total_cost).replace(',', ' ') }}</span>
         </div>
 
@@ -47,6 +63,7 @@
         </div>
     </div>
 
+    <!-- Итоговая цена -->
     <div class="mt-6 pt-5 border-t-2 border-mono-black">
         <div class="text-center">
             <span class="block text-[10px] font-bold text-mono-gray uppercase tracking-widest mb-1">Итого клиенту</span>
