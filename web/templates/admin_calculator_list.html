@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Калькулятор КП — Logistrail{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+    
+    <div class="flex justify-between items-end mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-mono-black tracking-tight">Калькулятор КП</h1>
+            <p class="text-sm text-mono-gray mt-1">Управление коммерческими предложениями</p>
+        </div>
+        
+        <a href="/admin/calculator/new" class="group flex items-center gap-2 bg-mono-black text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 transition active:scale-95">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Создать расчет
+        </a>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
+                    <tr>
+                        <th class="px-6 py-4">Название / Клиент</th>
+                        <th class="px-6 py-4">Маршрут</th>
+                        <th class="px-6 py-4">Тип</th>
+                        <th class="px-6 py-4 text-right">Итого (с НДС)</th>
+                        <th class="px-6 py-4 text-right">Статус</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-mono-border">
+                    {% for calc in calculations %}
+                    <tr class="hover:bg-mono-bg transition group cursor-pointer" onclick="window.location='/admin/calculator/{{ calc.id }}'">
+                        <td class="px-6 py-4">
+                            <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
+                            <div class="text-xs text-mono-gray mt-0.5">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2 text-mono-black font-medium">
+                                <span>{{ calc.station_from }}</span>
+                                <span class="text-mono-gray">→</span>
+                                <span>{{ calc.station_to }}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center px-2 py-1 rounded border border-mono-border bg-white text-xs font-mono text-mono-gray">
+                                {{ calc.container_type }} / {{ calc.wagon_type.value }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <div class="font-bold text-mono-black">
+                                {{ "{:,.0f}".format(calc.total_price_netto * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            {% if calc.status.value == 'DRAFT' %}
+                                <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">Черновик</span>
+                            {% elif calc.status.value == 'PUBLISHED' %}
+                                <span class="bg-mono-black text-white px-2 py-1 rounded text-xs font-bold">Активен</span>
+                            {% else %}
+                                <span class="text-gray-400 text-xs">Архив</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center text-mono-gray">
+                            Нет созданных расчетов. Нажмите "Создать расчет".
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
