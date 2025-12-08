@@ -155,8 +155,7 @@ async def calculator_edit_page(
         default_prr = calculate_prr_cost_internal(calc.wagon_type, calc.container_type)
         if default_prr > 0:
             saved_prr = default_prr
-            # Флаг include_prr оставляем False, чтобы пользователь сам решил включить его при редактировании,
-            # либо можно поставить True, если хочешь авто-включение для старых.
+            # Флаг include_prr оставляем False
 
     return templates.TemplateResponse("admin_calculator_form.html", {
         "request": request, "user": user,
@@ -274,7 +273,7 @@ async def calculator_preview(
         "gondola_coeff": gondola_coeff,
         "adjusted_base_rate": adjusted_base_rate,
         "include_rail_tariff": include_rail_tariff,
-        "tariff_found": tariff_found or (not include_rail_tariff), # Если выключен, не считаем ошибкой
+        "tariff_found": tariff_found or (not include_rail_tariff),
         
         # Данные ПРР
         "prr_cost": final_prr_cost,
@@ -291,7 +290,7 @@ async def calculator_preview(
         "total_price_with_vat": total_price_with_vat,
     })
 
-# 🔥 ЛОГИКА СОХРАНЕНИЯ (Общая для Create/Update)
+# 🔥 ЛОГИКА СОХРАНЕНИЯ (ИСПРАВЛЕНО)
 async def _save_calculation_logic(
     db: AsyncSession,
     title: str, station_from: str, station_to: str, container_type: str,
@@ -326,9 +325,13 @@ async def _save_calculation_logic(
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
 
     if calc_id:
-        calc = await db.get(Calculation, calc_id)
+        # 🔥 ИСПРАВЛЕНИЕ: Используем selectinload для загрузки items, чтобы избежать MissingGreenlet
+        stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
+        result = await db.execute(stmt)
+        calc = result.scalar_one_or_none()
+        
         if not calc: return None
-        # Очищаем старые строки, будем перезаписывать
+        # Теперь можно безопасно очистить список, т.к. данные загружены
         calc.items = []
     else:
         calc = Calculation(created_at=func.now())
