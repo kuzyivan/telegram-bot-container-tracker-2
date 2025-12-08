@@ -23,7 +23,6 @@
                 <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
                     <tr>
                         <th class="px-6 py-4">Название / Клиент</th>
-                        <!-- Колонка поставщика теперь не нужна в каждой строке, она будет в заголовке группы -->
                         <th class="px-6 py-4">Тип</th>
                         <th class="px-6 py-4 text-right">Себест. (с НДС)</th>
                         <th class="px-6 py-4 text-right">Итого (с НДС)</th>
@@ -33,8 +32,6 @@
                 <tbody class="divide-y divide-mono-border">
                     {% for calc in calculations %}
                     
-                        <!-- 🔥 ЛОГИКА ГРУППИРОВКИ -->
-                        <!-- Проверяем, изменился ли провайдер по сравнению с предыдущим шагом -->
                         {% if loop.first or calculations[loop.index0 - 1].service_provider != calc.service_provider %}
                         <tr class="bg-mono-bg/50 border-t-2 border-mono-border">
                             <td colspan="5" class="px-6 py-3">
@@ -49,7 +46,6 @@
                             </td>
                         </tr>
                         {% endif %}
-                        <!-- 🔥 КОНЕЦ ГРУППИРОВКИ -->
 
                         <tr class="hover:bg-mono-bg transition group cursor-pointer border-b border-mono-border last:border-0" onclick="window.location='/admin/calculator/{{ calc.id }}'">
                             <td class="px-6 py-4">
@@ -74,13 +70,16 @@
 
                             <td class="px-6 py-4 text-right">
                                 <div class="font-medium text-mono-gray text-xs">
+                                    <!-- Себестоимость оставляем точной для внутреннего контроля, или тоже округлить? Пока оставил точной. -->
                                     {{ "{:,.0f}".format(calc.total_cost * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
                                 </div>
                             </td>
 
                             <td class="px-6 py-4 text-right">
                                 <div class="font-bold text-mono-black text-sm">
-                                    {{ "{:,.0f}".format(calc.total_price_netto * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
+                                    <!-- 🔥 ОКРУГЛЕНИЕ ДО ПОЛНОЙ ТЫСЯЧИ В БОЛЬШУЮ СТОРОНУ -->
+                                    <!-- (Сумма / 1000) -> round up -> * 1000 -->
+                                    {{ "{:,.0f}".format(((calc.total_price_netto * (1 + calc.vat_rate/100)) / 1000) | round(0, 'ceil') * 1000).replace(',', ' ') }} ₽
                                 </div>
                             </td>
 
@@ -89,12 +88,11 @@
                                     {% if calc.status.value == 'DRAFT' %}
                                         <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Черновик</span>
                                     {% elif calc.status.value == 'PUBLISHED' %}
-                                        <span class="bg-[#02e373] text-black shadow-[0_0_12px_#02e373] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Активен</span>
+                                        <span class="bg-[#37db84] text-black shadow-[0_0_12px_#37db84] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Активен</span>
                                     {% else %}
                                         <span class="text-gray-400 text-[10px] uppercase font-bold">Архив</span>
                                     {% endif %}
                                     
-                                    <!-- Кнопка копирования -->
                                     <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
                                         <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
