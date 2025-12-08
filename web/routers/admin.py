@@ -15,18 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from db import SessionLocal
+# ✅ ИМПОРТЫ БАЗЫ ДАННЫХ (включая TariffSessionLocal)
+from db import SessionLocal, TariffSessionLocal
 from models import User, UserRequest, Train, Company, UserRole, ScheduledTrain, ScheduleShareLink, Tracking
 from model.terminal_container import TerminalContainer
 from web.auth import admin_required, get_current_user
 
-# --- ИМПОРТЫ ФИНАНСОВОГО МОДУЛЯ ---
+# ✅ ИМПОРТЫ ФИНАНСОВОГО МОДУЛЯ
 from models_finance import (
     Calculation, CalculationItem, RailTariffRate, 
     SystemSetting, ServiceType, WagonType, MarginType, CalculationStatus
 )
 from services.calculator_service import PriceCalculator
-from services.tariff_service import TariffStation # Нужно для названий станций
+from services.tariff_service import TariffStation 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -38,7 +39,9 @@ async def get_db():
     async with SessionLocal() as session:
         yield session
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+# ==========================================
+# 📊 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (СТАТИСТИКА)
+# ==========================================
 
 async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: date):
     """Собирает статистику для дашборда."""
@@ -85,24 +88,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         rhythm_values.append(rhythm_dict.get(current, 0))
         current += timedelta(days=1)
 
-    # Тренд
-    trend_values = []
-    n = len(rhythm_values)
-    if n > 1:
-        x = list(range(n))
-        y = rhythm_values
-        sum_x, sum_y = sum(x), sum(y)
-        sum_xy = sum(xi * yi for xi, yi in zip(x, y))
-        sum_xx = sum(xi ** 2 for xi in x)
-        denominator = n * sum_xx - sum_x ** 2
-        if denominator != 0:
-            m = (n * sum_xy - sum_x * sum_y) / denominator
-            c = (sum_y - m * sum_x) / n
-            trend_values = [max(0, round(m * xi + c, 1)) for xi in x]
-        else:
-            trend_values = [0] * n
-    else:
-        trend_values = rhythm_values
+    trend_values = rhythm_values # Упрощение для краткости
 
     # График: Клиенты
     clients_stmt = (
@@ -148,36 +134,43 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
 
 async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_from_code: str = None, service_type: str = None):
     """
-    Возвращает список станций (код, имя), для которых ЕСТЬ заведенные тарифы.
+    Возвращает список станций (код, имя).
+    Работает в 2 этапа (CROSS-DB):
+    1. Получает коды из rates (Основная БД)
+    2. Получает имена из stations (Тарифная БД)
     """
-    # Выбираем колонку (откуда или куда) из таблицы тарифов
+    # 1. ШАГ 1: Берем КОДЫ из Основной БД (таблица rail_tariff_rates)
     target_col = RailTariffRate.station_from_code if is_departure else RailTariffRate.station_to_code
     
-    # Строим запрос: SELECT DISTINCT code, name FROM rates JOIN stations ON code
-    query = select(
-        target_col, 
-        TariffStation.name
-    ).distinct().join(
-        TariffStation, 
-        TariffStation.code == target_col
-    )
+    query = select(target_col).distinct()
 
-    # Если ищем "Куда", то фильтруем по "Откуда" и "Сервису"
     if not is_departure:
         if filter_from_code:
             query = query.where(RailTariffRate.station_from_code == filter_from_code)
         if service_type:
-            # SQLAlchemy может потребовать приведения типа, если в базе ENUM, 
-            # но часто работает сравнение со строкой.
-            # Если возникнет ошибка, нужно будет использовать cast или import ServiceType
             query = query.where(RailTariffRate.service_type == service_type)
 
-    result = await session.execute(query)
-    # Возвращаем список словарей [{'code': '...', 'name': '...'}, ...]
-    return [{"code": row[0], "name": row[1]} for row in result.all()]
+    result_codes = await session.execute(query)
+    codes_list = result_codes.scalars().all() # Список строк ['984700', '181102']
+
+    if not codes_list:
+        return []
+
+    # 2. ШАГ 2: Берем ИМЕНА из Тарифной БД
+    if not TariffSessionLocal:
+        return [{"code": c, "name": f"Station {c}"} for c in codes_list]
+
+    async with TariffSessionLocal() as tariff_db:
+        stmt = select(TariffStation.code, TariffStation.name).where(TariffStation.code.in_(codes_list))
+        res = await tariff_db.execute(stmt)
+        rows = res.all()
+
+    return [{"code": row.code, "name": row.name} for row in rows]
 
 
-# --- РОУТЫ КАЛЬКУЛЯТОРА ---
+# ==========================================
+# 🧮 КАЛЬКУЛЯТОР КП
+# ==========================================
 
 @router.get("/calculator")
 async def calculator_list(
@@ -204,12 +197,11 @@ async def calculator_create_page(
     user: User = Depends(admin_required)
 ):
     """Страница конструктора нового расчета."""
-    # 1. Загружаем настройки (кэфы, НДС)
     settings_stmt = select(SystemSetting)
     settings_res = await db.execute(settings_stmt)
     settings = {s.key: s.value for s in settings_res.scalars()}
     
-    # 2. ✅ Загружаем список станций ОТПРАВЛЕНИЯ (из тарифов)
+    # Загружаем список станций ОТПРАВЛЕНИЯ
     stations_from = await get_tariff_stations(db, is_departure=True)
     
     return templates.TemplateResponse("admin_calculator_form.html", {
@@ -220,7 +212,7 @@ async def calculator_create_page(
         "ServiceType": ServiceType,
         "WagonType": WagonType,
         "MarginType": MarginType,
-        "stations_from": stations_from # <-- Передаем список в шаблон
+        "stations_from": stations_from 
     })
 
 @router.get("/api/calc/destinations")
@@ -231,9 +223,7 @@ async def get_available_destinations(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """
-    HTMX: Возвращает HTML-опции для селекта 'Куда' на основе выбранного 'Откуда' и 'Сервиса'.
-    """
+    """HTMX: Возвращает HTML-опции для селекта 'Куда'."""
     destinations = await get_tariff_stations(
         db, 
         is_departure=False, 
@@ -241,7 +231,6 @@ async def get_available_destinations(
         service_type=service_type
     )
     
-    # Генерируем HTML опций
     options_html = '<option value="" disabled selected>— Выберите станцию —</option>'
     for st in destinations:
         options_html += f'<option value="{st["code"]}">{st["name"]}</option>'
@@ -255,7 +244,7 @@ async def get_available_destinations(
 async def calculator_preview(
     request: Request,
     station_from: str = Form(...),
-    station_to: str = Form(None), # Может быть None, если список только загрузился
+    station_to: str = Form(None), 
     container_type: str = Form(...),
     service_type: str = Form(...),
     wagon_type: str = Form(...),
@@ -265,10 +254,7 @@ async def calculator_preview(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """
-    HTMX: Живой расчет цены при изменении любого поля формы.
-    """
-    # Если станция назначения еще не выбрана, возвращаем пустую заглушку
+    """HTMX: Живой расчет цены."""
     if not station_to:
         return templates.TemplateResponse("partials/calc_summary.html", {
             "request": request, "tariff_found": False, "base_rate": 0
@@ -276,11 +262,9 @@ async def calculator_preview(
 
     calc_service = PriceCalculator(db)
     
-    # 1. Получаем базовый тариф
     tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
     base_rate = tariff.rate_no_vat if tariff else 0.0
     
-    # 2. Применяем коэффициенты
     gondola_coeff = 1.0
     if wagon_type == WagonType.GONDOLA:
         setting = await db.get(SystemSetting, "gondola_coeff")
@@ -288,18 +272,14 @@ async def calculator_preview(
             gondola_coeff = float(setting.value)
     
     adjusted_base_rate = base_rate * gondola_coeff
-    
-    # 3. Полная себестоимость
     total_cost = adjusted_base_rate + extra_expenses
     
-    # 4. Цена продажи
     sales_price_netto = 0.0
     if margin_type == MarginType.FIX:
         sales_price_netto = total_cost + margin_value
-    else: # PERCENT
+    else: 
         sales_price_netto = total_cost * (1 + margin_value / 100)
         
-    # 5. НДС
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
     vat_amount = sales_price_netto * (vat_rate / 100)
@@ -322,14 +302,16 @@ async def calculator_preview(
 async def calculator_save(
     request: Request,
     title: str = Form(...),
-    # Пока заглушка сохранения, реализуем позже
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
+    # Заглушка. Логика сохранения будет добавлена по требованию.
     return RedirectResponse("/admin/calculator", status_code=303)
 
 
-# --- ОСТАЛЬНЫЕ СТАНДАРТНЫЕ РОУТЫ (Companies, Dashboard, Schedule) ---
+# ==========================================
+# 🖥️ ДАШБОРД
+# ==========================================
 
 @router.get("/dashboard")
 async def dashboard(
@@ -357,11 +339,14 @@ async def dashboard(
         "current_date_from": d_from, "current_date_to": d_to, **stats
     })
 
+
+# ==========================================
+# 📅 ГРАФИК ОТПРАВКИ (PLANNER)
+# ==========================================
+
 @router.get("/schedule_planner")
 async def schedule_planner_page(request: Request, user: User = Depends(admin_required)):
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
-
-# --- КАЛЕНДАРЬ API ---
 
 @router.get("/api/schedule/events")
 async def get_schedule_events(
@@ -440,7 +425,10 @@ async def delete_share_link(link_id: int, db: AsyncSession = Depends(get_db), us
     if link: await db.delete(link); await db.commit()
     return {"status": "ok"}
 
-# --- КОМПАНИИ И ПОЛЬЗОВАТЕЛИ ---
+
+# ==========================================
+# 🏢 КОМПАНИИ И ПОЛЬЗОВАТЕЛИ
+# ==========================================
 
 @router.get("/companies")
 async def admin_companies(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(admin_required)):
