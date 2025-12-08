@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Request, Depends, Query, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Query, Form, HTTPException, UploadFile, File
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy import select, desc, distinct, func
 from sqlalchemy.orm import selectinload
@@ -499,3 +499,48 @@ async def calculator_update(
 ):
     await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, calc_id)
     return RedirectResponse("/admin/calculator", status_code=303)
+
+@router.post("/tariffs/upload")
+async def upload_tariffs_excel(
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """
+    Принимает Excel файл, обрабатывает и сохраняет тарифы.
+    """
+    content = await file.read()
+    
+    # Запуск логики импорта
+    result = await process_tariff_import(content, db)
+    
+    if "error" in result:
+        return templates.TemplateResponse("partials/notification_toast.html", {
+            "request": request,
+            "type": "error",
+            "message": f"Ошибка загрузки: {result['error']}"
+        })
+    
+    # Формируем сообщение об успехе
+    stations_list = list(result.get("stations_found", []))[:5] # Покажем первые 5
+    stations_text = ", ".join(stations_list)
+    if len(result.get("stations_found", [])) > 5:
+        stations_text += "..."
+
+    success_msg = (
+        f"Загрузка завершена! Обработано строк: {result['total_rows']}. "
+        f"Записано тарифов: {result['inserted']}. "
+        f"Станции: {stations_text}"
+    )
+    
+    # Если были ошибки в строках, добавим предупреждение
+    if result.get("errors"):
+        success_msg += f" (Ошибок в строках: {len(result['errors'])})"
+
+    # Возвращаем HTML уведомление (или редирект с флеш-сообщением)
+    # Для простоты вернем редирект на список с параметром успеха
+    return RedirectResponse(
+        url=f"/admin/calculator?success_msg={success_msg}", 
+        status_code=303
+    )
