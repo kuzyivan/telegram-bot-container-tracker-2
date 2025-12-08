@@ -1,97 +1,294 @@
 {% extends "base.html" %}
 
-{% block title %}Калькулятор КП — Logistrail{% endblock %}
+{% block title %}{{ 'Редактирование' if calc else 'Новый' }} расчет — Logistrail{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
     
-    <div class="flex justify-between items-end mb-8">
-        <div>
-            <h1 class="text-3xl font-bold text-mono-black tracking-tight">Калькулятор КП</h1>
-            <p class="text-sm text-mono-gray mt-1">Управление коммерческими предложениями</p>
-        </div>
-        
-        <a href="/admin/calculator/new" class="group flex items-center gap-2 bg-mono-black text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:bg-gray-800 transition active:scale-95">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-            Создать расчет
+    <div class="flex items-center gap-4 mb-8">
+        <a href="/admin/calculator" class="p-2 rounded-xl bg-white border border-mono-border text-mono-gray hover:text-mono-black hover:border-mono-black transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
         </a>
+        <h1 class="text-2xl font-bold text-mono-black tracking-tight">
+            {{ 'Редактирование расчета #' + calc.id|string if calc else 'Конструктор расчета' }}
+        </h1>
     </div>
 
-    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
-                    <tr>
-                        <th class="px-6 py-4">Название / Клиент</th>
-                        <th class="px-6 py-4">Поставщик сервиса</th>
-                        <th class="px-6 py-4">Тип</th>
-                        <!-- 🔥 Добавили колонку Себестоимость -->
-                        <th class="px-6 py-4 text-right">Себест. (с НДС)</th>
-                        <th class="px-6 py-4 text-right">Итого (с НДС)</th>
-                        <th class="px-6 py-4 text-right">Статус</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-mono-border">
-                    {% for calc in calculations %}
-                    <tr class="hover:bg-mono-bg transition group cursor-pointer" onclick="window.location='/admin/calculator/{{ calc.id }}'">
-                        <td class="px-6 py-4">
-                            <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
-                            <div class="text-xs text-mono-gray mt-0.5">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
-                        </td>
-                        
-                        <td class="px-6 py-4">
-                            <div class="font-medium text-mono-black">{{ calc.service_provider }}</div>
-                        </td>
-                        
-                        <td class="px-6 py-4">
-                            <span class="inline-flex items-center px-2 py-1 rounded border border-mono-border bg-white text-xs font-mono text-mono-gray">
-                                <!-- 🔥 Убрали вагон, оставили только контейнер с заменой _ на ' -->
-                                {{ calc.container_type.replace('_', "' ") }}
-                            </span>
-                        </td>
+    <form action="{{ '/admin/calculator/' + calc.id|string + '/update' if calc else '/admin/calculator/create' }}" 
+          method="POST" 
+          class="grid grid-cols-1 lg:grid-cols-12 gap-8"
+          id="calcForm"
+          hx-post="/admin/api/calc/preview" 
+          hx-trigger="change, keyup delay:500ms from:input, updatesummary from:body, load" 
+          hx-target="#calc-summary">
+        
+        <!-- ЛЕВАЯ КОЛОНКА (8 колонок) -->
+        <div class="lg:col-span-8 space-y-6">
+            
+            <!-- 1. Основное -->
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Общая информация</h3>
+                <div class="grid grid-cols-1 gap-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Название расчета</label>
+                        <input type="text" name="title" value="{{ calc.title if calc else '' }}" required 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
+                               placeholder="Например: КП для Вектор (Июнь)">
+                    </div>
+                </div>
+            </div>
 
-                        <!-- 🔥 Выводим Себестоимость с НДС -->
-                        <td class="px-6 py-4 text-right">
-                            <div class="font-medium text-mono-gray text-xs">
-                                {{ "{:,.0f}".format(calc.total_cost * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
-                            </div>
-                        </td>
+            <!-- 2. Логистика -->
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Логистика</h3>
+                
+                <!-- Ряд 1: Поставщик, Тип отправки, Подвижной состав -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Поставщик сервиса</label>
+                        <input type="text" name="service_provider" value="{{ calc.service_provider if calc else '' }}" required 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
+                               placeholder="Например: ТрансКонтейнер">
+                    </div>
 
-                        <td class="px-6 py-4 text-right">
-                            <div class="font-bold text-mono-black">
-                                {{ "{:,.0f}".format(calc.total_price_netto * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
-                            </div>
-                        </td>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
+                        <select name="service_type" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-get="/admin/api/calc/destinations"
+                                hx-include="[name='station_from']"
+                                hx-target="#station_to_select">
+                            <option value="TRAIN" {% if calc and calc.service_type.value == 'TRAIN' %}selected{% endif %}>Контейнерный Поезд (КП)</option>
+                            <option value="SINGLE" {% if calc and calc.service_type.value == 'SINGLE' %}selected{% endif %}>Одиночная отправка</option>
+                        </select>
+                    </div>
 
-                        <td class="px-6 py-4 text-right">
-                            <div class="flex items-center justify-end gap-3">
-                                {% if calc.status.value == 'DRAFT' %}
-                                    <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold">Черновик</span>
-                                {% elif calc.status.value == 'PUBLISHED' %}
-                                    <span class="bg-mono-black text-white px-2 py-1 rounded text-xs font-bold">Активен</span>
-                                {% else %}
-                                    <span class="text-gray-400 text-xs">Архив</span>
-                                {% endif %}
-                                
-                                <!-- Кнопка копирования -->
-                                <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
-                                    <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Подвижной состав</label>
+                        <select name="wagon_type" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-get="/admin/api/calc/get_prr_input"
+                                hx-include="[name='container_type']"
+                                hx-target="#prr_container"
+                                hx-swap="innerHTML">
+                            <option value="PLATFORM" {% if calc and calc.wagon_type.value == 'PLATFORM' %}selected{% endif %}>Фитинговая платформа</option>
+                            <option value="GONDOLA" {% if calc and calc.wagon_type.value == 'GONDOLA' %}selected{% endif %}>Полувагон (Кэф {{ settings.gondola_coeff }})</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Ряд 2: Маршрут и Контейнер -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Откуда</label>
+                        <select name="station_from" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-get="/admin/api/calc/destinations"
+                                hx-include="[name='service_type']"
+                                hx-target="#station_to_select">
+                            {% for st in stations_from %}
+                                <option value="{{ st.code }}" {% if calc and calc.station_from == st.code %}selected{% endif %}>{{ st.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Куда</label>
+                        <select name="station_to" id="station_to_select" required
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none">
+                            {% if preloaded_stations_to %}
+                                {% for st in preloaded_stations_to %}
+                                    <option value="{{ st.code }}" {% if calc and calc.station_to == st.code %}selected{% endif %}>{{ st.name }}</option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="" disabled selected>— Сначала выберите 'Откуда' —</option>
+                            {% endif %}
+                        </select>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Контейнер</label>
+                        <select name="container_type" 
+                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
+                                hx-get="/admin/api/calc/get_prr_input"
+                                hx-include="[name='wagon_type']"
+                                hx-target="#prr_container"
+                                hx-swap="innerHTML">
+                            <!-- 🔥 Обновленные названия -->
+                            <option value="20_REF" {% if calc and calc.container_type == '20_REF' %}selected{% endif %}>20' Легкая</option>
+                            <option value="20_STD" {% if calc and calc.container_type == '20_STD' %}selected{% endif %}>20' Средняя</option>
+                            <option value="20_HEAVY" {% if calc and calc.container_type == '20_HEAVY' %}selected{% endif %}>20' Тяжелая</option>
+                            <option value="20_EXTRA" {% if calc and calc.container_type == '20_EXTRA' %}selected{% endif %}>20' Экстра</option>
+                            
+                            <option disabled>──────────</option>
+
+                            <option value="40_STD" {% if calc and calc.container_type == '40_STD' %}selected{% endif %}>40' Легкая</option>
+                            <option value="40_HC" {% if calc and calc.container_type == '40_HC' %}selected{% endif %}>40' HC</option>
+                            <option value="40_HEAVY" {% if calc and calc.container_type == '40_HEAVY' %}selected{% endif %}>40' Тяжелая</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. Экономика -->
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Экономика</h3>
+                
+                <div class="flex gap-6 mb-6 p-4 bg-mono-bg rounded-xl">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="include_rail_tariff" class="w-4 h-4 text-mono-black rounded focus:ring-mono-black border-gray-300 transition" 
+                               {% if not calc or include_rail_tariff %}checked{% endif %} 
+                               onchange="triggerUpdate()">
+                        <span class="text-sm font-bold text-mono-black">Включить ЖД Тариф (Авто)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox" name="include_prr" class="w-4 h-4 text-mono-black rounded focus:ring-mono-black border-gray-300 transition"
+                               {% if not calc or include_prr %}checked{% endif %} 
+                               onchange="triggerUpdate()">
+                        <span class="text-sm font-bold text-mono-black">Включить ПРР</span>
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-gray uppercase ml-1">ПРР (Терминал)</label>
+                        <div id="prr_container">
+                            <input type="number" name="prr_value" id="prr_input" 
+                                   value="{{ saved_prr if saved_prr is defined else 0 }}" step="100"
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none"
+                                   oninput="triggerUpdate()">
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black uppercase ml-1">Ставка Сервиса / ТК</label>
+                        <input type="number" name="service_rate_value" 
+                               value="{{ saved_service_rate if saved_service_rate is defined else 0 }}" step="100"
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none font-bold"
+                               placeholder="0" oninput="triggerUpdate()">
+                        <p class="text-[10px] text-mono-gray ml-1">Заполнять, если тариф включен в ставку провайдера (All-in).</p>
+                    </div>
+                </div>
+
+                <hr class="border-mono-border my-6">
+
+                <div class="mb-2 grid grid-cols-12 gap-3 text-[10px] uppercase font-bold text-mono-gray tracking-wider">
+                    <div class="col-span-6 pl-1">Доп. расходы</div>
+                    <div class="col-span-4 pl-1">Стоимость (₽)</div>
+                    <div class="col-span-2"></div>
+                </div>
+
+                <div id="expenses-container" class="space-y-3 mb-6">
+                    {% if calc %}
+                        {% for item in calc.items %}
+                            {% if not item.is_auto_calculated %}
+                            <div class="grid grid-cols-12 gap-3 items-center expense-row">
+                                <div class="col-span-6">
+                                    <input type="text" name="expense_names" value="{{ item.name }}" 
+                                           class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm outline-none focus:ring-1 focus:ring-mono-black border border-transparent focus:border-mono-black transition">
+                                </div>
+                                <div class="col-span-4">
+                                    <input type="number" name="expense_values" value="{{ item.cost_price }}" step="100" oninput="triggerUpdate()"
+                                           class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm font-mono outline-none focus:ring-1 focus:ring-mono-black border border-transparent focus:border-mono-black transition">
+                                </div>
+                                <div class="col-span-2 text-right">
+                                    <button type="button" onclick="removeRow(this)" class="text-mono-gray hover:text-red-500 transition p-2 hover:bg-red-50 rounded-lg">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                     </button>
-                                </form>
+                                </div>
                             </div>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" class="px-6 py-12 text-center text-mono-gray">
-                            Нет созданных расчетов. Нажмите "Создать расчет".
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </div>
+
+                <button type="button" onclick="addExpenseRow()" 
+                        class="text-xs font-bold text-mono-black border border-mono-border bg-white hover:bg-mono-bg px-4 py-2 rounded-lg transition mb-6 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Добавить расход
+                </button>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-mono-border">
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Тип маржи</label>
+                        <select name="margin_type" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none">
+                            <option value="FIX" {% if calc and calc.margin_type.value == 'FIX' %}selected{% endif %}>Фиксированная (RUB)</option>
+                            <option value="PERCENT" {% if calc and calc.margin_type.value == 'PERCENT' %}selected{% endif %}>Процент (%)</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Значение маржи</label>
+                        <input type="number" name="margin_value" value="{{ calc.margin_value if calc else settings.default_margin_fix }}" step="100"
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                    </div>
+                </div>
+            </div>
+
         </div>
-    </div>
+
+        <!-- ПРАВАЯ КОЛОНКА (Sticky Summary) -->
+        <div class="lg:col-span-4">
+            <div class="sticky top-24 space-y-4">
+                
+                <div id="calc-summary">
+                    <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent text-center animate-pulse">
+                        <p class="text-sm text-mono-gray font-medium">Загрузка расчета...</p>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-mono-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg active:scale-95 flex justify-center items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                    {{ 'Сохранить изменения' if calc else 'Сохранить КП' }}
+                </button>
+            </div>
+        </div>
+
+    </form>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const fromSelect = document.querySelector('select[name="station_from"]');
+        const toSelect = document.querySelector('select[name="station_to"]');
+        if(fromSelect && (!toSelect.value || toSelect.value === "")) {
+            htmx.trigger(fromSelect, 'change');
+        }
+        triggerUpdate();
+    });
+
+    function triggerUpdate() {
+        document.body.dispatchEvent(new Event('updatesummary'));
+    }
+
+    function addExpenseRow(name = '', value = 0) {
+        const container = document.getElementById('expenses-container');
+        const div = document.createElement('div');
+        div.className = 'grid grid-cols-12 gap-3 items-center expense-row animate-slide-up';
+        div.innerHTML = `
+            <div class="col-span-6">
+                <input type="text" name="expense_names" value="${name}" placeholder="Название" 
+                       class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm outline-none focus:ring-1 focus:ring-mono-black border border-transparent focus:border-mono-black transition">
+            </div>
+            <div class="col-span-4">
+                <input type="number" name="expense_values" value="${value}" step="100" placeholder="0"
+                       oninput="triggerUpdate()"
+                       class="w-full px-4 py-2 bg-mono-bg rounded-lg text-sm font-mono outline-none focus:ring-1 focus:ring-mono-black border border-transparent focus:border-mono-black transition">
+            </div>
+            <div class="col-span-2 text-right">
+                <button type="button" onclick="removeRow(this)" class="text-mono-gray hover:text-red-500 transition p-2 hover:bg-red-50 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+            </div>
+        `;
+        container.appendChild(div);
+        if(value > 0) triggerUpdate();
+    }
+
+    function removeRow(btn) {
+        btn.closest('.expense-row').remove();
+        triggerUpdate();
+    }
+</script>
 {% endblock %}

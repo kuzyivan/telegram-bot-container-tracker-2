@@ -53,7 +53,6 @@
                     </div>
 
                     <div class="space-y-1.5">
-                        <!-- 🔥 Переименовали: Тип сервиса -> Тип отправки -->
                         <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
                         <select name="service_type" 
                                 class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none"
@@ -116,9 +115,17 @@
                                 hx-include="[name='wagon_type']"
                                 hx-target="#prr_container"
                                 hx-swap="innerHTML">
-                            {% for ctype in ["20_STD", "40_STD", "40_HC", "20_REF", "20_HEAVY", "20_EXTRA", "40_HEAVY"] %}
-                                <option value="{{ ctype }}" {% if calc and calc.container_type == ctype %}selected{% endif %}>{{ ctype.replace('_', "' ") }}</option>
-                            {% endfor %}
+                            <!-- 🔥 Обновленные названия -->
+                            <option value="20_REF" {% if calc and calc.container_type == '20_REF' %}selected{% endif %}>20' Легкая</option>
+                            <option value="20_STD" {% if calc and calc.container_type == '20_STD' %}selected{% endif %}>20' Средняя</option>
+                            <option value="20_HEAVY" {% if calc and calc.container_type == '20_HEAVY' %}selected{% endif %}>20' Тяжелая</option>
+                            <option value="20_EXTRA" {% if calc and calc.container_type == '20_EXTRA' %}selected{% endif %}>20' Экстра</option>
+                            
+                            <option disabled>──────────</option>
+
+                            <option value="40_STD" {% if calc and calc.container_type == '40_STD' %}selected{% endif %}>40' Легкая</option>
+                            <option value="40_HC" {% if calc and calc.container_type == '40_HC' %}selected{% endif %}>40' HC</option>
+                            <option value="40_HEAVY" {% if calc and calc.container_type == '40_HEAVY' %}selected{% endif %}>40' Тяжелая</option>
                         </select>
                     </div>
                 </div>
@@ -221,7 +228,7 @@
 
         </div>
 
-        <!-- ПРАВАЯ КОЛОНКА -->
+        <!-- ПРАВАЯ КОЛОНКА (Sticky Summary) -->
         <div class="lg:col-span-4">
             <div class="sticky top-24 space-y-4">
                 
