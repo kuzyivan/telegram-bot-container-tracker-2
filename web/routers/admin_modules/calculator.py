@@ -5,6 +5,8 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy import select, desc, distinct, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# Импорт сервиса загрузки тарифов
 from services.tariff_importer_service import process_tariff_import
 
 from models import User
@@ -89,7 +91,7 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
 @router.get("/calculator")
 async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
     """Список расчетов."""
-    # 🔥 ИЗМЕНЕНИЕ: Сортируем сначала по Провайдеру, потом по Типу контейнера, потом по Дате
+    # Сортируем сначала по Провайдеру, потом по Типу контейнера, потом по Дате
     stmt = select(Calculation).order_by(
         Calculation.service_provider,   # Группировка
         Calculation.container_type,     # Порядок внутри группы
@@ -99,13 +101,17 @@ async def calculator_list(request: Request, db: AsyncSession = Depends(get_db), 
     calculations = result.scalars().all()
     
     return templates.TemplateResponse("admin_calculator_list.html", {
-        "request": request, "user": user, "calculations": calculations, "CalculationStatus": CalculationStatus
+        "request": request, 
+        "user": user, 
+        "calculations": calculations, 
+        "CalculationStatus": CalculationStatus,
+        "today": datetime.now().date() # Передаем текущую дату для проверки просрочки
     })
 
 @router.get("/calculator/new")
 async def calculator_create_page(
     request: Request, 
-    # 👇 Добавляем параметр type (по умолчанию TRAIN)
+    # Добавляем параметр type (по умолчанию TRAIN) для UX разделения кнопок
     type: str = Query("TRAIN"), 
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
@@ -124,7 +130,7 @@ async def calculator_create_page(
         "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, 
         "stations_from": stations_from,
         "calc": None,
-        "default_service_type": type.upper() # 👇 Передаем в шаблон
+        "default_service_type": type.upper() # Передаем в шаблон для автовыбора
     })
 
 @router.get("/calculator/{calc_id}")
@@ -185,7 +191,6 @@ async def calculator_edit_page(
         "include_prr": include_prr
     })
 
-# 🔥 НОВЫЙ РОУТ: КОПИРОВАНИЕ РАСЧЕТА
 @router.post("/calculator/{calc_id}/copy")
 async def calculator_copy(
     calc_id: int,
@@ -242,7 +247,7 @@ async def calculator_copy(
     return RedirectResponse(f"/admin/calculator/{new_calc.id}", status_code=303)
 
 
-# 🔥 HTMX: Получение значения ПРР для инпута
+# HTMX: Получение значения ПРР для инпута
 @router.get("/api/calc/get_prr_input")
 async def get_prr_input_html(
     wagon_type: str = Query(...),
@@ -278,7 +283,7 @@ async def get_available_destinations(
         
     return HTMLResponse(options_html)
 
-# 🔥 ПРЕВЬЮ: Основная логика расчета с учетом флагов
+# ПРЕВЬЮ: Основная логика расчета с учетом флагов
 @router.post("/api/calc/preview")
 async def calculator_preview(
     request: Request,
@@ -369,7 +374,7 @@ async def calculator_preview(
         "total_price_with_vat": total_price_with_vat,
     })
 
-# 🔥 ЛОГИКА СОХРАНЕНИЯ (ИСПРАВЛЕНО)
+# ЛОГИКА СОХРАНЕНИЯ
 async def _save_calculation_logic(
     db: AsyncSession,
     title: str, station_from: str, station_to: str, container_type: str,
@@ -377,6 +382,8 @@ async def _save_calculation_logic(
     service_provider: str, expense_names: List[str], expense_values: List[float],
     prr_value: float, service_rate_value: float,
     include_rail_tariff: bool, include_prr: bool,
+    # Параметр для даты окончания действия
+    valid_until: Optional[str] = None,
     calc_id: Optional[int] = None
 ):
     # Повторяем расчет для БД (чтобы быть уверенными в цифрах)
@@ -404,7 +411,6 @@ async def _save_calculation_logic(
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
 
     if calc_id:
-        # 🔥 ИСПРАВЛЕНИЕ: Используем selectinload для загрузки items
         stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
         result = await db.execute(stmt)
         calc = result.scalar_one_or_none()
@@ -416,6 +422,14 @@ async def _save_calculation_logic(
         calc = Calculation(created_at=func.now())
         db.add(calc)
 
+    # Парсинг даты валидности
+    valid_to_date = None
+    if valid_until:
+        try:
+            valid_to_date = datetime.strptime(valid_until, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+
     # Обновляем поля объекта
     calc.title = title
     calc.service_provider = service_provider
@@ -425,6 +439,9 @@ async def _save_calculation_logic(
     calc.station_from = station_from
     calc.station_to = station_to
     calc.valid_from = datetime.now().date()
+    # Обновляем дату окончания
+    calc.valid_to = valid_to_date
+    
     calc.total_cost = total_cost
     calc.margin_type = margin_type
     calc.margin_value = margin_value
@@ -488,10 +505,12 @@ async def calculator_create(
     margin_type: str = Form(...), margin_value: float = Form(0.0), service_provider: str = Form(...),
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
+    # Принимаем дату из формы
+    valid_until: Optional[str] = Form(None),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
-    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, None)
+    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, None)
     return RedirectResponse("/admin/calculator", status_code=303)
 
 @router.post("/calculator/{calc_id}/update")
@@ -502,10 +521,12 @@ async def calculator_update(
     margin_type: str = Form(...), margin_value: float = Form(0.0), service_provider: str = Form(...),
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
+    # Принимаем дату из формы
+    valid_until: Optional[str] = Form(None),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
-    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, calc_id)
+    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, calc_id)
     return RedirectResponse("/admin/calculator", status_code=303)
 
 @router.post("/tariffs/upload")
@@ -524,32 +545,26 @@ async def upload_tariffs_excel(
     result = await process_tariff_import(content, db)
     
     if "error" in result:
-        return templates.TemplateResponse("partials/notification_toast.html", {
-            "request": request,
-            "type": "error",
-            "message": f"Ошибка загрузки: {result['error']}"
-        })
+        # Для простоты редиректим обратно с ошибкой в query params
+        error_msg = f"Ошибка: {result['error']}"
+        return RedirectResponse(
+            url=f"/admin/calculator?error_msg={error_msg}", 
+            status_code=303
+        )
     
     # Формируем сообщение об успехе
-    stations_list = list(result.get("stations_found", []))[:5] # Покажем первые 5
-    stations_text = ", ".join(stations_list)
-    if len(result.get("stations_found", [])) > 5:
-        stations_text += "..."
-
-    success_msg = (
-        f"Загрузка завершена! Обработано строк: {result['total_rows']}. "
-        f"Записано тарифов: {result['inserted']}. "
-        f"Станции: {stations_text}"
-    )
+    count = result['inserted']
+    stations_preview = list(result['stations_found'])[:5] # Покажем первые 5
+    stations_str = ", ".join(stations_preview)
+    if len(result['stations_found']) > 5:
+        stations_str += "..."
+        
+    success_msg = f"Успешно загружено {count} тарифов. Станции: {stations_str}"
     
-    # Если были ошибки в строках, добавим предупреждение
     if result.get("errors"):
-        success_msg += f" (Ошибок в строках: {len(result['errors'])})"
+        success_msg += f" (Предупреждений: {len(result['errors'])})"
 
-    # Возвращаем HTML уведомление (или редирект с флеш-сообщением)
-    # Для простоты вернем редирект на список с параметром успеха
     return RedirectResponse(
         url=f"/admin/calculator?success_msg={success_msg}", 
         status_code=303
     )
-

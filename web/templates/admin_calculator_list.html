@@ -6,7 +6,7 @@
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
     
     <!-- Шапка страницы -->
-    <div class="flex justify-between items-end mb-8">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
         <div>
             <h1 class="text-3xl font-bold text-mono-black tracking-tight">Калькулятор КП</h1>
             <p class="text-sm text-mono-gray mt-1">Управление коммерческими предложениями</p>
@@ -15,12 +15,12 @@
         <div class="flex items-center gap-3">
             <!-- Кнопка вызова модального окна загрузки тарифов -->
             <button onclick="openModal()" class="flex items-center gap-2 bg-white text-mono-black border border-mono-border px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:bg-gray-50 transition active:scale-95">
-                <svg class="w-4 h-4 text-green-600" ...></svg>
+                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                 Загрузить тарифы ЖД
             </button>
 
-            <!-- Кнопка создания нового расчета -->
-            <<div class="flex items-center gap-2 bg-mono-bg p-1 rounded-xl border border-mono-border">
+            <!-- Группа кнопок создания -->
+            <div class="flex items-center gap-2 bg-mono-bg p-1 rounded-xl border border-mono-border">
                 <a href="/admin/calculator/new?type=TRAIN" class="group flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition hover:bg-white hover:shadow-sm text-mono-gray hover:text-mono-black">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
                     КП (Поезд)
@@ -34,15 +34,41 @@
         </div>
     </div>
 
+    <!-- Уведомления об успехе/ошибке -->
+    {% if request.query_params.get('success_msg') %}
+    <div class="mb-6 p-4 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-medium animate-fade-in flex items-center gap-2">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        {{ request.query_params.get('success_msg') }}
+    </div>
+    {% endif %}
+    {% if request.query_params.get('error_msg') %}
+    <div class="mb-6 p-4 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-medium animate-fade-in flex items-center gap-2">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        {{ request.query_params.get('error_msg') }}
+    </div>
+    {% endif %}
+
     <!-- МАКРОС СТРОКИ ТАБЛИЦЫ -->
     {% macro render_row(calc) %}
     <tr class="hover:bg-mono-bg transition group cursor-pointer border-b border-mono-border last:border-0" onclick="window.location='/admin/calculator/{{ calc.id }}'">
+        <!-- Назначение -->
         <td class="px-6 py-4">
             <div class="font-bold text-mono-black text-sm">{{ calc.title }}</div>
-            <div class="text-xs text-mono-gray mt-0.5 font-mono">{{ calc.created_at.strftime('%d.%m.%Y') }}</div>
+            <div class="text-xs text-mono-gray mt-0.5 font-mono">
+                {{ calc.station_from }} → {{ calc.station_to }}
+            </div>
         </td>
+        
+        <!-- Поставщик -->
         <td class="px-6 py-4">
-            <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-white text-xs font-medium text-mono-black whitespace-nowrap shadow-sm">
+            <span class="inline-flex items-center px-2 py-1 rounded bg-white text-xs font-medium text-mono-dark border border-mono-border whitespace-nowrap shadow-sm">
+                {{ calc.service_provider }}
+            </span>
+        </td>
+
+        <!-- Тип контейнера -->
+        <td class="px-6 py-4">
+            <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-mono-bg text-xs font-medium text-mono-black whitespace-nowrap">
                 {% if calc.container_type == '20_REF' %} 20' Легкая
                 {% elif calc.container_type == '20_HEAVY' %} 20' Тяжелая
                 {% elif calc.container_type == '20_EXTRA' %} 20' Экстра
@@ -52,25 +78,40 @@
                 <span class="text-mono-gray ml-1 opacity-50">/ {{ "ПВ" if calc.wagon_type.value == 'GONDOLA' else "ФИТ" }}</span>
             </span>
         </td>
+
+        <!-- Себестоимость -->
         <td class="px-6 py-4 text-right">
-            <div class="font-medium text-mono-gray text-xs">
+            <div class="font-medium text-mono-gray text-xs font-mono">
                 {{ "{:,.0f}".format(calc.total_cost * (1 + calc.vat_rate/100)).replace(',', ' ') }} ₽
             </div>
         </td>
+
+        <!-- Итого -->
         <td class="px-6 py-4 text-right">
-            <div class="font-bold text-mono-black text-sm">
+            <div class="font-bold text-mono-black text-sm font-mono">
                 {{ "{:,.0f}".format(((calc.total_price_netto * (1 + calc.vat_rate/100)) / 1000) | round(0, 'ceil') * 1000).replace(',', ' ') }} ₽
             </div>
         </td>
+
+        <!-- Статус -->
         <td class="px-6 py-4 text-right">
             <div class="flex items-center justify-end gap-3">
-                {% if calc.status.value == 'DRAFT' %}
+                {% if calc.valid_to and today and calc.valid_to < today %}
+                    <!-- СТАТУС: ЗАПРЕТ (Красный неон) -->
+                    <span class="bg-red-950 text-red-500 border border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
+                        ЗАПРЕТ
+                    </span>
+                {% elif calc.status.value == 'DRAFT' %}
                     <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Черновик</span>
                 {% elif calc.status.value == 'PUBLISHED' %}
-                    <span class="bg-[#39ff14] text-black shadow-[0_0_12px_#39ff14] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">Активен</span>
+                    <span class="bg-[#39ff14]/10 text-[#008000] border border-[#39ff14]/50 shadow-[0_0_8px_rgba(57,255,20,0.3)] px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
+                        Активен
+                    </span>
                 {% else %}
                     <span class="text-gray-400 text-[10px] uppercase font-bold">Архив</span>
                 {% endif %}
+                
+                <!-- Кнопка копирования -->
                 <form action="/admin/calculator/{{ calc.id }}/copy" method="POST" class="inline-block" onsubmit="event.stopPropagation()">
                     <button type="submit" class="p-1.5 text-mono-gray hover:text-mono-black hover:bg-white border border-transparent hover:border-mono-border rounded-lg transition shadow-sm" title="Создать копию" onclick="event.stopPropagation()">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
@@ -87,7 +128,8 @@
             <table class="w-full text-sm text-left border-collapse">
                 <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-6 py-4">Название / Клиент</th>
+                        <th class="px-6 py-4">Назначение</th>
+                        <th class="px-6 py-4">Поставщик</th> <!-- Новая колонка -->
                         <th class="px-6 py-4">Тип</th>
                         <th class="px-6 py-4 text-right">Себест. (с НДС)</th>
                         <th class="px-6 py-4 text-right">Итого (с НДС)</th>
@@ -97,13 +139,11 @@
                 <tbody class="divide-y divide-mono-border">
                     {% if calculations %}
                         {% for group in calculations|groupby('service_provider') %}
-                            <tr class="bg-mono-bg/50 border-t-2 border-mono-border">
-                                <td colspan="5" class="px-6 py-3">
+                            <tr class="bg-mono-bg/30 border-t-2 border-mono-border">
+                                <td colspan="6" class="px-6 py-2.5">
                                     <div class="flex items-center gap-3">
-                                        <div class="p-1.5 bg-mono-black rounded-lg text-white">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                                        </div>
-                                        <span class="text-sm font-extrabold text-mono-black tracking-tight uppercase">{{ group.grouper }}</span>
+                                        <div class="w-2 h-2 rounded-full bg-mono-black"></div>
+                                        <span class="text-xs font-extrabold text-mono-black tracking-wide uppercase">{{ group.grouper }}</span>
                                     </div>
                                 </td>
                             </tr>
@@ -114,7 +154,7 @@
                             {% for calc in group.list if calc.container_type not in priority_order %}{{ render_row(calc) }}{% endfor %}
                         {% endfor %}
                     {% else %}
-                        <tr><td colspan="5" class="px-6 py-12 text-center text-mono-gray">Нет созданных расчетов. Нажмите "Создать расчет".</td></tr>
+                        <tr><td colspan="6" class="px-6 py-12 text-center text-mono-gray">Нет созданных расчетов. Нажмите "Создать расчет".</td></tr>
                     {% endif %}
                 </tbody>
             </table>
@@ -122,157 +162,67 @@
     </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО ЗАГРУЗКИ (Active Block) -->
+<!-- МОДАЛЬНОЕ ОКНО ЗАГРУЗКИ ТАРИФОВ -->
 <div id="tariffModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <!-- Затемнение фона -->
-    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
 
     <div class="fixed inset-0 z-10 overflow-y-auto">
         <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             
-            <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-100">
+            <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-100 animate-slide-up">
                 
-                <!-- Заголовок модального окна -->
-                <div class="bg-mono-bg px-4 py-4 sm:px-6 border-b border-gray-100 flex justify-between items-center">
-                    <h3 class="text-base font-bold leading-6 text-mono-black uppercase tracking-wide" id="modal-title">Загрузка тарифов ЖД</h3>
-                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+                <!-- Заголовок -->
+                <div class="bg-white px-6 py-5 border-b border-gray-100 flex justify-between items-center">
+                    <h3 class="text-lg font-bold leading-6 text-mono-black" id="modal-title">Загрузка тарифов ЖД</h3>
+                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 outline-none p-1 rounded-lg hover:bg-gray-100 transition">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
 
                 <!-- Форма -->
-                <form action="/admin/tariffs/upload" method="POST" enctype="multipart/form-data" id="uploadForm">
-                    <div class="px-4 py-6 sm:px-6">
+                <form action="/admin/tariffs/upload" method="POST" enctype="multipart/form-data" id="uploadForm" onsubmit="showLoading()">
+                    <div class="px-6 py-6">
                         
                         <!-- Drag & Drop Area -->
                         <div class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-500 hover:bg-green-50 transition-all cursor-pointer group" id="drop-zone">
-                            <input type="file" name="file" id="file-upload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".csv, .xlsx, .xls" required onchange="updateFileName(this)">
-                            
-                            <div class="space-y-3 pointer-events-none">
-                                <div class="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-white group-hover:shadow-sm transition">
-                                    <svg class="w-6 h-6 text-gray-400 group-hover:text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                                </div>
-                                <div class="text-sm text-mono-black font-medium" id="file-label">
-                                    Выберите файл Excel или CSV
-                                </div>
-                                <p class="text-xs text-gray-500">Нажмите или перетащите файл сюда</p>
-                            </div>
-                        </div>
-
-                        <!-- Инфо -->
-                        <div class="mt-4 flex justify-between items-center text-xs">
-                            <span class="text-gray-500">Поддерживаются форматы .xlsx, .csv</span>
-                            <a href="/static/templates/tariffs_template.csv" class="text-blue-600 hover:text-blue-800 underline">Скачать шаблон</a>
-                        </div>
-                    </div>
-
-                    <!-- Подвал с кнопками -->
-                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 gap-2">
-                        <button type="submit" class="inline-flex w-full justify-center rounded-xl bg-mono-black px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-gray-800 active:scale-95 sm:ml-3 sm:w-auto transition">
-                            Записать тарифы
-                        </button>
-                        <button type="button" class="mt-3 inline-flex w-full justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 active:scale-95 sm:mt-0 sm:w-auto transition" onclick="closeModal()">
-                            Отмена
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    const modal = document.getElementById('tariffModal');
-    const dropZone = document.getElementById('drop-zone');
-    const fileInput = document.getElementById('file-upload');
-
-    function openModal() {
-        modal.classList.remove('hidden');
-        document.body.style.overflow = 'hidden'; // Блокируем скролл страницы
-    }
-
-    function closeModal() {
-        modal.classList.add('hidden');
-        document.body.style.overflow = '';
-        // Сброс формы при закрытии
-        document.getElementById('uploadForm').reset();
-        document.getElementById('file-label').textContent = 'Выберите файл Excel или CSV';
-        document.getElementById('file-label').classList.remove('text-green-600');
-        dropZone.classList.remove('border-green-500', 'bg-green-50');
-    }
-
-    function updateFileName(input) {
-        const label = document.getElementById('file-label');
-        if (input.files && input.files.length > 0) {
-            label.textContent = 'Готов к загрузке: ' + input.files[0].name;
-            label.classList.add('text-green-600');
-            dropZone.classList.add('border-green-500', 'bg-green-50');
-        } else {
-            label.textContent = 'Выберите файл Excel или CSV';
-            label.classList.remove('text-green-600');
-            dropZone.classList.remove('border-green-500', 'bg-green-50');
-        }
-    }
-
-    // Закрытие по ESC
-    document.addEventListener('keydown', function(event) {
-        if (event.key === "Escape" && !modal.classList.contains('hidden')) {
-            closeModal();
-        }
-    });
-</script>
-
-<div id="tariffModal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity backdrop-blur-sm" onclick="closeModal()"></div>
-
-    <div class="fixed inset-0 z-10 overflow-y-auto">
-        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            
-            <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-100">
-                
-                <div class="bg-mono-bg px-4 py-4 sm:px-6 border-b border-gray-100 flex justify-between items-center">
-                    <h3 class="text-base font-bold leading-6 text-mono-black uppercase tracking-wide">Загрузка тарифов ЖД</h3>
-                    <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-
-                <form action="/admin/tariffs/upload" method="POST" enctype="multipart/form-data" id="uploadForm" onsubmit="showLoading()">
-                    <div class="px-4 py-6 sm:px-6">
-                        
-                        <div class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-green-500 hover:bg-green-50 transition-all cursor-pointer group" id="drop-zone">
                             <input type="file" name="file" id="file-upload" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx, .xls" required onchange="updateFileName(this)">
                             
-                            <div class="space-y-3 pointer-events-none" id="upload-content">
-                                <div class="mx-auto w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-white group-hover:shadow-sm transition">
-                                    <svg class="w-6 h-6 text-gray-400 group-hover:text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <div class="space-y-4 pointer-events-none" id="upload-content">
+                                <div class="mx-auto w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center group-hover:bg-white group-hover:shadow-md transition">
+                                    <svg class="w-7 h-7 text-gray-400 group-hover:text-green-600 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 </div>
-                                <div class="text-sm text-mono-black font-medium" id="file-label">
-                                    Выберите файл Excel
+                                <div>
+                                    <div class="text-sm font-bold text-mono-black mb-1" id="file-label">
+                                        Выберите файл Excel
+                                    </div>
+                                    <p class="text-xs text-gray-500">Перетащите сюда или нажмите для выбора</p>
                                 </div>
-                                <p class="text-xs text-gray-500">Нажмите или перетащите файл сюда</p>
                             </div>
                             
+                            <!-- Спиннер загрузки (скрыт по умолчанию) -->
                             <div id="upload-spinner" class="hidden flex-col items-center justify-center py-4">
-                                <svg class="animate-spin h-8 w-8 text-mono-black mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <svg class="animate-spin h-8 w-8 text-mono-black mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
                                 <span class="text-sm font-bold text-mono-black">Обработка файла...</span>
-                                <span class="text-xs text-gray-500">Поиск станций в базе...</span>
+                                <span class="text-xs text-gray-500 mt-1">Это может занять несколько секунд</span>
                             </div>
                         </div>
 
-                        <div class="mt-4 flex justify-between items-center text-xs">
-                            <span class="text-gray-500">Поддерживается .xlsx</span>
+                        <div class="mt-4 flex items-center justify-between text-[10px] text-gray-400 px-1">
+                            <span>Поддерживается .xlsx</span>
+                            <span>Размер до 10 МБ</span>
                         </div>
                     </div>
 
-                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 gap-2">
-                        <button type="submit" id="submit-btn" class="inline-flex w-full justify-center rounded-xl bg-mono-black px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                            Записать в базу данных
+                    <!-- Кнопки -->
+                    <div class="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row-reverse gap-3 rounded-b-2xl border-t border-gray-100">
+                        <button type="submit" id="submit-btn" class="w-full sm:w-auto inline-flex justify-center rounded-xl bg-mono-black px-6 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-gray-800 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Загрузить
                         </button>
-                        <button type="button" class="mt-3 inline-flex w-full justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition sm:mt-0 sm:w-auto" onclick="closeModal()">
+                        <button type="button" class="w-full sm:w-auto mt-3 sm:mt-0 inline-flex justify-center rounded-xl bg-white px-6 py-2.5 text-sm font-bold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition active:scale-95" onclick="closeModal()">
                             Отмена
                         </button>
                     </div>
@@ -288,36 +238,41 @@
     const spinner = document.getElementById('upload-spinner');
     const content = document.getElementById('upload-content');
     const submitBtn = document.getElementById('submit-btn');
+    const label = document.getElementById('file-label');
 
     function openModal() {
         modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
     }
 
     function closeModal() {
         modal.classList.add('hidden');
+        document.body.style.overflow = '';
         document.getElementById('uploadForm').reset();
         resetUI();
     }
 
     function updateFileName(input) {
-        const label = document.getElementById('file-label');
         if (input.files && input.files.length > 0) {
-            label.textContent = 'Выбран: ' + input.files[0].name;
-            label.classList.add('text-green-600', 'font-bold');
+            label.textContent = input.files[0].name;
+            label.classList.add('text-green-600');
             dropZone.classList.add('border-green-500', 'bg-green-50');
+            dropZone.classList.remove('border-gray-300');
         } else {
             resetUI();
         }
     }
     
     function resetUI() {
-        const label = document.getElementById('file-label');
         label.textContent = 'Выберите файл Excel';
-        label.classList.remove('text-green-600', 'font-bold');
+        label.classList.remove('text-green-600');
         dropZone.classList.remove('border-green-500', 'bg-green-50');
+        dropZone.classList.add('border-gray-300');
+        
         spinner.classList.add('hidden');
         content.classList.remove('hidden');
         submitBtn.disabled = false;
+        submitBtn.innerText = 'Загрузить';
     }
 
     function showLoading() {
@@ -326,6 +281,12 @@
         submitBtn.disabled = true;
         submitBtn.innerText = 'Загрузка...';
     }
+    
+    // Закрытие по ESC
+    document.addEventListener('keydown', function(event) {
+        if (event.key === "Escape" && !modal.classList.contains('hidden')) {
+            closeModal();
+        }
+    });
 </script>
-
 {% endblock %}
