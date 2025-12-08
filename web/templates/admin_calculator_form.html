@@ -28,14 +28,16 @@
             <!-- 1. Основное -->
             <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
                 <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4 border-b border-mono-border pb-2">Общая информация</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="space-y-1.5">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Название -->
+                    <div class="space-y-1.5 md:col-span-1">
                         <label class="text-xs font-bold text-mono-black ml-1">Название (Назначение)</label>
                         <input type="text" name="title" value="{{ calc.title if calc else '' }}" required 
                                class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none" 
                                placeholder="Например: Москва - Владивосток">
                     </div>
                     
+                    <!-- Действует до -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Действует до</label>
                         <div class="relative">
@@ -47,6 +49,16 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Статус (Новое поле) -->
+                    <div class="space-y-1.5">
+                        <label class="text-xs font-bold text-mono-black ml-1">Статус</label>
+                        <select name="status" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none cursor-pointer appearance-none">
+                            <option value="PUBLISHED" {% if (calc and calc.status.value == 'PUBLISHED') or not calc %}selected{% endif %}>Активен (Опубликован)</option>
+                            <option value="DRAFT" {% if calc and calc.status.value == 'DRAFT' %}selected{% endif %}>Черновик</option>
+                            <option value="ARCHIVED" {% if calc and calc.status.value == 'ARCHIVED' %}selected{% endif %}>Архив</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -65,7 +77,6 @@
                                placeholder="Например: ТрансКонтейнер">
                     </div>
 
-                    <!-- ИСПРАВЛЕННЫЙ БЛОК (Убрал дублирование) -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-black ml-1">Тип отправки</label>
                         <select name="service_type" 

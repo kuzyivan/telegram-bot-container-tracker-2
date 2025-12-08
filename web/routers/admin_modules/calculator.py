@@ -141,7 +141,8 @@ async def calculator_create_page(
         "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, 
         "stations_from": stations_from,
         "calc": None,
-        "default_service_type": type.upper() # Передаем в шаблон
+        "default_service_type": type.upper(), # Передаем в шаблон для автовыбора
+        "CalculationStatus": CalculationStatus # Передаем Enum для шаблона
     })
 
 @router.get("/calculator/{calc_id}")
@@ -198,7 +199,8 @@ async def calculator_edit_page(
         "saved_prr": saved_prr,
         "saved_service_rate": saved_service_rate,
         "include_rail_tariff": include_rail_tariff,
-        "include_prr": include_prr
+        "include_prr": include_prr,
+        "CalculationStatus": CalculationStatus
     })
 
 @router.post("/calculator/{calc_id}/copy")
@@ -365,7 +367,7 @@ async def calculator_preview(
         "total_price_with_vat": total_price_with_vat,
     })
 
-# ЛОГИКА СОХРАНЕНИЯ (Внутренняя функция)
+# 🔥 ЛОГИКА СОХРАНЕНИЯ С УЧЕТОМ СТАТУСА
 async def _save_calculation_logic(
     db: AsyncSession,
     title: str, station_from: str, station_to: str, container_type: str,
@@ -373,7 +375,9 @@ async def _save_calculation_logic(
     service_provider: str, expense_names: List[str], expense_values: List[float],
     prr_value: float, service_rate_value: float,
     include_rail_tariff: bool, include_prr: bool,
-    valid_until: Optional[str] = None, # Дата окончания
+    valid_until: Optional[str] = None,
+    # 👇 Принимаем статус
+    status: Optional[str] = "PUBLISHED", 
     calc_id: Optional[int] = None
 ):
     # Повторяем расчет для БД
@@ -418,7 +422,11 @@ async def _save_calculation_logic(
         except ValueError:
             pass
 
-    # Обновляем поля
+    # Конвертируем строку статуса в Enum
+    status_enum = CalculationStatus.PUBLISHED # Default
+    if status == "DRAFT": status_enum = CalculationStatus.DRAFT
+    elif status == "ARCHIVED": status_enum = CalculationStatus.ARCHIVED
+
     calc.title = title
     calc.service_provider = service_provider
     calc.service_type = service_type
@@ -427,51 +435,31 @@ async def _save_calculation_logic(
     calc.station_from = station_from
     calc.station_to = station_to
     calc.valid_from = datetime.now().date()
-    calc.valid_to = valid_to_date # Сохраняем дату
+    calc.valid_to = valid_to_date
     
     calc.total_cost = total_cost
     calc.margin_type = margin_type
     calc.margin_value = margin_value
     calc.total_price_netto = sales_price_netto
     calc.vat_rate = vat_rate
-    calc.status = CalculationStatus.PUBLISHED
+    # 👇 Записываем статус в БД
+    calc.status = status_enum 
 
     await db.flush()
 
-    # Сохраняем детализацию
     if include_rail_tariff:
-        db.add(CalculationItem(
-            calculation_id=calc.id, 
-            name="Железнодорожный тариф", 
-            cost_price=adjusted_base_rate, 
-            is_auto_calculated=True
-        ))
+        db.add(CalculationItem(calculation_id=calc.id, name="Железнодорожный тариф", cost_price=adjusted_base_rate, is_auto_calculated=True))
 
     if include_prr and final_prr_cost > 0:
         prr_label = f"ПРР в ПВ ({container_type})" if wagon_type == WagonType.GONDOLA else f"ПРР на Платформе ({container_type})"
-        db.add(CalculationItem(
-            calculation_id=calc.id, 
-            name=prr_label, 
-            cost_price=final_prr_cost, 
-            is_auto_calculated=True
-        ))
+        db.add(CalculationItem(calculation_id=calc.id, name=prr_label, cost_price=final_prr_cost, is_auto_calculated=True))
         
     if service_rate_value > 0:
-        db.add(CalculationItem(
-            calculation_id=calc.id, 
-            name="Ставка сервиса", 
-            cost_price=service_rate_value, 
-            is_auto_calculated=True
-        ))
+        db.add(CalculationItem(calculation_id=calc.id, name="Ставка сервиса", cost_price=service_rate_value, is_auto_calculated=True))
     
     for name, cost in zip(expense_names, expense_values):
         if name and name.strip(): 
-            db.add(CalculationItem(
-                calculation_id=calc.id, 
-                name=name.strip(), 
-                cost_price=cost, 
-                is_auto_calculated=False
-            ))
+            db.add(CalculationItem(calculation_id=calc.id, name=name.strip(), cost_price=cost, is_auto_calculated=False))
             
     await db.commit()
     return calc
@@ -484,12 +472,13 @@ async def calculator_create(
     margin_type: str = Form(...), margin_value: float = Form(0.0), service_provider: str = Form(...),
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
-    # Принимаем valid_until
     valid_until: Optional[str] = Form(None),
+    # 👇 Принимаем статус из формы
+    status: str = Form("PUBLISHED"),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
-    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, None)
+    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, status, None)
     return RedirectResponse("/admin/calculator", status_code=303)
 
 @router.post("/calculator/{calc_id}/update")
@@ -500,12 +489,13 @@ async def calculator_update(
     margin_type: str = Form(...), margin_value: float = Form(0.0), service_provider: str = Form(...),
     prr_value: float = Form(0.0), service_rate_value: float = Form(0.0),
     include_rail_tariff: bool = Form(False), include_prr: bool = Form(False),
-    # Принимаем valid_until
     valid_until: Optional[str] = Form(None),
+    # 👇 Принимаем статус из формы
+    status: str = Form("PUBLISHED"),
     expense_names: List[str] = Form([]), expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
-    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, calc_id)
+    await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, status, calc_id)
     return RedirectResponse("/admin/calculator", status_code=303)
 
 @router.post("/tariffs/upload")
@@ -515,23 +505,16 @@ async def upload_tariffs_excel(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """
-    Принимает Excel файл, обрабатывает и сохраняет тарифы.
-    """
     content = await file.read()
-    
-    # Запуск логики импорта
     result = await process_tariff_import(content, db)
     
     if "error" in result:
-        # Редирект с ошибкой
         error_msg = f"Ошибка: {result['error']}"
         return RedirectResponse(
             url=f"/admin/calculator?error_msg={error_msg}", 
             status_code=303
         )
     
-    # Успех
     count = result['inserted']
     stations_preview = list(result['stations_found'])[:5]
     stations_str = ", ".join(stations_preview)
