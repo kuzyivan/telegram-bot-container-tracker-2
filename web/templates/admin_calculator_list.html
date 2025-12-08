@@ -26,7 +26,7 @@
            class="flex-1 flex flex-col justify-center items-center py-4 rounded-xl transition-all duration-300 group {{ 'bg-white shadow-md ring-1 ring-black/5' if current_type == 'TRAIN' else 'hover:bg-white/50' }}">
             <div class="flex items-center gap-2 mb-1">
                 <svg class="w-5 h-5 {{ 'text-mono-black' if current_type == 'TRAIN' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'TRAIN' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Контейнерная отправка</span>
+                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'TRAIN' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Контейнерный поезд</span>
             </div>
             <span class="text-[10px] uppercase tracking-widest font-bold {{ 'text-mono-gray' if current_type == 'TRAIN' else 'text-gray-400' }}">В составе поезда (КП)</span>
         </a>
@@ -36,7 +36,7 @@
            class="flex-1 flex flex-col justify-center items-center py-4 rounded-xl transition-all duration-300 group {{ 'bg-white shadow-md ring-1 ring-black/5' if current_type == 'SINGLE' else 'hover:bg-white/50' }}">
             <div class="flex items-center gap-2 mb-1">
                 <svg class="w-5 h-5 {{ 'text-mono-black' if current_type == 'SINGLE' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
-                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'SINGLE' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Вагонная отправка</span>
+                <span class="text-base font-extrabold tracking-tight {{ 'text-mono-black' if current_type == 'SINGLE' else 'text-mono-gray group-hover:text-mono-black' }} transition-colors">Повагонная отправка</span>
             </div>
             <span class="text-[10px] uppercase tracking-widest font-bold {{ 'text-mono-gray' if current_type == 'SINGLE' else 'text-gray-400' }}">Одиночная / Повагонная</span>
         </a>
