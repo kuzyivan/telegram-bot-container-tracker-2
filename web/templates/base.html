@@ -144,6 +144,7 @@
 
             <div class="flex items-center gap-4">
                 {% if user %}
+                    <!-- ССЫЛКА НА ПРОФИЛЬ -->
                     <a href="/profile" class="flex items-center gap-3 pl-4 sm:border-l border-mono-border hover:opacity-70 transition group">
                         
                         <div class="text-right hidden sm:block">
@@ -153,10 +154,12 @@
                             <p class="text-[10px] text-mono-gray uppercase">{{ user.role }}</p>
                         </div>
 
+                        <!-- АВАТАРКА -->
                         <div class="w-9 h-9 rounded-full bg-mono-bg flex items-center justify-center border border-mono-border overflow-hidden">
                             {% if user.avatar_url %}
                                 <img src="{{ user.avatar_url }}" alt="Avatar" class="w-full h-full object-cover">
                             {% else %}
+                                <!-- Дефолтная иконка, если нет фото -->
                                 <span class="text-xs font-bold text-mono-gray">
                                     {{ user.first_name[0] if user.first_name else 'U' }}
                                 </span>
@@ -164,6 +167,7 @@
                         </div>
                     </a>
 
+                    <!-- КНОПКА ВЫХОДА -->
                     <a href="/logout" class="ml-1 text-mono-gray hover:text-red-600 transition p-2 rounded-lg hover:bg-mono-bg" title="Выйти">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                     </a>
@@ -239,6 +243,12 @@
         {% endif %}
     </nav>
 
+    <!-- 🔥 КНОПКА "НАВЕРХ" -->
+    <button id="scrollToTopBtn" onclick="scrollToTop()" 
+            class="fixed bottom-20 right-4 md:bottom-8 md:right-8 bg-mono-black text-white p-3 rounded-full shadow-lg transition-all duration-300 opacity-0 translate-y-10 invisible hover:bg-gray-800 active:scale-95 z-30 flex items-center justify-center">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+    </button>
+
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -246,6 +256,23 @@
                     .then(reg => console.log('SW registered!', reg.scope))
                     .catch(err => console.log('SW registration failed: ', err));
             });
+        }
+
+        // --- ЛОГИКА SCROLL TO TOP ---
+        const scrollBtn = document.getElementById('scrollToTopBtn');
+        
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 300) {
+                // Показываем
+                scrollBtn.classList.remove('opacity-0', 'translate-y-10', 'invisible');
+            } else {
+                // Скрываем
+                scrollBtn.classList.add('opacity-0', 'translate-y-10', 'invisible');
+            }
+        });
+
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     </script>
 </body>
