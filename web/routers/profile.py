@@ -32,13 +32,20 @@ async def update_profile_info(
     user: User = Depends(login_required)
 ):
     """Обновление текстовых данных"""
-    user.first_name = first_name
-    user.last_name = last_name
-    user.job_title = job_title
-    user.phone = phone
+    # 1. Получаем пользователя внутри ТЕКУЩЕЙ сессии db
+    # Это ключевой момент! Мы не можем менять объект 'user' напрямую, 
+    # так как он пришел из другой (закрытой) сессии.
+    db_user = await db.get(User, user.id)
     
-    await db.commit()
-    # Возвращаем тот же шаблон, можно добавить flash-сообщение через query params
+    if db_user:
+        db_user.first_name = first_name
+        db_user.last_name = last_name
+        db_user.job_title = job_title
+        db_user.phone = phone
+        
+        await db.commit()
+        await db.refresh(db_user) # Обновляем данные
+    
     return RedirectResponse("/profile?success=Данные обновлены", status_code=303)
 
 @router.post("/avatar")
@@ -49,22 +56,26 @@ async def upload_avatar(
 ):
     """Загрузка аватарки"""
     try:
-        # Генерируем уникальное имя файла: user_ID_filename
+        # 1. Получаем пользователя в текущей сессии
+        db_user = await db.get(User, user.id)
+        
+        if not db_user:
+             return RedirectResponse("/profile?error=Пользователь не найден", status_code=303)
+
+        # 2. Сохраняем файл
         filename = f"user_{user.id}_{file.filename}"
         file_path = UPLOAD_DIR / filename
         
-        # Сохраняем файл
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Удаляем старую аватарку, если была (опционально)
-        
-        # Обновляем БД (путь относительно static)
-        user.avatar_url = f"/static/avatars/{filename}"
+        # 3. Обновляем БД
+        db_user.avatar_url = f"/static/avatars/{filename}"
         await db.commit()
         
     except Exception as e:
         print(f"Error uploading avatar: {e}")
+        return RedirectResponse("/profile?error=Ошибка загрузки файла", status_code=303)
         
     return RedirectResponse("/profile", status_code=303)
 
@@ -77,16 +88,22 @@ async def change_password(
     user: User = Depends(login_required)
 ):
     """Смена пароля"""
-    # 1. Проверяем старый пароль
-    if not verify_password(current_password, user.password_hash):
+    # 1. Получаем пользователя в текущей сессии
+    db_user = await db.get(User, user.id)
+    
+    if not db_user:
+         return RedirectResponse("/profile?error=Ошибка сессии", status_code=303)
+
+    # 2. Проверяем старый пароль (используем db_user)
+    if not verify_password(current_password, db_user.password_hash):
         return RedirectResponse("/profile?error=Неверный текущий пароль", status_code=303)
     
-    # 2. Проверяем совпадение новых
+    # 3. Проверяем совпадение новых
     if new_password != confirm_password:
         return RedirectResponse("/profile?error=Пароли не совпадают", status_code=303)
         
-    # 3. Обновляем
-    user.password_hash = get_password_hash(new_password)
+    # 4. Обновляем
+    db_user.password_hash = get_password_hash(new_password)
     await db.commit()
     
     return RedirectResponse("/profile?success=Пароль успешно изменен", status_code=303)
