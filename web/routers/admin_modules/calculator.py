@@ -17,7 +17,8 @@ from models_finance import (
 from services.calculator_service import PriceCalculator
 from services.tariff_service import TariffStation
 from db import TariffSessionLocal
-from web.auth import admin_required
+# ✅ ИЗМЕНЕНИЕ: Добавлен импорт manager_required
+from web.auth import admin_required, manager_required
 from .common import templates, get_db
 
 router = APIRouter()
@@ -87,6 +88,45 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
     return result_list
 
 # --- РОУТЫ ---
+
+# ✅ НОВЫЙ РОУТ: Страница Себестоимости (доступ для Менеджеров)
+@router.get("/costs")
+async def cost_dashboard_page(
+    request: Request,
+    type: str = Query("TRAIN"), # Фильтр по типу (TRAIN/SINGLE)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(manager_required) # <-- Используем новую зависимость
+):
+    """
+    Публичная страница себестоимости для менеджеров.
+    Показывает детализацию затрат.
+    """
+    current_type_upper = type.upper()
+    
+    # Определяем сортировку (как в основном калькуляторе)
+    primary_sort_field = Calculation.service_provider
+    if current_type_upper == 'SINGLE':
+        primary_sort_field = Calculation.station_to
+
+    # Загружаем расчеты вместе с элементами (items), чтобы показать детали расходов
+    stmt = select(Calculation).options(selectinload(Calculation.items))\
+        .where(Calculation.service_type == current_type_upper)\
+        .order_by(
+            primary_sort_field,
+            Calculation.container_type,
+            desc(Calculation.created_at)
+        )
+    
+    result = await db.execute(stmt)
+    calculations = result.scalars().all()
+
+    return templates.TemplateResponse("admin_cost_dashboard.html", {
+        "request": request,
+        "user": user,
+        "calculations": calculations,
+        "current_type": current_type_upper,
+        "today": datetime.now().date()
+    })
 
 @router.get("/calculator")
 async def calculator_list(
