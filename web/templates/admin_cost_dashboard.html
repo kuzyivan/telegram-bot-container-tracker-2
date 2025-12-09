@@ -3,7 +3,7 @@
 {% block title %}Расчет ставки — Logistrail{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto px-2 md:px-4 py-6 animate-fade-in">
+<div class="max-w-5xl mx-auto px-2 md:px-4 py-6 animate-fade-in pb-24"> <!-- pb-24 чтобы не перекрыть кнопку -->
     
     <!-- Шапка -->
     <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-5">
@@ -33,22 +33,24 @@
     <!-- ТАБЛИЦА -->
     <div class="bg-white rounded-xl shadow-card border border-transparent overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-xs text-left border-collapse">
+            <table class="w-full text-xs text-left border-collapse" id="costTable">
                 
-                <!-- ЗАГОЛОВКИ ПО ЦЕНТРУ -->
                 <thead class="bg-mono-bg text-mono-gray text-[9px] uppercase font-bold tracking-wider">
                     <tr>
+                        <!-- ✅ ЧЕКБОКС "ВЫБРАТЬ ВСЕ" -->
+                        <th class="px-3 py-3 w-[30px] text-center border-r border-mono-border/50">
+                            <input type="checkbox" id="selectAll" onclick="toggleAll(this)" 
+                                   class="w-3.5 h-3.5 rounded border-gray-300 text-mono-black focus:ring-mono-black cursor-pointer">
+                        </th>
+                        
                         <th class="px-3 py-3 text-center w-[250px]">Маршрут</th>
-                        
                         <th class="px-1 py-3 w-[20px] text-center"></th> 
-                        
                         <th class="px-2 py-3 w-[100px] text-center">Тип</th>
                         
                         <th class="px-3 py-3 text-center text-mono-black bg-gray-50 border-x border-gray-200 w-[100px]">
                             СЕБЕСТ.<br><span class="opacity-60">(б/НДС)</span>
                         </th>
                         
-                        <!-- АКЦЕНТ НА ЗАГОЛОВКЕ МАРЖИ -->
                         <th class="px-2 py-3 text-center bg-green-50/50 border-r border-green-100 w-[110px]">
                             <span class="text-green-800 border-b border-green-200 pb-0.5">МАРЖА</span>
                         </th>
@@ -69,7 +71,7 @@
                         
                         <!-- Заголовок группы -->
                         <tr class="bg-mono-bg/40 border-t border-mono-border">
-                            <td colspan="7" class="px-3 py-2">
+                            <td colspan="8" class="px-3 py-2">
                                 <div class="flex items-center gap-2">
                                     <div class="w-1 h-1 rounded-full bg-mono-black"></div>
                                     <span class="text-[10px] font-bold text-mono-gray uppercase tracking-wide">
@@ -80,7 +82,6 @@
                             </td>
                         </tr>
 
-                        <!-- Строки -->
                         {% for calc in group.list %}
                             {% set default_margin = 0 %}
                             {% if calc.margin_type.value == 'FIX' %}
@@ -95,15 +96,23 @@
                             {% endif %}
 
                             <tr class="hover:bg-blue-50/10 transition group border-b border-mono-border last:border-0 calc-row"
+                                data-id="{{ calc.id }}"
+                                data-title="{{ calc.title }}"
+                                data-type="{{ calc.container_type.replace('_', ' ') }}"
                                 data-cost="{{ calc.total_cost }}"
                                 data-vat="{{ calc.vat_rate }}">
                                 
-                                <!-- Маршрут (Полное название + код) -->
+                                <!-- ✅ ЧЕКБОКС ВЫБОРА -->
+                                <td class="px-3 py-3 text-center align-middle border-r border-mono-border/50">
+                                    <input type="checkbox" name="selected_calc" value="{{ calc.id }}" onchange="updateFloatingBar()"
+                                           class="calc-checkbox w-3.5 h-3.5 rounded border-gray-300 text-mono-black focus:ring-mono-black cursor-pointer">
+                                </td>
+
+                                <!-- Маршрут -->
                                 <td class="px-3 py-3 align-middle">
                                     <div class="font-bold text-mono-black text-sm mb-1 leading-tight w-full break-words">
                                         {{ calc.title }}
                                     </div>
-                                    <!-- Код станции (если есть) -->
                                     <div class="flex items-center gap-1.5">
                                         <span class="text-xs font-bold text-mono-black bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
                                             {{ calc.station_from }}
@@ -127,7 +136,7 @@
                                     {% endif %}
                                 </td>
 
-                                <!-- 🔥 ТИП КОНТЕЙНЕРА (ОБНОВЛЕНО) -->
+                                <!-- Тип контейнера -->
                                 <td class="px-2 py-3 text-center align-middle">
                                     <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-mono-bg text-xs font-medium text-mono-black whitespace-nowrap shadow-sm tracking-wide">
                                         {% if calc.container_type == '20_REF' %} 20' Легкая
@@ -146,7 +155,7 @@
                                     </div>
                                 </td>
 
-                                <!-- АКЦЕНТ НА ПОЛЕ ВВОДА -->
+                                <!-- МАРЖА (INPUT) -->
                                 <td class="px-1 py-1 text-right bg-green-50/40 border-r border-green-200 p-0 align-middle relative group-hover:bg-green-100/50 transition-colors">
                                     <div class="relative w-full h-full p-1">
                                         <input type="number" 
@@ -184,6 +193,24 @@
     </div>
 </div>
 
+<!-- 🔥 ПЛАВАЮЩАЯ ПАНЕЛЬ ДЕЙСТВИЙ -->
+<div id="floatingAction" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-mono-black text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 z-50 transition-all duration-300 transform translate-y-24 opacity-0">
+    <div class="flex items-center gap-2">
+        <span class="bg-white/20 text-xs font-bold px-2 py-1 rounded" id="selectedCount">0</span>
+        <span class="text-sm font-medium">выбрано</span>
+    </div>
+    <div class="h-4 w-px bg-white/20"></div>
+    <button onclick="exportCommercialProposal()" class="flex items-center gap-2 hover:opacity-80 transition font-bold text-sm">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        Экспорт КП (PDF)
+    </button>
+</div>
+
+<!-- СКРЫТАЯ ФОРМА ДЛЯ ЭКСПОРТА -->
+<form id="exportForm" action="/admin/export/kp" method="POST" target="_blank" class="hidden">
+    <input type="hidden" name="data_json" id="exportDataJson">
+</form>
+
 <script>
     function formatNumber(num) {
         return num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -203,21 +230,73 @@
         const nettoEl = row.querySelector('.price-netto');
         const grossEl = row.querySelector('.price-gross');
         
-        // Логика цвета при убытке
         if (margin < 0) {
             nettoEl.classList.add('text-red-600');
             grossEl.classList.add('text-red-600');
             input.classList.add('text-red-600');
-            input.classList.remove('text-green-800');
         } else {
             nettoEl.classList.remove('text-red-600');
             grossEl.classList.remove('text-red-600');
             input.classList.remove('text-red-600');
-            input.classList.add('text-green-800');
         }
 
         nettoEl.textContent = formatNumber(priceNetto);
         grossEl.textContent = formatNumber(priceGross) + ' ₽';
+    }
+
+    // --- ЛОГИКА ВЫБОРА И ЭКСПОРТА ---
+
+    function toggleAll(source) {
+        const checkboxes = document.querySelectorAll('.calc-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = source.checked;
+        });
+        updateFloatingBar();
+    }
+
+    function updateFloatingBar() {
+        const checkedBoxes = document.querySelectorAll('.calc-checkbox:checked');
+        const bar = document.getElementById('floatingAction');
+        const countSpan = document.getElementById('selectedCount');
+        
+        countSpan.innerText = checkedBoxes.length;
+
+        if (checkedBoxes.length > 0) {
+            bar.classList.remove('translate-y-24', 'opacity-0');
+        } else {
+            bar.classList.add('translate-y-24', 'opacity-0');
+            document.getElementById('selectAll').checked = false;
+        }
+    }
+
+    function exportCommercialProposal() {
+        const checkedBoxes = document.querySelectorAll('.calc-checkbox:checked');
+        const dataToExport = [];
+
+        checkedBoxes.forEach(cb => {
+            const row = cb.closest('tr');
+            const id = cb.value;
+            // Берем МАРЖУ прямо из инпута, так как она может быть изменена вручную
+            const marginInput = row.querySelector('.margin-input');
+            const marginValue = parseFloat(marginInput.value) || 0;
+            
+            dataToExport.push({
+                id: parseInt(id),
+                custom_margin: marginValue
+            });
+        });
+
+        if (dataToExport.length === 0) return;
+
+        // Отправляем JSON с ID и актуальными маржами
+        const jsonField = document.getElementById('exportDataJson');
+        jsonField.value = JSON.stringify(dataToExport);
+        
+        document.getElementById('exportForm').submit();
+        
+        // Сброс выбора (опционально)
+        // document.querySelectorAll('.calc-checkbox').forEach(c => c.checked = false);
+        // updateFloatingBar();
     }
 
     document.addEventListener("DOMContentLoaded", function() {

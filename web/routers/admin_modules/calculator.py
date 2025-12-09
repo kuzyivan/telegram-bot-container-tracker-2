@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Request, Depends, Query, Form, HTTPException, UploadFile, File
@@ -17,7 +18,7 @@ from models_finance import (
 from services.calculator_service import PriceCalculator
 from services.tariff_service import TariffStation
 from db import TariffSessionLocal
-# ✅ ИЗМЕНЕНИЕ: Добавлен импорт manager_required
+# Импорт manager_required
 from web.auth import admin_required, manager_required
 from .common import templates, get_db
 
@@ -89,7 +90,64 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
 
 # --- РОУТЫ ---
 
-# ✅ НОВЫЙ РОУТ: Страница Себестоимости (доступ для Менеджеров)
+# ✅ НОВЫЙ РОУТ: Генерация КП (Print View)
+@router.post("/export/kp", response_class=HTMLResponse)
+async def export_commercial_proposal(
+    request: Request,
+    data_json: str = Form(...), # JSON строка: [{"id": 1, "custom_margin": 20000}, ...]
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(manager_required)
+):
+    try:
+        items_data = json.loads(data_json)
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid JSON data")
+    
+    # 1. Собираем ID и маппинг маржи
+    ids = [int(item['id']) for item in items_data]
+    margins_map = {int(item['id']): float(item['custom_margin']) for item in items_data}
+    
+    if not ids:
+        return HTMLResponse("Нет выбранных элементов для экспорта")
+
+    # 2. Загружаем данные из БД
+    stmt = select(Calculation).where(Calculation.id.in_(ids))
+    result = await db.execute(stmt)
+    calculations = result.scalars().all()
+    
+    # 3. Подготавливаем данные для шаблона (пересчитываем итог с новой маржой)
+    kp_rows = []
+    today_date = datetime.now().date()
+    
+    for calc in calculations:
+        # Берем маржу, которую прислал фронтенд (она актуальнее базы)
+        margin = margins_map.get(calc.id, calc.margin_value)
+        
+        # Расчет
+        price_no_vat = calc.total_cost + margin
+        vat_amount = price_no_vat * (calc.vat_rate / 100)
+        total_price = price_no_vat + vat_amount
+        
+        # Округление до сотен (красивая цена), как было в макете
+        total_price_rounded = round(total_price / 100) * 100
+        
+        kp_rows.append({
+            "title": calc.title,
+            "station_from": calc.station_from,
+            "station_to": calc.station_to,
+            "type": calc.container_type,
+            "price": total_price_rounded,
+            "valid_until": calc.valid_to
+        })
+    
+    return templates.TemplateResponse("kp_print_view.html", {
+        "request": request, 
+        "user": user,
+        "rows": kp_rows,
+        "date": today_date.strftime("%d.%m.%Y")
+    })
+
+# Страница Себестоимости (доступ для Менеджеров)
 @router.get("/costs")
 async def cost_dashboard_page(
     request: Request,
