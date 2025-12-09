@@ -23,6 +23,7 @@
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
         
+        <!-- ФОРМА СОЗДАНИЯ КОМПАНИИ -->
         <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent h-full flex flex-col">
             <div class="flex items-center gap-3 mb-6">
                 <div class="w-8 h-8 rounded-lg bg-mono-bg flex items-center justify-center text-mono-black">
@@ -59,6 +60,7 @@
             </form>
         </div>
 
+        <!-- ФОРМА СОЗДАНИЯ ПОЛЬЗОВАТЕЛЯ -->
         <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent h-full flex flex-col">
             <div class="flex items-center gap-3 mb-6">
                 <div class="w-8 h-8 rounded-lg bg-mono-bg flex items-center justify-center text-mono-black">
@@ -111,6 +113,7 @@
         </div>
     </div>
 
+    <!-- СПИСОК КОМПАНИЙ -->
     <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
         <div class="px-8 py-6 bg-white border-b border-mono-border flex justify-between items-center">
             <h3 class="text-lg font-bold text-mono-black flex items-center gap-3">
@@ -156,6 +159,7 @@
         </div>
     </div>
 
+    <!-- СПИСОК ПОЛЬЗОВАТЕЛЕЙ -->
     <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
         <div class="px-8 py-6 bg-white border-b border-mono-border flex justify-between items-center">
             <h3 class="text-lg font-bold text-mono-black flex items-center gap-3">
@@ -168,11 +172,11 @@
             <table class="w-full text-sm text-left">
                 <thead class="bg-mono-bg text-mono-gray text-[11px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-8 py-4">Пользователь</th>
-                        <th class="px-8 py-4">Источник</th>
-                        <th class="px-8 py-4">Компания</th>
-                        <th class="px-8 py-4">Роль</th>
-                        <th class="px-8 py-4 text-right">Действие</th>
+                        <th class="px-6 py-4">Пользователь</th>
+                        <th class="px-6 py-4">Компания</th>
+                        <th class="px-6 py-4">Роль</th>
+                        <th class="px-6 py-4 w-40">Смена пароля</th>
+                        <th class="px-6 py-4 text-right">Действие</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-mono-border">
@@ -180,36 +184,24 @@
                     <tr class="hover:bg-mono-bg transition group">
                         <form action="/admin/users/{{ user.id }}/update" method="POST">
                             
-                            <td class="px-8 py-4 align-middle">
+                            <td class="px-6 py-4 align-middle">
                                 <div class="font-bold text-mono-black">
                                     {{ user.first_name }} {{ user.last_name or '' }}
                                 </div>
                                 <div class="text-xs text-mono-gray font-mono mt-0.5">
                                     {% if user.username %}
                                         @{{ user.username }}
+                                        <span class="inline-block ml-1 px-1.5 rounded bg-mono-black text-white text-[9px]">TG</span>
                                     {% elif user.email_login %}
                                         {{ user.email_login }}
+                                        <span class="inline-block ml-1 px-1.5 rounded bg-gray-200 text-gray-600 text-[9px]">WEB</span>
                                     {% else %}
                                         ID: {{ user.id }}
                                     {% endif %}
                                 </div>
                             </td>
-
-                            <td class="px-8 py-4 align-middle">
-                                {% if user.telegram_id %}
-                                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-mono-black text-white text-[10px] font-bold uppercase tracking-wider">
-                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .24z"></path></svg>
-                                        Telegram
-                                    </div>
-                                {% else %}
-                                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white border border-mono-border text-mono-black text-[10px] font-bold uppercase tracking-wider">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
-                                        WEB
-                                    </div>
-                                {% endif %}
-                            </td>
                             
-                            <td class="px-8 py-4 align-middle">
+                            <td class="px-6 py-4 align-middle">
                                 <select name="company_id" class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition">
                                     <option value="0" {% if not user.company_id %}selected{% endif %}>— Нет —</option>
                                     {% for comp in companies %}
@@ -220,7 +212,7 @@
                                 </select>
                             </td>
 
-                            <td class="px-8 py-4 align-middle">
+                            <td class="px-6 py-4 align-middle">
                                 <select name="role" class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition uppercase font-bold tracking-wide">
                                     <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer</option>
                                     <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>Manager</option>
@@ -229,7 +221,13 @@
                                 </select>
                             </td>
 
-                            <td class="px-8 py-4 text-right align-middle">
+                            <!-- ПОЛЕ СМЕНЫ ПАРОЛЯ -->
+                            <td class="px-6 py-4 align-middle">
+                                <input type="text" name="new_password" placeholder="Новый пароль" 
+                                       class="w-full bg-white border-b border-mono-gray text-mono-black text-xs py-1 px-2 outline-none focus:border-mono-black focus:bg-white transition placeholder-gray-300">
+                            </td>
+
+                            <td class="px-6 py-4 text-right align-middle">
                                 <button type="submit" class="text-mono-black hover:bg-mono-black hover:text-white font-bold text-xs bg-white border border-mono-border px-4 py-2 rounded-lg transition shadow-sm">
                                     Сохранить
                                 </button>

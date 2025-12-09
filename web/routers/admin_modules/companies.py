@@ -28,11 +28,32 @@ async def sync_companies_data(request: Request, db: AsyncSession = Depends(get_d
     await sync_terminal_to_company_containers(db)
     return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
 
+# ✅ ОБНОВЛЕННЫЙ РОУТ: Смена роли, компании И ПАРОЛЯ
 @router.post("/users/{user_id}/update")
-async def update_user_role(request: Request, user_id: int, role: str = Form(...), company_id: int = Form(None), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
+async def update_user_role(
+    request: Request, 
+    user_id: int, 
+    role: str = Form(...), 
+    company_id: int = Form(None), 
+    new_password: str = Form(None), # <-- Принимаем новый пароль (необязательно)
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required)
+):
     company_val = company_id if company_id and company_id > 0 else None
-    await db.execute(update(User).where(User.id == user_id).values(role=role, company_id=company_val))
+    
+    # Собираем данные для обновления
+    values_to_update = {
+        "role": role,
+        "company_id": company_val
+    }
+    
+    # Если введен новый пароль — хешируем и добавляем к обновлению
+    if new_password and new_password.strip():
+        values_to_update["password_hash"] = get_password_hash(new_password.strip())
+
+    await db.execute(update(User).where(User.id == user_id).values(**values_to_update))
     await db.commit()
+    
     return RedirectResponse(url="/admin/companies", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/users/create")
