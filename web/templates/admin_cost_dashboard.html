@@ -3,7 +3,7 @@
 {% block title %}Расчет ставки — Logistrail{% endblock %}
 
 {% block content %}
-<!-- 🔥 ИЗМЕНЕНИЕ: max-w-5xl вместо max-w-[98%] делает таблицу уже и центрирует её -->
+<!-- max-w-5xl для компактности по ширине -->
 <div class="max-w-5xl mx-auto px-2 md:px-4 py-6 animate-fade-in">
     
     <!-- Шапка -->
@@ -35,30 +35,27 @@
     <div class="bg-white rounded-xl shadow-card border border-transparent overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-xs text-left border-collapse">
+                <!-- 🔥 ЗАГОЛОВКИ ПО ЦЕНТРУ (text-center) -->
                 <thead class="bg-mono-bg text-mono-gray text-[9px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-3 py-3">Маршрут</th>
+                        <th class="px-3 py-3 text-center w-[250px]">Маршрут</th>
                         
-                        <!-- Узкая колонка для маркера -->
-                        <th class="px-1 py-3 w-[20px]"></th> 
+                        <th class="px-1 py-3 w-[20px] text-center"></th> 
                         
-                        <th class="px-2 py-3 w-[80px]">Тип</th>
+                        <th class="px-2 py-3 w-[100px] text-center">Тип</th>
                         
-                        <!-- База -->
-                        <th class="px-3 py-3 text-right text-mono-black bg-gray-50 border-x border-gray-200 w-[100px]">
+                        <th class="px-3 py-3 text-center text-mono-black bg-gray-50 border-x border-gray-200 w-[100px]">
                             СЕБЕСТ.<br><span class="opacity-60">(б/НДС)</span>
                         </th>
                         
-                        <!-- ВВОД -->
-                        <th class="px-2 py-3 text-right bg-green-50/50 border-r border-green-100 w-[100px]">
+                        <th class="px-2 py-3 text-center bg-green-50/50 border-r border-green-100 w-[100px]">
                             <span class="text-green-800">МАРЖА</span>
                         </th>
                         
-                        <!-- ИТОГ -->
-                        <th class="px-3 py-3 text-right bg-indigo-50/30 w-[100px]">
+                        <th class="px-3 py-3 text-center bg-indigo-50/30 w-[100px]">
                             ПРОДАЖА<br><span class="opacity-60 text-indigo-800">(б/НДС)</span>
                         </th>
-                        <th class="px-4 py-3 text-right bg-indigo-50 w-[120px] font-extrabold text-mono-black">
+                        <th class="px-4 py-3 text-center bg-indigo-50 w-[120px] font-extrabold text-mono-black">
                             ИТОГО<br><span class="opacity-60 text-indigo-800">(с НДС)</span>
                         </th>
                     </tr>
@@ -84,7 +81,6 @@
 
                         <!-- Строки -->
                         {% for calc in group.list %}
-                            <!-- Считаем дефолтную маржу -->
                             {% set default_margin = 0 %}
                             {% if calc.margin_type.value == 'FIX' %}
                                 {% set default_margin = calc.margin_value %}
@@ -92,7 +88,6 @@
                                 {% set default_margin = calc.total_cost * (calc.margin_value / 100) %}
                             {% endif %}
 
-                            <!-- Проверка актуальности -->
                             {% set is_active = True %}
                             {% if calc.valid_to and today and calc.valid_to < today %}
                                 {% set is_active = False %}
@@ -103,20 +98,28 @@
                                 data-vat="{{ calc.vat_rate }}">
                                 
                                 <!-- Маршрут -->
-                                <td class="px-3 py-2.5">
-                                    <div class="font-bold text-mono-black text-xs truncate max-w-[220px]" title="{{ calc.title }}">{{ calc.title }}</div>
-                                    <div class="text-[10px] text-mono-gray mt-0.5 font-mono flex items-center gap-1">
-                                        {{ calc.station_from }} 
-                                        <span class="text-gray-300">→</span>
-                                        {{ calc.station_to }}
+                                <td class="px-3 py-3">
+                                    <!-- 🔥 1. Название (Title) крупнее (text-sm) -->
+                                    <div class="font-bold text-mono-black text-sm mb-1.5 leading-tight" title="{{ calc.title }}">
+                                        {{ calc.title }}
+                                    </div>
+                                    <!-- 🔥 2. Коды станций (красивые бейджи) -->
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-mono-bg border border-mono-border text-[9px] font-mono font-bold text-mono-gray">
+                                            {{ calc.station_from }}
+                                        </span>
+                                        <span class="text-[9px] text-gray-300">➜</span>
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-mono-bg border border-mono-border text-[9px] font-mono font-bold text-mono-gray">
+                                            {{ calc.station_to }}
+                                        </span>
                                     </div>
                                     {% if current_type == 'SINGLE' %}
-                                        <div class="mt-0.5 text-[9px] text-gray-400 font-medium">{{ calc.service_provider }}</div>
+                                        <div class="mt-1 text-[9px] text-gray-400 font-medium">{{ calc.service_provider }}</div>
                                     {% endif %}
                                 </td>
 
-                                <!-- Маркер -->
-                                <td class="px-1 py-2.5 text-center align-middle">
+                                <!-- Маркер актуальности -->
+                                <td class="px-1 py-3 text-center align-middle">
                                     {% if is_active %}
                                         <div class="w-2 h-2 rounded-full bg-green-500 mx-auto" title="Актуален"></div>
                                     {% else %}
@@ -124,15 +127,15 @@
                                     {% endif %}
                                 </td>
 
-                                <!-- Тип -->
-                                <td class="px-2 py-2.5">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded border border-mono-border bg-white text-[9px] font-bold text-mono-black whitespace-nowrap">
+                                <!-- 🔥 4. Тип контейнера (Стиль как в админке) -->
+                                <td class="px-2 py-3 text-center">
+                                    <span class="inline-flex items-center px-2 py-1 rounded border border-mono-border bg-white text-[10px] font-bold text-mono-black whitespace-nowrap shadow-sm">
                                         {{ calc.container_type.replace('_', ' ') }}
                                     </span>
                                 </td>
 
                                 <!-- СЕБЕСТОИМОСТЬ -->
-                                <td class="px-3 py-2.5 text-right bg-gray-50 border-x border-gray-200">
+                                <td class="px-3 py-3 text-right bg-gray-50 border-x border-gray-200">
                                     <div class="font-bold text-mono-black text-xs font-mono cursor-help" title="Расходы">
                                         {{ "{:,.0f}".format(calc.total_cost).replace(',', ' ') }}
                                     </div>
@@ -149,14 +152,14 @@
                                 </td>
 
                                 <!-- ИТОГ БЕЗ НДС -->
-                                <td class="px-3 py-2.5 text-right bg-indigo-50/10">
+                                <td class="px-3 py-3 text-right bg-indigo-50/10">
                                     <div class="font-medium text-mono-black text-xs font-mono price-netto">
                                         —
                                     </div>
                                 </td>
 
                                 <!-- ИТОГ С НДС -->
-                                <td class="px-4 py-2.5 text-right bg-indigo-50">
+                                <td class="px-4 py-3 text-right bg-indigo-50">
                                     <div class="font-bold text-mono-black text-sm font-mono price-gross">
                                         —
                                     </div>
