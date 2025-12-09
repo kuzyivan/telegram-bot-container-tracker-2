@@ -84,7 +84,7 @@
                         </div>
                     </div>
 
-                    <!-- 🔥 ПОЛЕ EMAIL -->
+                    <!-- 🔥 ПОЛЕ EMAIL (ЦВЕТ #eb7734) С ОТПЕЧАТКОМ -->
                     <div class="space-y-1.5">
                         <label class="text-xs font-bold text-mono-gray uppercase ml-1">Email (Логин)</label>
                         <div class="relative">
@@ -94,7 +94,13 @@
                             <input type="email" name="email" value="{{ user.email_login or '' }}" required 
                                    class="w-full pl-10 pr-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm font-medium placeholder-gray-400">
                         </div>
-                        <p class="text-[10px] text-mono-gray ml-1">Используется для входа в систему.</p>
+                        <!-- Яркий оранжевый текст с иконкой отпечатка -->
+                        <p class="text-xs font-bold ml-1 mt-2 flex items-center gap-1.5" style="color: #eb7734;">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4" style="color: #eb7734;">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                            </svg>
+                            Используется для входа в систему
+                        </p>
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
