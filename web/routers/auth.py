@@ -25,11 +25,10 @@ handler.setFormatter(logging.Formatter('%(asctime)s - [AUTH] - %(message)s'))
 logger.addHandler(handler)
 
 # --- 1. Настройки безопасности ---
-# ВАЖНО: Если этой строки нет в .env, то ключ будет одинаковым (это хорошо для стабильности)
 SECRET_KEY = os.getenv("SECRET_KEY", "my_super_static_secret_key_12345") 
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 120))
-COOKIE_NAME = "logistrail_session" # Новое имя куки, чтобы сбросить старые
+COOKIE_NAME = "logistrail_session"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -80,10 +79,7 @@ async def get_current_user(request: Request) -> Optional[User]:
     """
     Извлекает пользователя из Cookies с логированием ошибок.
     """
-    token = request.cookies.get(COOKIE_NAME) # Ищем новую куку
-    
-    # Логируем наличие токена (для отладки в терминале)
-    # logger.info(f"Checking token for path {request.url.path}: {'FOUND' if token else 'MISSING'}")
+    token = request.cookies.get(COOKIE_NAME)
 
     if not token:
         return None
@@ -111,7 +107,6 @@ async def get_current_user(request: Request) -> Optional[User]:
 # Защита: Только для авторизованных
 async def login_required(user: Optional[User] = Depends(get_current_user)):
     if not user:
-        # Если юзера нет - кидаем редирект на логин
         raise HTTPException(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
             headers={"Location": "/login"} 
