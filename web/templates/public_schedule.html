@@ -7,6 +7,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script> 
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
@@ -74,36 +75,9 @@
             margin: 1px 0 !important;
         }
 
-        /* --- 🔥 АНИМАЦИЯ МОДАЛЬНОГО ОКНА --- */
+        /* Блокировка скролла фона */
         body.modal-open { overflow: hidden !important; touch-action: none; }
         .custom-scrollbar { overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
-
-        /* Начальное состояние (Скрыто) */
-        .modal-state-closed { 
-            pointer-events: none; 
-            opacity: 0; 
-        }
-        .modal-state-closed #modalBackdrop { opacity: 0; }
-        .modal-state-closed #modalPanel { 
-            opacity: 0; 
-            transform: scale(0.95); /* Эффект уменьшения */
-        }
-
-        /* Конечное состояние (Открыто) */
-        .modal-state-open { 
-            pointer-events: auto; 
-            opacity: 1; 
-        }
-        .modal-state-open #modalBackdrop { opacity: 1; }
-        .modal-state-open #modalPanel { 
-            opacity: 1; 
-            transform: scale(1.0); /* Нормальный размер */
-        }
-
-        /* Параметры переходов (Transition) */
-        #eventModal { transition: opacity 0.2s ease-out; }
-        #modalBackdrop { transition: opacity 0.3s ease-out; }
-        #modalPanel { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
 
         @media (max-width: 768px) {
             .fc-toolbar-title { font-size: 1.1rem !important; }
@@ -141,8 +115,8 @@
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (С АНИМАЦИЕЙ) -->
-    <div id="eventModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (БЕЗ АНИМАЦИИ) -->
+    <div id="eventModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         
         <!-- Backdrop (Затемнение) -->
         <div id="modalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
@@ -154,7 +128,7 @@
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
             <!-- Панель -->
-            <div id="modalPanel" class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md w-full border border-mono-light flex flex-col max-h-[85vh]">
+            <div id="modalPanel" class="pointer-events-auto inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform sm:my-8 sm:align-middle sm:max-w-md w-full border border-mono-light flex flex-col max-h-[85vh]">
                 
                 <!-- Хедер -->
                 <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
@@ -230,93 +204,101 @@
     <script>
     var publicCalendar;
 
-    document.addEventListener('DOMContentLoaded', function() {
-        initPublicCalendar();
-    });
+    // 🔥 Инициализация (совместимая с HTMX и SPA)
+    if (typeof htmx !== 'undefined') {
+        htmx.onLoad(function(content) {
+            initPublicCalendar();
+        });
+    } else {
+        document.addEventListener('DOMContentLoaded', initPublicCalendar);
+    }
 
     function initPublicCalendar() {
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
 
+        // Если календарь уже инициализирован (есть класс 'fc'), не создаем заново
         if (calendarEl.classList.contains('fc')) return;
 
-        const isMobile = window.innerWidth < 768;
+        // 🔥 Добавляем небольшую задержку перед отрисовкой, чтобы HTMX успел вставить DOM
+        setTimeout(() => {
+            const isMobile = window.innerWidth < 768;
 
-        publicCalendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            locale: 'ru',
-            firstDay: 1,
-            headerToolbar: {
-                left: isMobile ? 'prev,next' : 'prev,next today',
-                center: 'title',
-                right: isMobile ? '' : 'dayGridMonth,dayGridWeek'
-            },
-            titleFormat: isMobile ? { month: 'short', year: 'numeric' } : { month: 'long', year: 'numeric' },
-            buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя' },
-            dayMaxEvents: true, 
-            
-            events: '/api/share/{{ token }}/events', 
+            publicCalendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'ru',
+                firstDay: 1,
+                headerToolbar: {
+                    left: isMobile ? 'prev,next' : 'prev,next today',
+                    center: 'title',
+                    right: isMobile ? '' : 'dayGridMonth,dayGridWeek'
+                },
+                titleFormat: isMobile ? { month: 'short', year: 'numeric' } : { month: 'long', year: 'numeric' },
+                buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя' },
+                dayMaxEvents: true, 
+                
+                events: '/api/share/{{ token }}/events', 
 
-            editable: false, 
-            selectable: false,
+                editable: false, 
+                selectable: false,
 
-            eventClick: function(info) {
-                info.jsEvent.preventDefault();
-                openModal(info.event);
-            },
-            
-            eventContent: function(arg) {
-                let props = arg.event.extendedProps || {};
-                let bgColor = arg.event.backgroundColor || '#111111'; 
-                let dest = props.dest || arg.event.title;
-                let service = props.service || 'Сервис';
-                let owner = props.owner || '';
-                let overload = props.overload || '';
+                eventClick: function(info) {
+                    info.jsEvent.preventDefault();
+                    openModal(info.event);
+                },
+                
+                eventContent: function(arg) {
+                    let props = arg.event.extendedProps || {};
+                    let bgColor = arg.event.backgroundColor || '#111111'; 
+                    let dest = props.dest || arg.event.title;
+                    let service = props.service || 'Сервис';
+                    let owner = props.owner || '';
+                    let overload = props.overload || '';
 
-                let desktopHtml = `
-                    <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
-                         style="border-left: 4px solid ${bgColor};">
-                        
-                        <div class="text-[13px] font-bold text-mono-black truncate leading-tight pointer-events-none">
-                            ${dest}
+                    let desktopHtml = `
+                        <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5" 
+                             style="border-left: 4px solid ${bgColor};">
+                            
+                            <div class="text-[13px] font-bold text-mono-black truncate leading-tight pointer-events-none">
+                                ${dest}
+                            </div>
+                            
+                            <div class="text-[11px] text-mono-gray truncate leading-tight pointer-events-none">
+                                ${service}
+                            </div>
+
+                            ${owner ? `
+                            <div class="flex items-center gap-1 text-[10px] text-mono-gray/70 pt-1 pointer-events-none truncate border-t border-mono-light/50 mt-0.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
+                                  <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                                </svg>
+                                <span class="truncate">${owner}</span>
+                            </div>` : ''}
+
+                            ${overload ? `
+                            <div class="flex items-center gap-1 text-[10px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
+                                  <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
+                                </svg>
+                                <span class="truncate">${overload}</span>
+                            </div>` : ''}
+                        </div>`;
+
+                    let mobileHtml = `
+                        <div class="md:hidden flex justify-center items-center w-full py-0.5">
+                            <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
                         </div>
-                        
-                        <div class="text-[11px] text-mono-gray truncate leading-tight pointer-events-none">
-                            ${service}
-                        </div>
+                    `;
 
-                        ${owner ? `
-                        <div class="flex items-center gap-1 text-[10px] text-mono-gray/70 pt-1 pointer-events-none truncate border-t border-mono-light/50 mt-0.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
-                              <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
-                            </svg>
-                            <span class="truncate">${owner}</span>
-                        </div>` : ''}
-
-                        ${overload ? `
-                        <div class="flex items-center gap-1 text-[10px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
-                              <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
-                            </svg>
-                            <span class="truncate">${overload}</span>
-                        </div>` : ''}
-                    </div>
-                `;
-
-                let mobileHtml = `
-                    <div class="md:hidden flex justify-center items-center w-full py-0.5">
-                        <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
-                    </div>
-                `;
-
-                return { html: desktopHtml + mobileHtml }
-            }
-        });
-        
-        publicCalendar.render();
+                    return { html: desktopHtml + mobileHtml }
+                }
+            });
+            
+            publicCalendar.render();
+        }, 100);
     }
 
-    // --- ЛОГИКА МОДАЛЬНОГО ОКНА ---
+    // --- ЛОГИКА МОДАЛЬНОГО ОКНА (БЕЗ АНИМАЦИИ) ---
 
     window.openModal = function(event) {
         let props = event.extendedProps;
@@ -351,33 +333,19 @@
             header.style.borderLeft = `6px solid ${color}`;
         }
 
-        // --- ЗАПУСК АНИМАЦИИ ВХОДА ---
         const modal = document.getElementById('eventModal');
         document.body.classList.add('modal-open'); 
         
-        // 1. Убираем hidden
+        // 🔥 ПРОСТОЕ ОТКРЫТИЕ (БЕЗ ТРАНЗИШЕНОВ)
         modal.classList.remove('hidden');
-        
-        // 2. Форсируем reflow
-        void modal.offsetWidth; 
-        
-        // 3. Анимируем вход
-        modal.classList.remove('modal-state-closed');
-        modal.classList.add('modal-state-open');
     }
 
     window.closeModal = function() {
         const modal = document.getElementById('eventModal');
         
-        // 1. Анимируем выход
-        modal.classList.remove('modal-state-open');
-        modal.classList.add('modal-state-closed');
-        
-        // 2. Ждем окончания анимации (300ms) перед скрытием
-        setTimeout(() => {
-            modal.classList.add('hidden');
-            document.body.classList.remove('modal-open'); 
-        }, 300);
+        // 🔥 ПРОСТОЕ ЗАКРЫТИЕ
+        modal.classList.add('hidden');
+        document.body.classList.remove('modal-open'); 
     }
 </script>
 </body>
