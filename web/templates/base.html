@@ -59,16 +59,10 @@
             color: #111111; 
             -webkit-tap-highlight-color: transparent;
         }
-        
-        /* Безопасная зона для iPhone X+ */
-        .safe-area-pb {
-            padding-bottom: env(safe-area-inset-bottom, 20px);
-        }
-
+        .safe-area-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
-        
         .flatpickr-calendar { border: none !important; box-shadow: 0 10px 40px rgba(0,0,0,0.1) !important; border-radius: 16px !important; }
         .flatpickr-day.selected { background: #111111 !important; border-color: #111111 !important; }
     </style>
@@ -121,16 +115,17 @@
                             </a>
                         {% endif %}
 
-                        <!-- 🔥 ССЫЛКА ДЛЯ МЕНЕДЖЕРА ТЕРМИНАЛА (ИЛИ АДМИНА) 🔥 -->
+                        <!-- 🔥 ССЫЛКА ДЛЯ МЕНЕДЖЕРА ТЕРМИНАЛА (ИЛИ АДМИНА) - МОНОХРОМ 🔥 -->
                         {% if user.role == 'admin' or (user.role == 'manager' and user.company_id == 3) or (user.role == 'owner' and user.company_id == 3) %}
                             <a href="/admin/costs" 
-                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-indigo-600 text-white shadow-sm' if '/admin/costs' in request.url.path else 'text-mono-gray hover:text-indigo-600 hover:bg-indigo-50' }}">
+                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if '/admin/costs' in request.url.path else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
                                 Себестоимость
                             </a>
                         {% endif %}
 
-                        <!-- ССЫЛКА ДЛЯ ОБЫЧНЫХ КЛИЕНТОВ (НЕ АДМИН) -->
-                        {% if user.role != 'admin' %}
+                        <!-- ССЫЛКА ДЛЯ ОБЫЧНЫХ КЛИЕНТОВ (НЕ АДМИН И НЕ МЕНЕДЖЕР ТЕРМИНАЛА) -->
+                        <!-- Скрываем "Мои грузы" для менеджеров терминала -->
+                        {% if user.role != 'admin' and not (user.company_id == 3 and (user.role == 'manager' or user.role == 'owner')) %}
                             <a href="/client/dashboard" 
                                class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/client/dashboard' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
                                 Мои грузы
@@ -192,16 +187,16 @@
                 </a>
             {% endif %}
 
-            <!-- 🔥 КНОПКА СЕБЕСТОИМОСТИ ДЛЯ МЕНЕДЖЕРА (ИЛИ АДМИНА) 🔥 -->
+            <!-- 🔥 КНОПКА СЕБЕСТОИМОСТИ ДЛЯ МЕНЕДЖЕРА (ИЛИ АДМИНА) - МОНОХРОМ 🔥 -->
             {% if user.role == 'admin' or (user.role == 'manager' and user.company_id == 3) or (user.role == 'owner' and user.company_id == 3) %}
-                <a href="/admin/costs" class="flex flex-col items-center gap-1 w-full {{ 'text-indigo-600' if '/admin/costs' in request.url.path else 'text-mono-gray hover:text-indigo-600' }} transition">
+                <a href="/admin/costs" class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if '/admin/costs' in request.url.path else 'text-mono-gray hover:text-mono-black' }} transition">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <span class="text-[10px] font-bold">Ставка</span>
                 </a>
             {% endif %}
 
-            <!-- КНОПКА КАБИНЕТА (Если не админ) -->
-            {% if user.role != 'admin' %}
+            <!-- КНОПКА КАБИНЕТА (Скрыта для менеджеров терминала) -->
+            {% if user.role != 'admin' and not (user.company_id == 3 and (user.role == 'manager' or user.role == 'owner')) %}
                 <a href="/client/dashboard" 
                    class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if 'dashboard' in request.url.path else 'text-mono-gray hover:text-mono-black' }} transition">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>

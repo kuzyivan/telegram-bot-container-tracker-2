@@ -9,7 +9,8 @@
     <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-6">
         <div>
             <div class="flex items-center gap-3">
-                <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-md">
+                <!-- 🔥 ИКОНКА: Заменена на черную (bg-mono-black) -->
+                <div class="bg-mono-black text-white p-2 rounded-lg shadow-md">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                 </div>
                 <div>
@@ -37,11 +38,13 @@
                 <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
                     <tr>
                         <th class="px-4 py-4 w-[200px]">Маршрут</th>
-                        <th class="px-3 py-4 w-[100px]">Тип</th>
                         
-                        <!-- Скрытая детализация (для всплывающей подсказки) -->
-                        <th class="hidden md:table-cell px-3 py-4 text-right text-gray-400">Тариф ЖД</th>
-                        <th class="hidden md:table-cell px-3 py-4 text-right text-gray-400">Прочее</th>
+                        <!-- ✅ НОВАЯ УЗКАЯ КОЛОНКА ДЛЯ МАРКЕРА -->
+                        <th class="px-1 py-4 w-[10px]"></th> 
+                        
+                        <th class="px-2 py-4 w-[100px]">Тип</th>
+                        
+                        <!-- ❌ УДАЛЕНЫ КОЛОНКИ "Тариф ЖД" и "Прочее" -->
                         
                         <!-- База -->
                         <th class="px-4 py-4 text-right text-mono-black bg-gray-50 border-x border-gray-200 w-[120px]">
@@ -70,7 +73,7 @@
                         
                         <!-- Заголовок группы -->
                         <tr class="bg-mono-bg/40 border-t-2 border-mono-border">
-                            <td colspan="9" class="px-4 py-2">
+                            <td colspan="7" class="px-4 py-2"> <!-- colspan обновлен до 7 -->
                                 <div class="flex items-center gap-2">
                                     <div class="w-1.5 h-1.5 rounded-full bg-mono-black"></div>
                                     <span class="text-xs font-bold text-mono-gray uppercase tracking-wide">
@@ -83,23 +86,18 @@
 
                         <!-- Строки -->
                         {% for calc in group.list %}
-                            <!-- Считаем компоненты для отображения (справочно) -->
-                            {% set rail_tariff = 0.0 %}
-                            {% set other_cost = 0.0 %}
-                            {% for item in calc.items %}
-                                {% if "Железнодорожный тариф" in item.name %}
-                                    {% set rail_tariff = rail_tariff + item.cost_price %}
-                                {% else %}
-                                    {% set other_cost = other_cost + item.cost_price %}
-                                {% endif %}
-                            {% endfor %}
-
-                            <!-- Вычисляем текущую маржу в рублях для placeholder -->
+                            <!-- Вычисляем маржу по умолчанию -->
                             {% set default_margin = 0 %}
                             {% if calc.margin_type.value == 'FIX' %}
                                 {% set default_margin = calc.margin_value %}
                             {% else %}
                                 {% set default_margin = calc.total_cost * (calc.margin_value / 100) %}
+                            {% endif %}
+
+                            <!-- 🔥 ЛОГИКА АКТУАЛЬНОСТИ (VALID_TO) -->
+                            {% set is_active = True %}
+                            {% if calc.valid_to and today and calc.valid_to < today %}
+                                {% set is_active = False %}
                             {% endif %}
 
                             <tr class="hover:bg-blue-50/10 transition group border-b border-mono-border last:border-0 calc-row"
@@ -121,20 +119,23 @@
                                     {% endif %}
                                 </td>
 
+                                <!-- 🔥 МАРКЕР АКТУАЛЬНОСТИ -->
+                                <td class="px-1 py-3 text-center align-middle">
+                                    {% if is_active %}
+                                        <div class="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm mx-auto" title="Тариф актуален"></div>
+                                    {% else %}
+                                        <div class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse mx-auto cursor-help" title="Тариф истек {{ calc.valid_to }}"></div>
+                                    {% endif %}
+                                </td>
+
                                 <!-- Тип -->
-                                <td class="px-3 py-3">
+                                <td class="px-2 py-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded border border-mono-border bg-white text-[10px] font-bold text-mono-black whitespace-nowrap">
                                         {{ calc.container_type.replace('_', ' ') }}
                                     </span>
                                 </td>
 
-                                <!-- Справочные данные (Серые) -->
-                                <td class="hidden md:table-cell px-3 py-3 text-right text-xs text-gray-400 font-mono">
-                                    {{ "{:,.0f}".format(rail_tariff).replace(',', ' ') }}
-                                </td>
-                                <td class="hidden md:table-cell px-3 py-3 text-right text-xs text-gray-400 font-mono">
-                                    {{ "{:,.0f}".format(other_cost).replace(',', ' ') }}
-                                </td>
+                                <!-- ❌ УДАЛЕНЫ СТАРЫЕ ЯЧЕЙКИ ТАРИФА И ПРОЧЕГО -->
 
                                 <!-- СЕБЕСТОИМОСТЬ (Константа) -->
                                 <td class="px-4 py-3 text-right bg-gray-50 border-x border-gray-200">
@@ -168,7 +169,6 @@
                                     <div class="font-extrabold text-mono-black text-base font-mono price-gross">
                                         —
                                     </div>
-                                    <!-- Динамический показ ставки НДС -->
                                     <div class="text-[9px] text-indigo-400 font-medium mt-0.5 vat-info">
                                         НДС {{ calc.vat_rate|int }}%
                                     </div>
@@ -194,8 +194,7 @@
         const row = input.closest('tr');
         
         // 1. Получаем исходные данные из data-атрибутов (Себестоимость и НДС)
-        // 🔥 ВАЖНО: Мы убрали || 20.0. Теперь если атрибута нет, будет 0.
-        // Это заставляет систему использовать только то, что сохранено в базе данных (Snapshot).
+        // Если атрибута нет, будет 0.
         const baseCost = parseFloat(row.getAttribute('data-cost')) || 0;
         const vatRate = parseFloat(row.getAttribute('data-vat')); 
         
@@ -205,7 +204,7 @@
         // 3. Считаем (Простая математика)
         const priceNetto = baseCost + margin; // Цена продажи без НДС
         
-        // Если VAT не задан (NaN), используем 0, чтобы не показывать NaN пользователю
+        // Если VAT не задан (NaN), используем 0
         const safeVat = isNaN(vatRate) ? 0 : vatRate;
         const priceGross = priceNetto * (1 + safeVat / 100); // Цена продажи с НДС
         
