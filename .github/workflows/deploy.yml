@@ -39,6 +39,7 @@ jobs:
           --exclude='*.log' \
           --exclude='loki-config.yaml' \
           --exclude='promtail-config.yaml' \
+          --exclude='web/static/avatars/' \
           -e "ssh -o StrictHostKeyChecking=no" \
           ./ $USER@$HOST:/root/AtermTrackBot
 
