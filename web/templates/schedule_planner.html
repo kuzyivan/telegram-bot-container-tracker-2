@@ -144,7 +144,7 @@
 
 </div>
 
-<!-- МОДАЛКА РЕЙСА (С обновленной структурой для анимации) -->
+<!-- МОДАЛКА РЕЙСА -->
 <div id="eventModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     
     <!-- Backdrop (Затемнение) -->
@@ -340,17 +340,21 @@
 {% endif %}
 
 <script>
-    let calendar;
-    let selectedEventId = null;
-    let currentEventData = {}; 
+    // 🔥 ВАЖНО: Используем var, чтобы избежать ошибок "Identifier has already been declared" при SPA-навигации
+    var calendar;
+    var selectedEventId = null;
+    var currentEventData = {}; 
     
-    // 🔥 ПЕРЕДАЕМ ПРАВА В JS
-    const IS_ADMIN = {{ 'true' if user.role == 'admin' else 'false' }};
-    const CAN_EDIT_STOCK = {{ 'true' if user.role in ['admin', 'manager', 'owner'] else 'false' }};
+    var IS_ADMIN = {{ 'true' if user.role == 'admin' else 'false' }};
+    var CAN_EDIT_STOCK = {{ 'true' if user.role in ['admin', 'manager', 'owner'] else 'false' }};
 
-    document.addEventListener('DOMContentLoaded', function() {
+    // 🔥 ВАЖНО: Используем htmx.onLoad вместо DOMContentLoaded, чтобы скрипт запускался и при AJAX-переходах
+    htmx.onLoad(function(content) {
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
+
+        // Если календарь уже инициализирован (есть класс 'fc'), не создаем заново
+        if (calendarEl.classList.contains('fc')) return;
 
         const isMobile = window.innerWidth < 768;
 
@@ -371,13 +375,11 @@
             
             events: '/admin/api/schedule/events', 
 
-            // 🔥 ЗАПРЕТ ПЕРЕТАСКИВАНИЯ ДЛЯ НЕ-АДМИНОВ
             editable: IS_ADMIN,
             eventStartEditable: IS_ADMIN,
             droppable: IS_ADMIN,
 
             dateClick: function(info) {
-                // Менеджер не может создавать события по клику
                 if (IS_ADMIN) {
                     openModalForCreate(info.dateStr); 
                 }
@@ -422,9 +424,9 @@
         calendar.render();
     });
 
-    // --- УПРАВЛЕНИЕ РЕЖИМАМИ (VIEW / EDIT) ---
+    // --- ФУНКЦИИ (Глобальные, т.к. вызываются из HTML) ---
 
-    function openModalForCreate(dateStr) {
+    window.openModalForCreate = function(dateStr) {
         selectedEventId = null;
         document.getElementById('modal-title').innerText = 'Новый рейс';
         document.getElementById('eventDate').value = dateStr;
@@ -434,7 +436,7 @@
         openModal('eventModal');
     }
 
-    function openModalForView(event) {
+    window.openModalForView = function(event) {
         selectedEventId = event.id;
         let props = event.extendedProps;
         let startStr = event.startStr; 
@@ -443,7 +445,6 @@
             id: event.id, startStr: startStr, service: props.service, dest: props.dest, stock: props.stock, owner: props.owner, overload: props.overload, color: event.backgroundColor || '#111111', comment: props.comment
         };
 
-        // Заполняем текстовые поля
         document.getElementById('viewDest').innerText = props.dest || '—';
         document.getElementById('viewService').innerText = props.service || '—';
         document.getElementById('viewDate').innerText = new Date(startStr).toLocaleDateString('ru-RU');
@@ -454,7 +455,6 @@
         document.getElementById('viewOverload').innerText = props.overload || '—';
         document.getElementById('viewBlockOverload').classList.toggle('hidden', !props.overload);
         
-        // 🔥 ЗАПОЛНЯЕМ ПОЛЕ СТОКА (Если менеджер) или ТЕКСТ (если гость)
         if (CAN_EDIT_STOCK) {
             const stockInput = document.getElementById('viewStockInput');
             if (stockInput) stockInput.value = props.stock || '';
@@ -474,8 +474,7 @@
         openModal('eventModal');
     }
 
-    // 🔥 ФУНКЦИЯ СОХРАНЕНИЯ СТОКА
-    async function saveStockDetails() {
+    window.saveStockDetails = async function() {
         if (!selectedEventId) return;
         const newStock = document.getElementById('viewStockInput').value;
         const formData = new FormData();
@@ -484,7 +483,7 @@
         try {
             const btn = document.querySelector("button[onclick='saveStockDetails()']");
             const originalIcon = btn.innerHTML;
-            btn.innerHTML = '...'; // Индикатор загрузки
+            btn.innerHTML = '...'; 
             
             let res = await fetch(`/admin/api/schedule/${selectedEventId}/update_details`, {
                 method: 'POST',
@@ -492,7 +491,6 @@
             });
             
             if (res.ok) {
-                // Визуальное подтверждение
                 btn.classList.remove('bg-mono-black');
                 btn.classList.add('bg-green-600');
                 btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
@@ -500,7 +498,7 @@
                      btn.innerHTML = originalIcon;
                      btn.classList.remove('bg-green-600');
                      btn.classList.add('bg-mono-black');
-                     calendar.refetchEvents(); // Обновить календарь
+                     if(calendar) calendar.refetchEvents();
                 }, 1000);
             } else {
                 alert("Ошибка сохранения");
@@ -512,7 +510,7 @@
         }
     }
 
-    function switchToEditMode() {
+    window.switchToEditMode = function() {
         document.getElementById('eventDate').value = currentEventData.startStr;
         document.getElementById('inpService').value = currentEventData.service;
         document.getElementById('inpDest').value = currentEventData.dest;
@@ -529,25 +527,25 @@
         showEditUI(false); 
     }
 
-    function cancelEditMode() {
+    window.cancelEditMode = function() {
         if (!selectedEventId) { closeModal('eventModal'); } else { document.getElementById('modal-title').innerText = 'Информация о рейсе'; showViewUI(); }
     }
 
-    function showViewUI() {
+    window.showViewUI = function() {
         document.getElementById('viewModeContent').classList.remove('hidden');
         if (IS_ADMIN) document.getElementById('viewModeButtons').classList.remove('hidden'); 
         if (IS_ADMIN) document.getElementById('createEventForm').classList.add('hidden');
         if (IS_ADMIN) document.getElementById('modalFooter').classList.add('hidden'); 
     }
 
-    function showEditUI(isCreatingNew) {
+    window.showEditUI = function(isCreatingNew) {
         document.getElementById('viewModeContent').classList.add('hidden');
         document.getElementById('viewModeButtons').classList.add('hidden'); 
         document.getElementById('createEventForm').classList.remove('hidden');
         document.getElementById('modalFooter').classList.remove('hidden'); 
     }
 
-    function selectColor(color, btn) {
+    window.selectColor = function(color, btn) {
         document.querySelectorAll('.color-btn').forEach(b => { b.classList.remove('ring-mono-black'); b.classList.add('ring-transparent'); });
         document.getElementById('inpColor').value = color;
         const header = document.getElementById('modalHeader');
@@ -557,70 +555,63 @@
     
     // --- 🔥 НОВАЯ АНИМАЦИЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ---
     
-    function openModal(modalId) {
+    window.openModal = function(modalId) {
         const modal = document.getElementById(modalId || 'eventModal');
-        document.body.classList.add('modal-open'); // Блокируем скролл
+        document.body.classList.add('modal-open');
         
-        // 1. Убираем hidden
         modal.classList.remove('hidden');
+        void modal.offsetWidth; // Force reflow
         
-        // 2. Форсируем reflow (чтобы браузер заметил display:block)
-        void modal.offsetWidth; 
-        
-        // 3. Запускаем анимацию входа
         modal.classList.remove('modal-state-closed');
         modal.classList.add('modal-state-open');
     }
 
-    function closeModal(modalId) {
+    window.closeModal = function(modalId) {
         const modal = document.getElementById(modalId || 'eventModal');
         
-        // 1. Запускаем анимацию выхода
         modal.classList.remove('modal-state-open');
         modal.classList.add('modal-state-closed');
         
-        // 2. Ждем окончания анимации (300ms) перед скрытием
         setTimeout(() => {
             modal.classList.add('hidden');
-            document.body.classList.remove('modal-open'); // Разблокируем скролл
-        }, 300); // 300ms должно совпадать с duration в CSS
+            document.body.classList.remove('modal-open');
+        }, 300);
     }
 
-    // --- API Админа ---
-    async function submitCreate() {
+    window.submitCreate = async function() {
         if (!IS_ADMIN) return;
         if (selectedEventId) { await deleteEvent(true); } 
         const form = document.getElementById('createEventForm');
         const formData = new FormData(form);
-        try { let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData }); if (response.ok) { closeModal('eventModal'); calendar.refetchEvents(); } else { alert("Ошибка сохранения"); } } catch (e) { console.error(e); }
+        try { let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData }); if (response.ok) { closeModal('eventModal'); if(calendar) calendar.refetchEvents(); } else { alert("Ошибка сохранения"); } } catch (e) { console.error(e); }
     }
 
-    async function updateEventDate(id, dateStr) {
+    window.updateEventDate = async function(id, dateStr) {
         if (!IS_ADMIN) return;
         const formData = new FormData(); formData.append('new_date', dateStr);
-        try { let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData }); if (!response.ok) { alert("Ошибка"); calendar.refetchEvents(); } } catch (e) { console.error(e); calendar.refetchEvents(); }
+        try { let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData }); if (!response.ok) { alert("Ошибка"); if(calendar) calendar.refetchEvents(); } } catch (e) { console.error(e); if(calendar) calendar.refetchEvents(); }
     }
 
-    async function deleteEvent(silent = false) {
+    window.deleteEvent = async function(silent = false) {
         if (!IS_ADMIN) return;
         if (!selectedEventId) return;
         if (!silent && !confirm("Удалить рейс?")) return;
-        try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal('eventModal'); calendar.refetchEvents(); } } } catch (e) { console.error(e); }
+        try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal('eventModal'); if(calendar) calendar.refetchEvents(); } } } catch (e) { console.error(e); }
     }
     
-    function openShareModal() { 
+    window.openShareModal = function() { 
         if(IS_ADMIN) { 
             openModal('shareModal'); 
             loadLinks(); 
         } 
     }
     
-    function closeShareModal() { 
+    window.closeShareModal = function() { 
         closeModal('shareModal');
     }
     
-    async function loadLinks() { const list = document.getElementById('linksList'); list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; try { let res = await fetch('/admin/api/schedule/links'); let links = await res.json(); if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } let html = ''; links.forEach(link => { const fullUrl = window.location.origin + `/schedule/share/${link.token}`; html += `<div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-mono-black">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`; }); list.innerHTML = html; } catch (e) { console.error(e); } }
-    async function createLink() { const nameInput = document.getElementById('newLinkName'); const name = nameInput.value.trim(); if (!name) return alert("Введите название"); const formData = new FormData(); formData.append('name', name); try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } }
-    async function deleteLink(id) { if (!confirm("Удалить?")) return; try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); } }
+    window.loadLinks = async function() { const list = document.getElementById('linksList'); list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; try { let res = await fetch('/admin/api/schedule/links'); let links = await res.json(); if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } let html = ''; links.forEach(link => { const fullUrl = window.location.origin + `/schedule/share/${link.token}`; html += `<div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-mono-black">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`; }); list.innerHTML = html; } catch (e) { console.error(e); } }
+    window.createLink = async function() { const nameInput = document.getElementById('newLinkName'); const name = nameInput.value.trim(); if (!name) return alert("Введите название"); const formData = new FormData(); formData.append('name', name); try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } }
+    window.deleteLink = async function(id) { if (!confirm("Удалить?")) return; try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); } }
 </script>
 {% endblock %}
