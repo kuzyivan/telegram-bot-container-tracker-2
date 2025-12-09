@@ -7,6 +7,7 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <!-- HTMX оставим на всякий случай, но для логики он здесь не критичен -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script> 
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -115,11 +116,12 @@
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (БЕЗ АНИМАЦИИ) -->
-    <div id="eventModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (АБСОЛЮТНО БЕЗ АНИМАЦИИ) -->
+    <!-- z-[9999] чтобы точно было поверх всего -->
+    <div id="eventModal" class="fixed inset-0 z-[9999] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         
-        <!-- Backdrop (Затемнение) -->
-        <div id="modalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
+        <!-- Backdrop (Простой черный фон с прозрачностью, БЕЗ БЛЮРА) -->
+        <div class="absolute inset-0 bg-black/60" onclick="closeModal()"></div>
 
         <!-- Центрирование -->
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0 pointer-events-none">
@@ -204,23 +206,16 @@
     <script>
     var publicCalendar;
 
-    // 🔥 Инициализация (совместимая с HTMX и SPA)
-    if (typeof htmx !== 'undefined') {
-        htmx.onLoad(function(content) {
-            initPublicCalendar();
-        });
-    } else {
-        document.addEventListener('DOMContentLoaded', initPublicCalendar);
-    }
+    document.addEventListener('DOMContentLoaded', function() {
+        initPublicCalendar();
+    });
 
     function initPublicCalendar() {
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
 
-        // Если календарь уже инициализирован (есть класс 'fc'), не создаем заново
         if (calendarEl.classList.contains('fc')) return;
 
-        // 🔥 Добавляем небольшую задержку перед отрисовкой, чтобы HTMX успел вставить DOM
         setTimeout(() => {
             const isMobile = window.innerWidth < 768;
 
@@ -298,13 +293,12 @@
         }, 100);
     }
 
-    // --- ЛОГИКА МОДАЛЬНОГО ОКНА (БЕЗ АНИМАЦИИ) ---
+    // --- ЛОГИКА МОДАЛЬНОГО ОКНА (МГНОВЕННО) ---
 
     window.openModal = function(event) {
         let props = event.extendedProps;
         let startStr = event.startStr || event.start.toISOString().split('T')[0];
         
-        // Заполняем данные
         document.getElementById('modalDest').innerText = props.dest || '—';
         document.getElementById('modalService').innerText = props.service || '—';
         
@@ -336,14 +330,14 @@
         const modal = document.getElementById('eventModal');
         document.body.classList.add('modal-open'); 
         
-        // 🔥 ПРОСТОЕ ОТКРЫТИЕ (БЕЗ ТРАНЗИШЕНОВ)
+        // 🔥 МГНОВЕННОЕ ОТКРЫТИЕ (БЕЗ ТРАНЗИШЕНОВ)
         modal.classList.remove('hidden');
     }
 
     window.closeModal = function() {
         const modal = document.getElementById('eventModal');
         
-        // 🔥 ПРОСТОЕ ЗАКРЫТИЕ
+        // 🔥 МГНОВЕННОЕ ЗАКРЫТИЕ
         modal.classList.add('hidden');
         document.body.classList.remove('modal-open'); 
     }
