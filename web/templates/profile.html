@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Личный кабинет — Logistrail{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-8 animate-fade-in">
+    
+    <h1 class="text-3xl font-bold text-mono-black mb-8 tracking-tight">Настройки профиля</h1>
+
+    {% if request.query_params.get('success') %}
+    <div class="mb-6 p-4 bg-green-50 text-green-700 border border-green-200 rounded-xl text-sm font-medium">
+        {{ request.query_params.get('success') }}
+    </div>
+    {% endif %}
+    {% if request.query_params.get('error') %}
+    <div class="mb-6 p-4 bg-red-50 text-red-600 border border-red-200 rounded-xl text-sm font-medium">
+        {{ request.query_params.get('error') }}
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        
+        <div class="md:col-span-1 space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent text-center">
+                <form action="/profile/avatar" method="POST" enctype="multipart/form-data" id="avatarForm">
+                    <div class="relative w-32 h-32 mx-auto mb-4 group cursor-pointer">
+                        {% if user.avatar_url %}
+                            <img src="{{ user.avatar_url }}" class="w-full h-full rounded-full object-cover border-4 border-mono-bg">
+                        {% else %}
+                            <div class="w-full h-full rounded-full bg-mono-black text-white flex items-center justify-center text-3xl font-bold border-4 border-mono-bg">
+                                {{ user.first_name[0] if user.first_name else 'U' }}
+                            </div>
+                        {% endif %}
+                        
+                        <div class="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300" onclick="document.getElementById('fileInput').click()">
+                            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        </div>
+                        <input type="file" name="file" id="fileInput" class="hidden" accept="image/*" onchange="document.getElementById('avatarForm').submit()">
+                    </div>
+                </form>
+                
+                <h2 class="text-xl font-bold text-mono-black">{{ user.first_name }} {{ user.last_name or '' }}</h2>
+                <p class="text-sm text-mono-gray uppercase tracking-wider font-bold mt-1">{{ user.role }}</p>
+                
+                {% if user.company %}
+                <div class="mt-4 inline-block px-3 py-1 bg-mono-bg rounded-lg text-xs font-mono text-mono-black">
+                    {{ user.company.name }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-8">
+            
+            <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-lg font-bold text-mono-black mb-6 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    Личные данные
+                </h3>
+                
+                <form action="/profile/update" method="POST" class="space-y-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Имя</label>
+                            <input type="text" name="first_name" value="{{ user.first_name or '' }}" required 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Фамилия</label>
+                            <input type="text" name="last_name" value="{{ user.last_name or '' }}" 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Должность</label>
+                            <input type="text" name="job_title" value="{{ user.job_title or '' }}" placeholder="Менеджер по логистике"
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Телефон</label>
+                            <input type="text" name="phone" value="{{ user.phone or '' }}" placeholder="+7 (999) 000-00-00"
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex justify-end">
+                        <button type="submit" class="bg-mono-black text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-gray-800 transition shadow-lg active:scale-95">
+                            Сохранить изменения
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="bg-white p-8 rounded-2xl shadow-card border border-transparent">
+                <h3 class="text-lg font-bold text-mono-black mb-6 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-mono-gray" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    Безопасность
+                </h3>
+                
+                <form action="/profile/password" method="POST" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Текущий пароль</label>
+                        <input type="password" name="current_password" required 
+                               class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Новый пароль</label>
+                            <input type="password" name="new_password" required 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-mono-gray uppercase mb-1.5 ml-1">Подтвердите пароль</label>
+                            <input type="password" name="confirm_password" required 
+                                   class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none text-sm">
+                        </div>
+                    </div>
+
+                    <div class="pt-2 flex justify-end">
+                        <button type="submit" class="bg-white border border-mono-border text-mono-black px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-mono-bg transition">
+                            Обновить пароль
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

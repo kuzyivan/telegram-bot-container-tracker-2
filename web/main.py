@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from services.railway_graph import railway_graph # <-- Импорт
 
 from web.routers import public, admin, auth, client # <--- Добавили client
+from web.routers import public, admin, auth, client, profile # <--- Добавили profile
 from db import init_db
 from web.auth import login_required
 
@@ -37,6 +38,12 @@ app.mount("/static", StaticFiles(directory="web/static"), name="static")
 # 1. Публичные роуты (Логин, Главная - если она публичная)
 app.include_router(auth.router)
 app.include_router(public.router)
+
+#Роутер профиля пользователя
+app.include_router(
+    profile.router,
+    dependencies=[Depends(login_required)]
+)
 
 # 2. Админские роуты (ЗАЩИЩЕНЫ)
 # Теперь к любому запросу на /admin/... будет применяться проверка токена
