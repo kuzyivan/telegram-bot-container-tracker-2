@@ -6,18 +6,20 @@ from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import User, ScheduledTrain, ScheduleShareLink
-from web.auth import admin_required
+from web.auth import admin_required, manager_required # ✅ Добавили manager_required
 from .common import templates, get_db
 
 router = APIRouter()
 
+# ✅ ИЗМЕНЕНИЕ: Доступ для Менеджера (Только просмотр)
 @router.get("/schedule_planner")
-async def schedule_planner_page(request: Request, user: User = Depends(admin_required)):
+async def schedule_planner_page(request: Request, user: User = Depends(manager_required)):
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
 
+# ✅ ИЗМЕНЕНИЕ: Доступ для Менеджера (Получение данных)
 @router.get("/api/schedule/events")
 async def get_schedule_events(
-    start: str, end: str, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
+    start: str, end: str, db: AsyncSession = Depends(get_db), user: User = Depends(manager_required)
 ):
     try:
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
@@ -42,6 +44,7 @@ async def get_schedule_events(
     except Exception as e:
         return JSONResponse([], status_code=200)
 
+# ⛔️ ОСТАЛЬНЫЕ МЕТОДЫ (CREATE/UPDATE/DELETE) ОСТАЮТСЯ ПОД ADMIN_REQUIRED
 @router.post("/api/schedule/create")
 async def create_schedule_event(
     date_str: str = Form(...), service: str = Form(...), destination: str = Form(...), 

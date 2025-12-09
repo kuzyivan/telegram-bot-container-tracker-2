@@ -3,65 +3,59 @@
 {% block title %}Расчет ставки — Logistrail{% endblock %}
 
 {% block content %}
-<div class="max-w-[98%] mx-auto px-2 md:px-4 py-6 animate-fade-in">
+<div class="max-w-[98%] mx-auto px-2 md:px-4 py-4 animate-fade-in">
     
     <!-- Шапка -->
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-6">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
         <div>
             <div class="flex items-center gap-3">
-                <!-- 🔥 ИКОНКА: Заменена на черную (bg-mono-black) -->
-                <div class="bg-mono-black text-white p-2 rounded-lg shadow-md">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                <div class="bg-mono-black text-white p-1.5 rounded-lg shadow-md">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                 </div>
                 <div>
-                    <h1 class="text-2xl md:text-3xl font-bold text-mono-black tracking-tight">Расчет ставки</h1>
-                    <p class="text-sm text-mono-gray mt-1">Инструмент менеджера для формирования цены</p>
+                    <h1 class="text-xl font-bold text-mono-black tracking-tight">Расчет ставки</h1>
+                    <p class="text-xs text-mono-gray mt-0.5">Инструмент менеджера</p>
                 </div>
             </div>
         </div>
         
         <!-- Переключатель типа -->
-        <div class="bg-white p-1 rounded-xl border border-mono-border flex shadow-sm">
-            <a href="/admin/costs?type=TRAIN" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'TRAIN' else 'text-mono-gray hover:bg-mono-bg' }}">
+        <div class="bg-white p-1 rounded-lg border border-mono-border flex shadow-sm">
+            <a href="/admin/costs?type=TRAIN" class="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'TRAIN' else 'text-mono-gray hover:bg-mono-bg' }}">
                 КП (Поезда)
             </a>
-            <a href="/admin/costs?type=SINGLE" class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'SINGLE' else 'text-mono-gray hover:bg-mono-bg' }}">
+            <a href="/admin/costs?type=SINGLE" class="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'SINGLE' else 'text-mono-gray hover:bg-mono-bg' }}">
                 Одиночные
             </a>
         </div>
     </div>
 
-    <!-- ТАБЛИЦА -->
-    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+    <!-- ТАБЛИЦА (КОМПАКТНАЯ) -->
+    <div class="bg-white rounded-xl shadow-card border border-transparent overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left border-collapse">
-                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
+            <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-mono-bg text-mono-gray text-[9px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-4 py-4 w-[200px]">Маршрут</th>
-                        
-                        <!-- ✅ НОВАЯ УЗКАЯ КОЛОНКА ДЛЯ МАРКЕРА -->
-                        <th class="px-1 py-4 w-[10px]"></th> 
-                        
-                        <th class="px-2 py-4 w-[100px]">Тип</th>
-                        
-                        <!-- ❌ УДАЛЕНЫ КОЛОНКИ "Тариф ЖД" и "Прочее" -->
+                        <th class="px-3 py-3 w-[250px]">Маршрут</th>
+                        <th class="px-1 py-3 w-[20px]"></th> 
+                        <th class="px-2 py-3 w-[80px]">Тип</th>
                         
                         <!-- База -->
-                        <th class="px-4 py-4 text-right text-mono-black bg-gray-50 border-x border-gray-200 w-[120px]">
-                            СЕБЕСТ.<br><span class="text-[9px] opacity-60">(без НДС)</span>
+                        <th class="px-3 py-3 text-right text-mono-black bg-gray-50 border-x border-gray-200 w-[100px]">
+                            СЕБЕСТ.<br><span class="opacity-60">(б/НДС)</span>
                         </th>
                         
-                        <!-- ВВОД МЕНЕДЖЕРА -->
-                        <th class="px-4 py-4 text-right bg-green-50/50 border-r border-green-100 w-[140px]">
-                            <span class="text-green-800">МАРЖА</span><br><span class="text-[9px] text-green-600">(ввод)</span>
+                        <!-- ВВОД -->
+                        <th class="px-2 py-3 text-right bg-green-50/50 border-r border-green-100 w-[110px]">
+                            <span class="text-green-800">МАРЖА</span>
                         </th>
                         
                         <!-- ИТОГ -->
-                        <th class="px-4 py-4 text-right bg-indigo-50/30 w-[140px]">
-                            ПРОДАЖА<br><span class="text-[9px] opacity-60 text-indigo-800">(без НДС)</span>
+                        <th class="px-3 py-3 text-right bg-indigo-50/30 w-[110px]">
+                            ПРОДАЖА<br><span class="opacity-60 text-indigo-800">(б/НДС)</span>
                         </th>
-                        <th class="px-6 py-4 text-right bg-indigo-50 w-[160px] font-extrabold text-mono-black">
-                            ИТОГО<br><span class="text-[9px] opacity-60 text-indigo-800">(с НДС)</span>
+                        <th class="px-4 py-3 text-right bg-indigo-50 w-[130px] font-extrabold text-mono-black">
+                            ИТОГО<br><span class="opacity-60 text-indigo-800">(с НДС)</span>
                         </th>
                     </tr>
                 </thead>
@@ -72,21 +66,20 @@
                     {% for group in calculations|groupby(groupby_field) %}
                         
                         <!-- Заголовок группы -->
-                        <tr class="bg-mono-bg/40 border-t-2 border-mono-border">
-                            <td colspan="7" class="px-4 py-2"> <!-- colspan обновлен до 7 -->
+                        <tr class="bg-mono-bg/40 border-t border-mono-border">
+                            <td colspan="7" class="px-3 py-1.5">
                                 <div class="flex items-center gap-2">
-                                    <div class="w-1.5 h-1.5 rounded-full bg-mono-black"></div>
-                                    <span class="text-xs font-bold text-mono-gray uppercase tracking-wide">
-                                        {{ 'Станция назначения:' if current_type == 'SINGLE' else 'Поставщик:' }}
+                                    <div class="w-1 h-1 rounded-full bg-mono-black"></div>
+                                    <span class="text-[10px] font-bold text-mono-gray uppercase tracking-wide">
+                                        {{ 'Станция:' if current_type == 'SINGLE' else 'Поставщик:' }}
                                     </span>
-                                    <span class="text-sm font-extrabold text-mono-black">{{ group.grouper }}</span>
+                                    <span class="text-xs font-bold text-mono-black">{{ group.grouper }}</span>
                                 </div>
                             </td>
                         </tr>
 
                         <!-- Строки -->
                         {% for calc in group.list %}
-                            <!-- Вычисляем маржу по умолчанию -->
                             {% set default_margin = 0 %}
                             {% if calc.margin_type.value == 'FIX' %}
                                 {% set default_margin = calc.margin_value %}
@@ -94,7 +87,6 @@
                                 {% set default_margin = calc.total_cost * (calc.margin_value / 100) %}
                             {% endif %}
 
-                            <!-- 🔥 ЛОГИКА АКТУАЛЬНОСТИ (VALID_TO) -->
                             {% set is_active = True %}
                             {% if calc.valid_to and today and calc.valid_to < today %}
                                 {% set is_active = False %}
@@ -105,71 +97,64 @@
                                 data-vat="{{ calc.vat_rate }}">
                                 
                                 <!-- Маршрут -->
-                                <td class="px-4 py-3">
-                                    <div class="font-bold text-mono-black text-xs">{{ calc.title }}</div>
+                                <td class="px-3 py-2">
+                                    <div class="font-bold text-mono-black text-xs truncate max-w-[240px]" title="{{ calc.title }}">{{ calc.title }}</div>
                                     <div class="text-[10px] text-mono-gray mt-0.5 font-mono flex items-center gap-1">
                                         {{ calc.station_from }} 
                                         <span class="text-gray-300">→</span>
                                         {{ calc.station_to }}
                                     </div>
                                     {% if current_type == 'SINGLE' %}
-                                        <div class="mt-1 inline-block px-1.5 py-0.5 bg-gray-100 rounded text-[9px] text-gray-500 font-bold">
-                                            {{ calc.service_provider }}
-                                        </div>
+                                        <div class="mt-0.5 text-[9px] text-gray-400 font-medium">{{ calc.service_provider }}</div>
                                     {% endif %}
                                 </td>
 
-                                <!-- 🔥 МАРКЕР АКТУАЛЬНОСТИ -->
-                                <td class="px-1 py-3 text-center align-middle">
+                                <!-- Маркер -->
+                                <td class="px-1 py-2 text-center align-middle">
                                     {% if is_active %}
-                                        <div class="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm mx-auto" title="Тариф актуален"></div>
+                                        <div class="w-2 h-2 rounded-full bg-green-500 mx-auto" title="Актуален"></div>
                                     {% else %}
-                                        <div class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse mx-auto cursor-help" title="Тариф истек {{ calc.valid_to }}"></div>
+                                        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse mx-auto cursor-help" title="Истек {{ calc.valid_to }}"></div>
                                     {% endif %}
                                 </td>
 
                                 <!-- Тип -->
-                                <td class="px-2 py-3">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded border border-mono-border bg-white text-[10px] font-bold text-mono-black whitespace-nowrap">
+                                <td class="px-2 py-2">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded border border-mono-border bg-white text-[9px] font-bold text-mono-black whitespace-nowrap">
                                         {{ calc.container_type.replace('_', ' ') }}
                                     </span>
                                 </td>
 
-                                <!-- ❌ УДАЛЕНЫ СТАРЫЕ ЯЧЕЙКИ ТАРИФА И ПРОЧЕГО -->
-
-                                <!-- СЕБЕСТОИМОСТЬ (Константа) -->
-                                <td class="px-4 py-3 text-right bg-gray-50 border-x border-gray-200">
-                                    <div class="font-bold text-mono-black text-sm font-mono cursor-help" title="Сумма всех расходов">
+                                <!-- СЕБЕСТОИМОСТЬ -->
+                                <td class="px-3 py-2 text-right bg-gray-50 border-x border-gray-200">
+                                    <div class="font-bold text-mono-black text-xs font-mono cursor-help" title="Расходы">
                                         {{ "{:,.0f}".format(calc.total_cost).replace(',', ' ') }}
                                     </div>
                                 </td>
 
-                                <!-- 🔥 ПОЛЕ ВВОДА МАРЖИ 🔥 -->
-                                <td class="px-2 py-2 text-right bg-green-50/30 border-r border-green-100">
-                                    <div class="relative">
-                                        <input type="number" 
-                                               class="w-full text-right px-2 py-1.5 bg-white border border-green-200 rounded-lg text-sm font-bold text-green-700 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition margin-input"
-                                               value="{{ default_margin|int }}"
-                                               step="500"
-                                               placeholder="0"
-                                               oninput="recalcRow(this)">
-                                        <div class="absolute right-8 top-1.5 pointer-events-none text-green-200 text-xs font-bold opacity-0 focus-within:opacity-100">₽</div>
-                                    </div>
+                                <!-- ВВОД МАРЖИ (Compact) -->
+                                <td class="px-1 py-1 text-right bg-green-50/30 border-r border-green-100 p-0">
+                                    <input type="number" 
+                                           class="w-full h-full text-right px-2 py-1 bg-transparent text-xs font-bold text-green-700 focus:bg-white outline-none transition margin-input"
+                                           value="{{ default_margin|int }}"
+                                           step="500"
+                                           placeholder="0"
+                                           oninput="recalcRow(this)">
                                 </td>
 
-                                <!-- ИТОГ БЕЗ НДС (Динамический) -->
-                                <td class="px-4 py-3 text-right bg-indigo-50/10">
-                                    <div class="font-medium text-mono-black text-sm font-mono price-netto">
+                                <!-- ИТОГ БЕЗ НДС -->
+                                <td class="px-3 py-2 text-right bg-indigo-50/10">
+                                    <div class="font-medium text-mono-black text-xs font-mono price-netto">
                                         —
                                     </div>
                                 </td>
 
-                                <!-- ИТОГ С НДС (Динамический) -->
-                                <td class="px-6 py-3 text-right bg-indigo-50">
-                                    <div class="font-extrabold text-mono-black text-base font-mono price-gross">
+                                <!-- ИТОГ С НДС -->
+                                <td class="px-4 py-2 text-right bg-indigo-50">
+                                    <div class="font-bold text-mono-black text-sm font-mono price-gross">
                                         —
                                     </div>
-                                    <div class="text-[9px] text-indigo-400 font-medium mt-0.5 vat-info">
+                                    <div class="text-[8px] text-indigo-400 font-medium mt-0.5 vat-info">
                                         НДС {{ calc.vat_rate|int }}%
                                     </div>
                                 </td>
@@ -182,50 +167,34 @@
     </div>
 </div>
 
-<!-- 🔥 JAVASCRIPT ДЛЯ МГНОВЕННОГО ПЕРЕСЧЕТА 🔥 -->
 <script>
-    // Функция форматирования чисел (1 000 000)
     function formatNumber(num) {
         return num.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
     }
 
-    // Главная функция пересчета строки
     function recalcRow(input) {
         const row = input.closest('tr');
-        
-        // 1. Получаем исходные данные из data-атрибутов (Себестоимость и НДС)
-        // Если атрибута нет, будет 0.
         const baseCost = parseFloat(row.getAttribute('data-cost')) || 0;
         const vatRate = parseFloat(row.getAttribute('data-vat')); 
-        
-        // 2. Получаем введенную маржу
         const margin = parseFloat(input.value) || 0;
         
-        // 3. Считаем (Простая математика)
-        const priceNetto = baseCost + margin; // Цена продажи без НДС
-        
-        // Если VAT не задан (NaN), используем 0
+        const priceNetto = baseCost + margin;
         const safeVat = isNaN(vatRate) ? 0 : vatRate;
-        const priceGross = priceNetto * (1 + safeVat / 100); // Цена продажи с НДС
+        const priceGross = priceNetto * (1 + safeVat / 100); 
         
-        // 4. Обновляем ячейки
         const nettoEl = row.querySelector('.price-netto');
         const grossEl = row.querySelector('.price-gross');
         
-        // --- 5. Подсветка убытков (Логика цвета) ---
         if (margin < 0) {
             nettoEl.classList.add('text-red-600');
             grossEl.classList.add('text-red-600');
-            input.classList.add('text-red-600', 'bg-red-50');
-            input.classList.remove('text-green-700');
+            input.classList.add('text-red-600');
         } else {
             nettoEl.classList.remove('text-red-600');
             grossEl.classList.remove('text-red-600');
-            input.classList.remove('text-red-600', 'bg-red-50');
-            input.classList.add('text-green-700');
+            input.classList.remove('text-red-600');
         }
 
-        // Записываем результат
         nettoEl.textContent = formatNumber(priceNetto);
         grossEl.textContent = formatNumber(priceGross) + ' ₽';
     }
