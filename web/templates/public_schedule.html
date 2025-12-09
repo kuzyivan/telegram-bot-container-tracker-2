@@ -35,8 +35,8 @@
             font-family: 'Inter', sans-serif; 
             background-color: #F5F5F7; 
             color: #111111;
-            /* Отключаем любые трансформации на body */
-            transform: none !important;
+            /* Важно: никаких трансформаций на body */
+            transform: none !important; 
         }
         
         /* === Настройка FullCalendar === */
@@ -81,7 +81,7 @@
             margin: 1px 0 !important;
         }
 
-        /* Блокировка скролла фона при открытой модалке */
+        /* Блокировка скролла фона */
         body.modal-open { overflow: hidden !important; touch-action: none; }
         .custom-scrollbar { overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 
@@ -95,7 +95,6 @@
 </head>
 <body class="min-h-screen p-4 md:p-8">
 
-    <!-- ГЛАВНЫЙ КОНТЕЙНЕР СТРАНИЦЫ -->
     <div class="max-w-7xl mx-auto space-y-6 relative z-0">
         
         <!-- Шапка -->
@@ -125,22 +124,22 @@
     </div>
 
     <!-- 
-        🔥 МОДАЛЬНОЕ ОКНО: "ЖЕЛЕЗОБЕТОННАЯ" ВЕРСИЯ
-        - Убрали backdrop-blur (вызывает фризы)
-        - Убрали pointer-events-none хаки
-        - Используем классический Flexbox оверлей
+        🔥 МОДАЛЬНОЕ ОКНО
+        Анимация добавлена через классы Tailwind (transition, duration, opacity, scale).
+        Начальное состояние: opacity-0, scale-95.
     -->
     <div id="eventModal" class="fixed inset-0 z-[9999] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         
-        <!-- Затемнение (без блюра!) -->
-        <div class="absolute inset-0 bg-black/60 transition-opacity" onclick="closeModal()"></div>
+        <!-- Backdrop (Фон): Добавлена анимация прозрачности -->
+        <div id="modalBackdrop" class="absolute inset-0 bg-black/60 transition-opacity duration-300 opacity-0" onclick="closeModal()"></div>
 
-        <!-- Контейнер позиционирования (Flex Center) -->
+        <!-- Контейнер позиционирования -->
         <div class="fixed inset-0 z-10 overflow-y-auto">
             <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
                 
-                <!-- Панель (без transform и transition, чтобы не глючило) -->
-                <div id="modalPanel" class="relative overflow-hidden rounded-2xl bg-white text-left shadow-2xl sm:my-8 sm:w-full sm:max-w-md w-full border border-mono-light flex flex-col max-h-[85vh]">
+                <!-- Панель: Добавлена анимация масштаба и прозрачности -->
+                <!-- transform-gpu включает аппаратное ускорение для плавности -->
+                <div id="modalPanel" class="relative transform transform-gpu transition-all duration-300 ease-out opacity-0 scale-95 overflow-hidden rounded-2xl bg-white text-left shadow-2xl sm:my-8 sm:w-full sm:max-w-md w-full border border-mono-light flex flex-col max-h-[85vh]">
                     
                     <!-- Хедер -->
                     <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
@@ -215,7 +214,6 @@
     <script>
     var publicCalendar;
 
-    // 🔥 Инициализация при загрузке страницы или HTMX-переходе
     if (typeof htmx !== 'undefined') {
         htmx.onLoad(function(content) {
             initPublicCalendar();
@@ -227,11 +225,8 @@
     function initPublicCalendar() {
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
-
-        // Защита от повторной инициализации
         if (calendarEl.classList.contains('fc')) return;
 
-        // Небольшая задержка для корректного рендеринга
         setTimeout(() => {
             const isMobile = window.innerWidth < 768;
 
@@ -247,17 +242,13 @@
                 titleFormat: isMobile ? { month: 'short', year: 'numeric' } : { month: 'long', year: 'numeric' },
                 buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя' },
                 dayMaxEvents: true, 
-                
                 events: '/api/share/{{ token }}/events', 
-
                 editable: false, 
                 selectable: false,
-
                 eventClick: function(info) {
                     info.jsEvent.preventDefault();
                     openModal(info.event);
                 },
-                
                 eventContent: function(arg) {
                     let props = arg.event.extendedProps || {};
                     let bgColor = arg.event.backgroundColor || '#111111'; 
@@ -269,89 +260,82 @@
                     let desktopHtml = `
                         <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 shadow-sm hover:shadow-md transition-shadow" 
                              style="border-left: 4px solid ${bgColor};">
-                            
-                            <div class="text-[12px] font-bold text-mono-black truncate leading-tight pointer-events-none">
-                                ${dest}
-                            </div>
-                            
-                            <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none">
-                                ${service}
-                            </div>
-
-                            ${owner ? `
-                            <div class="flex items-center gap-1 text-[9px] text-mono-gray/70 pt-1 pointer-events-none truncate border-t border-mono-light/50 mt-0.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
-                                  <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
-                                </svg>
-                                <span class="truncate">${owner}</span>
-                            </div>` : ''}
-
-                            ${overload ? `
-                            <div class="flex items-center gap-1 text-[9px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0">
-                                  <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
-                                </svg>
-                                <span class="truncate">${overload}</span>
-                            </div>` : ''}
+                            <div class="text-[12px] font-bold text-mono-black truncate leading-tight pointer-events-none">${dest}</div>
+                            <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none">${service}</div>
+                            ${owner ? `<div class="flex items-center gap-1 text-[9px] text-mono-gray/70 pt-1 pointer-events-none truncate border-t border-mono-light/50 mt-0.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0"><path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" /></svg>
+                                <span class="truncate">${owner}</span></div>` : ''}
+                            ${overload ? `<div class="flex items-center gap-1 text-[9px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" /></svg>
+                                <span class="truncate">${overload}</span></div>` : ''}
                         </div>`;
-
-                    let mobileHtml = `
-                        <div class="md:hidden flex justify-center items-center w-full py-0.5">
-                            <div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div>
-                        </div>
-                    `;
-
+                    let mobileHtml = `<div class="md:hidden flex justify-center items-center w-full py-0.5"><div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div></div>`;
                     return { html: desktopHtml + mobileHtml }
                 }
             });
-            
             publicCalendar.render();
         }, 100);
     }
 
-    // --- ЛОГИКА МОДАЛЬНОГО ОКНА ---
+    // --- АНИМАЦИЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ---
 
     window.openModal = function(event) {
         let props = event.extendedProps;
         let startStr = event.startStr || event.start.toISOString().split('T')[0];
         
+        // Заполнение данных (без изменений)
         document.getElementById('modalDest').innerText = props.dest || '—';
         document.getElementById('modalService').innerText = props.service || '—';
-        
         let dateObj = new Date(startStr);
-        document.getElementById('modalDate').innerText = dateObj.toLocaleDateString('ru-RU', {
-            day: 'numeric', month: 'long', year: 'numeric'
-        });
-
+        document.getElementById('modalDate').innerText = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
         document.getElementById('modalOwner').innerText = props.owner || '—';
         document.getElementById('blockOwner').classList.toggle('hidden', !props.owner);
-
         document.getElementById('modalOverload').innerText = props.overload || '—';
         document.getElementById('blockOverload').classList.toggle('hidden', !props.overload);
-
         document.getElementById('modalStock').innerText = props.stock || '—';
         document.getElementById('blockStock').classList.toggle('hidden', !props.stock);
-        
         if (document.getElementById('modalComment')) {
             document.getElementById('modalComment').innerText = props.comment || '';
             document.getElementById('blockComment').classList.toggle('hidden', !props.comment);
         }
-
         const header = document.getElementById('modalHeader');
         if(header) {
             let color = event.backgroundColor || '#111111';
             header.style.borderLeft = `6px solid ${color}`;
         }
 
+        // 🔥 ЛОГИКА АНИМАЦИИ
         const modal = document.getElementById('eventModal');
-        document.body.classList.add('modal-open'); 
+        const backdrop = document.getElementById('modalBackdrop');
+        const panel = document.getElementById('modalPanel');
+
         modal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+
+        // Небольшая задержка перед запуском CSS-транзишнов
+        // Это гарантирует, что браузер "увидел" display: block перед изменением opacity
+        setTimeout(() => {
+            backdrop.classList.remove('opacity-0');
+            panel.classList.remove('opacity-0', 'scale-95');
+            panel.classList.add('opacity-100', 'scale-100');
+        }, 10);
     }
 
     window.closeModal = function() {
         const modal = document.getElementById('eventModal');
-        modal.classList.add('hidden');
-        document.body.classList.remove('modal-open'); 
+        const backdrop = document.getElementById('modalBackdrop');
+        const panel = document.getElementById('modalPanel');
+
+        // Запуск обратной анимации
+        backdrop.classList.add('opacity-0');
+        panel.classList.remove('opacity-100', 'scale-100');
+        panel.classList.add('opacity-0', 'scale-95');
+
+        // Ждем завершения анимации (300ms, совпадает с duration-300) перед скрытием
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.body.classList.remove('modal-open'); 
+        }, 300);
     }
     </script>
 </body>
