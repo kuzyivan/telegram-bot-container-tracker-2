@@ -143,7 +143,7 @@
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (С ИСПРАВЛЕННОЙ СТРУКТУРОЙ) -->
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (С АНИМАЦИЕЙ) -->
     <div id="eventModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         
         <!-- Backdrop (Затемнение) -->
@@ -245,9 +245,10 @@
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
 
+        // Если календарь уже инициализирован (есть класс 'fc'), не создаем заново
         if (calendarEl.classList.contains('fc')) return;
 
-        // 🔥 Добавляем задержку для корректной отрисовки при переходах
+        // 🔥 Добавляем небольшую задержку перед отрисовкой, чтобы HTMX успел вставить DOM
         setTimeout(() => {
             const isMobile = window.innerWidth < 768;
 
@@ -359,12 +360,17 @@
             header.style.borderLeft = `6px solid ${color}`;
         }
 
+        // --- ЗАПУСК АНИМАЦИИ ВХОДА ---
         const modal = document.getElementById('eventModal');
         document.body.classList.add('modal-open'); 
         
+        // 1. Убираем hidden
         modal.classList.remove('hidden');
+        
+        // 2. Форсируем reflow
         void modal.offsetWidth; 
         
+        // 3. Анимируем вход
         modal.classList.remove('modal-state-closed');
         modal.classList.add('modal-state-open');
     }
@@ -372,9 +378,11 @@
     window.closeModal = function() {
         const modal = document.getElementById('eventModal');
         
+        // 1. Анимируем выход
         modal.classList.remove('modal-state-open');
         modal.classList.add('modal-state-closed');
         
+        // 2. Ждем окончания анимации (300ms) перед скрытием
         setTimeout(() => {
             modal.classList.add('hidden');
             document.body.classList.remove('modal-open'); 
