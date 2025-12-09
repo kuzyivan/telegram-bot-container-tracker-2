@@ -35,7 +35,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-xs text-left border-collapse">
                 
-                <!-- 🔥 ЗАГОЛОВКИ ПО ЦЕНТРУ -->
+                <!-- ЗАГОЛОВКИ ПО ЦЕНТРУ -->
                 <thead class="bg-mono-bg text-mono-gray text-[9px] uppercase font-bold tracking-wider">
                     <tr>
                         <th class="px-3 py-3 text-center w-[250px]">Маршрут</th>
@@ -127,10 +127,15 @@
                                     {% endif %}
                                 </td>
 
-                                <!-- Тип контейнера (Бейдж как в админке) -->
+                                <!-- 🔥 ТИП КОНТЕЙНЕРА (ОБНОВЛЕНО) -->
                                 <td class="px-2 py-3 text-center align-middle">
-                                    <span class="inline-flex items-center px-2 py-1 rounded border border-mono-border bg-white text-[10px] font-bold text-mono-black whitespace-nowrap shadow-sm tracking-wide">
-                                        {{ calc.container_type.replace('_', ' ') }}
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-mono-bg text-xs font-medium text-mono-black whitespace-nowrap shadow-sm tracking-wide">
+                                        {% if calc.container_type == '20_REF' %} 20' Легкая
+                                        {% elif calc.container_type == '20_HEAVY' %} 20' Тяжелая
+                                        {% elif calc.container_type == '20_EXTRA' %} 20' Экстра
+                                        {% elif calc.container_type == '40_STD' %} 40' Легкая
+                                        {% elif calc.container_type == '40_HEAVY' %} 40' Тяжелая
+                                        {% else %} {{ calc.container_type.replace('_', "' ") }} {% endif %}
                                     </span>
                                 </td>
 
@@ -141,7 +146,7 @@
                                     </div>
                                 </td>
 
-                                <!-- 🔥 АКЦЕНТ НА ПОЛЕ ВВОДА (Внутренние отступы, тень при фокусе) -->
+                                <!-- АКЦЕНТ НА ПОЛЕ ВВОДА -->
                                 <td class="px-1 py-1 text-right bg-green-50/40 border-r border-green-200 p-0 align-middle relative group-hover:bg-green-100/50 transition-colors">
                                     <div class="relative w-full h-full p-1">
                                         <input type="number" 
