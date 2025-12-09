@@ -12,6 +12,8 @@ from passlib.context import CryptContext
 from fastapi import Request, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+# ✅ Импортируем selectinload для "жадной" загрузки связей
+from sqlalchemy.orm import selectinload 
 
 from db import SessionLocal
 from models import User, UserRole
@@ -77,7 +79,8 @@ def check_telegram_authorization(auth_data: dict) -> bool:
 
 async def get_current_user(request: Request) -> Optional[User]:
     """
-    Извлекает пользователя из Cookies с логированием ошибок.
+    Извлекает пользователя из Cookies.
+    Подгружает company через selectinload, чтобы избежать DetachedInstanceError.
     """
     token = request.cookies.get(COOKIE_NAME)
 
@@ -96,7 +99,12 @@ async def get_current_user(request: Request) -> Optional[User]:
         return None
 
     async with SessionLocal() as session:
-        result = await session.execute(select(User).where(User.id == user_id))
+        # ✅ ИСПРАВЛЕНИЕ: Добавлен options(selectinload(User.company))
+        result = await session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .options(selectinload(User.company))
+        )
         user = result.scalar_one_or_none()
         
         if not user:
@@ -122,7 +130,7 @@ async def admin_required(user: User = Depends(login_required)):
         )
     return user
 
-# ✅ НОВАЯ ЗАВИСИМОСТЬ: Строгая проверка прав менеджера ООО "Терминал"
+# Защита: Менеджер ООО "Терминал" или Админ
 async def manager_required(user: User = Depends(login_required)):
     """
     Разрешает доступ только:
