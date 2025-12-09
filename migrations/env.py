@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 import os
+import sys
 from typing import cast
 
 from alembic import context
 from sqlalchemy import create_engine, pool
+
+# Добавляем корневую директорию проекта в sys.path, 
+# чтобы импорты (import models, import models_finance) работали корректно
+sys.path.append(os.path.join(sys.path[0], '..'))
 
 # 1) Загружаем .env (если установлен python-dotenv)
 try:
@@ -38,11 +43,12 @@ config.set_main_option("sqlalchemy.url", alembic_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 5) ВАЖНО: импортируем Base и модели НЕ из db.py, а прямо из models
-#    чтобы не создавать движок/сессию и не тянуть TELEGRAM_TOKEN и прочее
-from models import Base  # здесь declarative_base()
-import models  # stats, tracking, tracking_subscriptions, users
-from model.terminal_container import TerminalContainer  # новая таблица
+# 5) ВАЖНО: импортируем Base и модели НЕ из db.py, а прямо из файлов
+#    чтобы не создавать движок/сессию и не тянуть лишние зависимости
+from db_base import Base # Базовый класс
+import models  # Основные модели (users, tracking и т.д.)
+from model.terminal_container import TerminalContainer  # Модель контейнера
+import models_finance  # ✅ ФИНАНСОВЫЙ МОДУЛЬ (ОБЯЗАТЕЛЬНО)
 
 target_metadata = Base.metadata
 
