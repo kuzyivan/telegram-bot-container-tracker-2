@@ -6,3 +6,7 @@ __pycache__/
 *.xml
 # macOS
 .DS_Store
+User content
+
+web/static/avatars/*
+!web/static/avatars/.gitkeep
