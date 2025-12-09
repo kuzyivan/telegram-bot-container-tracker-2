@@ -82,6 +82,11 @@ class User(Base):
     emails: Mapped[List["UserEmail"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     requests: Mapped[List["UserRequest"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     company: Mapped[Optional["Company"]] = relationship(back_populates="users")
+    # Добавляем поле для аватара
+    avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Дополнительно можно добавить должность/телефон
+    job_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    phone: Mapped[str | None] = mapped_column(String, nullable=True)
 
 class UserEmail(Base):
     __tablename__ = "user_emails"
