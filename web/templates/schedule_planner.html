@@ -63,6 +63,46 @@
         -webkit-overflow-scrolling: touch; /* Плавность на iOS */
     }
 
+    /* --- 🔥 АНИМАЦИЯ МОДАЛЬНОГО ОКНА (HEADLESS UI STYLE) --- */
+    
+    /* Состояние: ЗАКРЫТО */
+    .modal-state-closed {
+        pointer-events: none;
+        opacity: 0;
+    }
+    .modal-state-closed #modalBackdrop {
+        opacity: 0;
+    }
+    .modal-state-closed #modalPanel {
+        opacity: 0;
+        transform: scale(0.95); /* Эффект уменьшения */
+    }
+
+    /* Состояние: ОТКРЫТО */
+    .modal-state-open {
+        pointer-events: auto;
+        opacity: 1;
+    }
+    .modal-state-open #modalBackdrop {
+        opacity: 1;
+    }
+    .modal-state-open #modalPanel {
+        opacity: 1;
+        transform: scale(1.0); /* Нормальный размер */
+    }
+
+    /* Параметры переходов (Transition) */
+    #eventModal {
+        transition: opacity 0.2s ease-out; /* Общая прозрачность контейнера */
+    }
+    #modalBackdrop {
+        transition: opacity 0.3s ease-out; /* Плавное затемнение фона */
+    }
+    #modalPanel {
+        /* Кривая безье для эффекта "выпрыгивания" */
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+    }
+
     /* --- МОБИЛЬНАЯ АДАПТАЦИЯ --- */
     @media (max-width: 768px) {
         .fc-toolbar-title { font-size: 1.1rem !important; }
@@ -104,13 +144,20 @@
 
 </div>
 
-<!-- МОДАЛКА РЕЙСА -->
-<div id="eventModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+<!-- МОДАЛКА РЕЙСА (С обновленной структурой для анимации) -->
+<div id="eventModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     
-    <div class="flex items-start justify-center min-h-screen px-4 pt-4 md:pt-20 pb-4 pointer-events-none">
+    <!-- Backdrop (Затемнение) -->
+    <div id="modalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
+    
+    <!-- Центрирование -->
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         
-        <div class="pointer-events-auto w-full max-w-md inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
+        <!-- Хак для центрирования -->
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <!-- Панель (Карточка) -->
+        <div id="modalPanel" class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full border border-mono-border">
             
             <!-- Хедер -->
             <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center shrink-0 bg-white z-10" style="border-left: 6px solid transparent;">
@@ -129,14 +176,14 @@
                     </div>
                     {% endif %}
                     
-                    <button onclick="closeModal()" class="p-2 bg-mono-bg rounded-full text-mono-gray hover:text-mono-black transition ml-2">
+                    <button onclick="closeModal()" class="p-2 bg-mono-bg rounded-full text-mono-gray hover:text-mono-black transition ml-2 hover:bg-gray-200">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
             </div>
             
             <!-- Контент -->
-            <div class="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white">
+            <div class="p-6 overflow-y-auto custom-scrollbar bg-white max-h-[70vh]">
                 
                 <!-- VIEW MODE -->
                 <div id="viewModeContent" class="space-y-6 pb-2">
@@ -270,10 +317,12 @@
 
 <!-- Модалка ПОДЕЛИТЬСЯ (Тоже только для админа) -->
 {% if user.role == 'admin' %}
-<div id="shareModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
+<div id="shareModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div id="shareModalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
+    
     <div class="flex items-start justify-center min-h-screen px-4 pt-4 md:pt-20 pb-4 pointer-events-none">
-        <div class="pointer-events-auto w-full max-w-lg inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
+        
+        <div id="shareModalPanel" class="pointer-events-auto w-full max-w-lg inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
             <div class="bg-white px-6 pt-6 pb-6 shrink-0">
                 <h3 class="text-lg font-bold text-mono-black mb-4">Публичные ссылки</h3>
                 <div class="flex gap-2 mb-6">
@@ -382,7 +431,7 @@
         document.getElementById('createEventForm').reset();
         selectColor('#111111', document.querySelector('.color-btn')); 
         showEditUI(true); 
-        openModal();
+        openModal('eventModal');
     }
 
     function openModalForView(event) {
@@ -422,7 +471,7 @@
 
         showViewUI();
         document.getElementById('modal-title').innerText = 'Информация о рейсе';
-        openModal();
+        openModal('eventModal');
     }
 
     // 🔥 ФУНКЦИЯ СОХРАНЕНИЯ СТОКА
@@ -481,7 +530,7 @@
     }
 
     function cancelEditMode() {
-        if (!selectedEventId) { closeModal(); } else { document.getElementById('modal-title').innerText = 'Информация о рейсе'; showViewUI(); }
+        if (!selectedEventId) { closeModal('eventModal'); } else { document.getElementById('modal-title').innerText = 'Информация о рейсе'; showViewUI(); }
     }
 
     function showViewUI() {
@@ -506,8 +555,36 @@
         btn.classList.remove('ring-transparent'); btn.classList.add('ring-mono-black');
     }
     
-    function openModal() { document.body.classList.add('modal-open'); document.getElementById('eventModal').classList.remove('hidden'); }
-    function closeModal() { document.body.classList.remove('modal-open'); document.getElementById('eventModal').classList.add('hidden'); }
+    // --- 🔥 НОВАЯ АНИМАЦИЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ---
+    
+    function openModal(modalId) {
+        const modal = document.getElementById(modalId || 'eventModal');
+        document.body.classList.add('modal-open'); // Блокируем скролл
+        
+        // 1. Убираем hidden
+        modal.classList.remove('hidden');
+        
+        // 2. Форсируем reflow (чтобы браузер заметил display:block)
+        void modal.offsetWidth; 
+        
+        // 3. Запускаем анимацию входа
+        modal.classList.remove('modal-state-closed');
+        modal.classList.add('modal-state-open');
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId || 'eventModal');
+        
+        // 1. Запускаем анимацию выхода
+        modal.classList.remove('modal-state-open');
+        modal.classList.add('modal-state-closed');
+        
+        // 2. Ждем окончания анимации (300ms) перед скрытием
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.body.classList.remove('modal-open'); // Разблокируем скролл
+        }, 300); // 300ms должно совпадать с duration в CSS
+    }
 
     // --- API Админа ---
     async function submitCreate() {
@@ -515,7 +592,7 @@
         if (selectedEventId) { await deleteEvent(true); } 
         const form = document.getElementById('createEventForm');
         const formData = new FormData(form);
-        try { let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData }); if (response.ok) { closeModal(); calendar.refetchEvents(); } else { alert("Ошибка сохранения"); } } catch (e) { console.error(e); }
+        try { let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData }); if (response.ok) { closeModal('eventModal'); calendar.refetchEvents(); } else { alert("Ошибка сохранения"); } } catch (e) { console.error(e); }
     }
 
     async function updateEventDate(id, dateStr) {
@@ -528,11 +605,19 @@
         if (!IS_ADMIN) return;
         if (!selectedEventId) return;
         if (!silent && !confirm("Удалить рейс?")) return;
-        try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal(); calendar.refetchEvents(); } } } catch (e) { console.error(e); }
+        try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal('eventModal'); calendar.refetchEvents(); } } } catch (e) { console.error(e); }
     }
     
-    function openShareModal() { if(IS_ADMIN) { document.body.classList.add('modal-open'); document.getElementById('shareModal').classList.remove('hidden'); loadLinks(); } }
-    function closeShareModal() { document.body.classList.remove('modal-open'); document.getElementById('shareModal').classList.add('hidden'); }
+    function openShareModal() { 
+        if(IS_ADMIN) { 
+            openModal('shareModal'); 
+            loadLinks(); 
+        } 
+    }
+    
+    function closeShareModal() { 
+        closeModal('shareModal');
+    }
     
     async function loadLinks() { const list = document.getElementById('linksList'); list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; try { let res = await fetch('/admin/api/schedule/links'); let links = await res.json(); if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } let html = ''; links.forEach(link => { const fullUrl = window.location.origin + `/schedule/share/${link.token}`; html += `<div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-mono-black">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`; }); list.innerHTML = html; } catch (e) { console.error(e); } }
     async function createLink() { const nameInput = document.getElementById('newLinkName'); const name = nameInput.value.trim(); if (!name) return alert("Введите название"); const formData = new FormData(); formData.append('name', name); try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } }

@@ -83,16 +83,48 @@
         .fc-col-header-cell-cushion { color: #8E8E93; text-transform: uppercase; font-size: 0.7rem; font-weight: 700; padding: 12px !important; }
         .fc-daygrid-day-number { color: #111111; font-weight: 600; padding: 8px !important; }
 
-        /* Анимация Модалки */
-        #modalOverlay { transition: opacity 0.2s ease-out; }
-        #modalPanel { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-        .modal-closed { opacity: 0; pointer-events: none; }
-        .modal-closed #modalPanel { transform: scale(0.95) translateY(10px); opacity: 0; }
-        .modal-open { opacity: 1; pointer-events: auto; }
-        .modal-open #modalPanel { transform: scale(1) translateY(0); opacity: 1; }
+        /* --- 🔥 АНИМАЦИЯ МОДАЛЬНОГО ОКНА (HEADLESS UI STYLE) --- */
+    
+        /* Состояние: ЗАКРЫТО */
+        .modal-state-closed {
+            pointer-events: none;
+            opacity: 0;
+        }
+        .modal-state-closed #modalBackdrop {
+            opacity: 0;
+        }
+        .modal-state-closed #modalPanel {
+            opacity: 0;
+            transform: scale(0.95); /* Эффект уменьшения */
+        }
+
+        /* Состояние: ОТКРЫТО */
+        .modal-state-open {
+            pointer-events: auto;
+            opacity: 1;
+        }
+        .modal-state-open #modalBackdrop {
+            opacity: 1;
+        }
+        .modal-state-open #modalPanel {
+            opacity: 1;
+            transform: scale(1.0); /* Нормальный размер */
+        }
+
+        /* Параметры переходов (Transition) */
+        #eventModal {
+            transition: opacity 0.2s ease-out; /* Общая прозрачность контейнера */
+        }
+        #modalBackdrop {
+            transition: opacity 0.3s ease-out; /* Плавное затемнение фона */
+        }
+        #modalPanel {
+            /* Кривая безье для эффекта "выпрыгивания" */
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+        }
         
         /* Блокировка скролла фона */
-        body.modal-open-body { overflow: hidden; }
+        body.modal-open { overflow: hidden; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -123,78 +155,87 @@
         </div>
     </div>
 
-    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ -->
-    <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center px-4 modal-closed">
-        <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
+    <!-- МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ (С НОВОЙ СТРУКТУРОЙ) -->
+    <div id="eventModal" class="fixed inset-0 z-50 hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        
+        <!-- Backdrop (Затемнение) -->
+        <div id="modalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
 
-        <div id="modalPanel" class="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden border border-mono-light flex flex-col max-h-[85vh]">
+        <!-- Центрирование -->
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
             
-            <!-- Хедер -->
-            <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
-                <div>
-                    <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
-                    <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Информация о рейсе</h2>
-                </div>
-                <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1.5 rounded-lg hover:bg-mono-light">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
+            <!-- Хак для центрирования -->
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
 
-            <!-- Контент -->
-            <div class="p-6 space-y-5 overflow-y-auto custom-scrollbar">
+            <div id="modalPanel" class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md w-full border border-mono-light flex flex-col max-h-[85vh]">
                 
-                <div>
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
-                    <p class="text-2xl font-bold text-mono-black tracking-tight leading-tight" id="modalDest">Dest</p>
+                <!-- Хедер -->
+                <div id="modalHeader" class="bg-white px-6 py-5 border-b border-mono-light flex justify-between items-center shrink-0" style="border-left: 6px solid transparent;">
+                    <div>
+                        <p class="text-mono-gray text-[10px] font-bold uppercase tracking-widest mb-1" id="modalDate">ДАТА</p>
+                        <h2 class="text-mono-black text-xl font-bold leading-none tracking-tight">Информация о рейсе</h2>
+                    </div>
+                    <button onclick="closeModal()" class="text-mono-gray hover:text-mono-black transition p-1.5 rounded-lg hover:bg-mono-light">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
                 </div>
 
-                <div class="grid grid-cols-1 gap-6">
+                <!-- Контент -->
+                <div class="p-6 space-y-5 overflow-y-auto custom-scrollbar">
+                    
                     <div>
-                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
-                        <p class="text-sm font-medium text-mono-black" id="modalService">Service</p>
+                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
+                        <p class="text-2xl font-bold text-mono-black tracking-tight leading-tight" id="modalDest">Dest</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-6">
+                        <div>
+                            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
+                            <p class="text-sm font-medium text-mono-black" id="modalService">Service</p>
+                        </div>
+                        
+                        <div id="blockOwner" class="hidden">
+                            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
+                            <div class="inline-flex items-center gap-1.5 bg-mono-light px-3 py-1.5 rounded-lg text-sm font-medium text-mono-black border border-mono-border">
+                                <!-- Heroicon: user -->
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-mono-gray">
+                                  <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
+                                </svg>
+                                <span id="modalOwner">Owner</span>
+                            </div>
+                        </div>
+
+                        <div id="blockOverload" class="hidden">
+                            <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Перегруз</p>
+                            <div class="inline-flex items-center gap-2 bg-mono-black text-white px-3 py-2 rounded-lg text-sm font-bold shadow-sm">
+                                <!-- Heroicon: arrow-path -->
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                                  <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
+                                </svg>
+                                <span id="modalOverload">Station</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="blockStock" class="pt-4 border-t border-mono-light hidden">
+                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Сток контейнеров</p>
+                        <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="modalStock">
+                            Stock Info
+                        </div>
                     </div>
                     
-                    <div id="blockOwner" class="hidden">
-                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
-                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-3 py-1.5 rounded-lg text-sm font-medium text-mono-black border border-mono-border">
-                            <!-- Heroicon: user -->
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-mono-gray">
-                              <path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" />
-                            </svg>
-                            <span id="modalOwner">Owner</span>
-                        </div>
-                    </div>
-
-                    <div id="blockOverload" class="hidden">
-                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Перегруз</p>
-                        <div class="inline-flex items-center gap-2 bg-mono-black text-white px-3 py-2 rounded-lg text-sm font-bold shadow-sm">
-                            <!-- Heroicon: arrow-path -->
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                              <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" />
-                            </svg>
-                            <span id="modalOverload">Station</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="blockStock" class="pt-4 border-t border-mono-light hidden">
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Сток контейнеров</p>
-                    <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="modalStock">
-                        Stock Info
+                    <div id="blockComment" class="hidden pt-4 border-t border-mono-light">
+                        <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Примечание</p>
+                        <p class="text-sm text-mono-gray italic" id="modalComment"></p>
                     </div>
                 </div>
                 
-                <div id="blockComment" class="hidden pt-4 border-t border-mono-light">
-                    <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-1">Примечание</p>
-                    <p class="text-sm text-mono-gray italic" id="modalComment"></p>
+                <!-- Футер -->
+                <div class="bg-mono-light/30 px-6 py-4 border-t border-mono-light flex justify-end shrink-0">
+                    <button onclick="closeModal()" class="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-border rounded-xl transition shadow-sm">
+                        Закрыть
+                    </button>
                 </div>
-            </div>
-            
-            <!-- Футер -->
-            <div class="bg-mono-light/30 px-6 py-4 border-t border-mono-light flex justify-end shrink-0">
-                <button onclick="closeModal()" class="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-mono-black hover:bg-mono-black hover:text-white bg-white border border-mono-border rounded-xl transition shadow-sm">
-                    Закрыть
-                </button>
             </div>
         </div>
     </div>
@@ -283,7 +324,7 @@
         calendar.render();
     });
 
-    // --- Логика модального окна ---
+    // --- Логика модального окна (С АНИМАЦИЕЙ) ---
 
     function openModal(event) {
         let props = event.extendedProps;
@@ -324,16 +365,33 @@
             header.style.borderLeft = `6px solid ${color}`;
         }
 
-        // Показываем окно
-        document.getElementById('modalOverlay').classList.remove('modal-closed');
-        document.getElementById('modalOverlay').classList.add('modal-open');
-        document.body.classList.add('modal-open-body');
+        // --- ЗАПУСК АНИМАЦИИ ВХОДА ---
+        const modal = document.getElementById('eventModal');
+        document.body.classList.add('modal-open'); // Блокируем скролл
+        
+        // 1. Убираем hidden
+        modal.classList.remove('hidden');
+        
+        // 2. Форсируем reflow
+        void modal.offsetWidth; 
+        
+        // 3. Анимируем вход
+        modal.classList.remove('modal-state-closed');
+        modal.classList.add('modal-state-open');
     }
 
     function closeModal() {
-        document.getElementById('modalOverlay').classList.remove('modal-open');
-        document.getElementById('modalOverlay').classList.add('modal-closed');
-        document.body.classList.remove('modal-open-body');
+        const modal = document.getElementById('eventModal');
+        
+        // 1. Анимируем выход
+        modal.classList.remove('modal-state-open');
+        modal.classList.add('modal-state-closed');
+        
+        // 2. Ждем окончания анимации (300ms) перед скрытием
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.body.classList.remove('modal-open'); // Разблокируем скролл
+        }, 300);
     }
 </script>
 </body>
