@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 🔥 Настройка HTMX: Ждем 300мс перед подменой контента, чтобы успела проиграться анимация исчезновения -->
+    <meta name="htmx-config" content='{"defaultSwapDelay": 300}'>
+    
     <title>{% block title %}Logistrail{% endblock %}</title>
 
     <link rel="manifest" href="/static/manifest.json">
@@ -43,7 +46,7 @@
                     },
                     boxShadow: {
                         'card': '0 1px 3px rgba(0,0,0,0.05), 0 5px 15px rgba(0,0,0,0.02)',
-                        'up': '0 -4px 20px rgba(0,0,0,0.05)', // Тень для нижнего меню
+                        'up': '0 -4px 20px rgba(0,0,0,0.05)',
                     }
                 }
             }
@@ -65,10 +68,37 @@
         ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
         .flatpickr-calendar { border: none !important; box-shadow: 0 10px 40px rgba(0,0,0,0.1) !important; border-radius: 16px !important; }
         .flatpickr-day.selected { background: #111111 !important; border-color: #111111 !important; }
+
+        /* 🔥 HTMX ANIMATIONS (Плавный переход между страницами) */
+        
+        main {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* Плавная кривая Безье */
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* 1. Исчезновение старой страницы (уезжает вверх) */
+        .htmx-swapping main {
+            opacity: 0;
+            transform: translateY(-15px);
+        }
+
+        /* 2. Появление новой страницы (начинает снизу) */
+        .htmx-added main {
+            opacity: 0;
+            transform: translateY(15px);
+        }
+
+        /* 3. Фиксация новой страницы (возвращается в центр) */
+        .htmx-settling main {
+            opacity: 1;
+            transform: translateY(0);
+        }
     </style>
 </head>
 
-<body class="min-h-screen flex flex-col antialiased bg-mono-bg">
+<!-- 🔥 hx-boost="true": Включает режим SPA (Single Page Application) для всех ссылок -->
+<body class="min-h-screen flex flex-col antialiased bg-mono-bg" hx-boost="true">
 
     <header class="bg-mono-white sticky top-0 z-40 border-b border-mono-border">
         <div class="w-full px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -122,7 +152,7 @@
                                 Себестоимость
                             </a>
                             
-                            <!-- НОВАЯ ССЫЛКА ГРАФИК (Только для менеджера, у админа она уже есть выше) -->
+                            <!-- ГРАФИК (Только для менеджера, у админа она уже есть выше) -->
                             {% if user.role != 'admin' %}
                             <a href="/admin/schedule_planner" 
                                class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if '/admin/schedule_planner' in request.url.path else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
@@ -178,7 +208,8 @@
         </div>
     </header>
 
-    <main class="flex-grow w-full px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
+    <!-- 🔥 ОСНОВНОЙ КОНТЕЙНЕР (ЦЕЛЬ ДЛЯ АНИМАЦИИ) -->
+    <main id="main-content" class="flex-grow w-full px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         {% block content %}{% endblock %}
     </main>
 
