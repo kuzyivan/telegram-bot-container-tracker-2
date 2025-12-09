@@ -6,25 +6,36 @@ from sqlalchemy import select, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import User, ScheduledTrain, ScheduleShareLink
-from web.auth import admin_required, manager_required # ✅ Добавили manager_required
+from web.auth import admin_required, manager_required
 from .common import templates, get_db
 
 router = APIRouter()
 
-# ✅ ИЗМЕНЕНИЕ: Доступ для Менеджера (Только просмотр)
+# --- ПРОСМОТР (Доступно Менеджерам и Админам) ---
+
 @router.get("/schedule_planner")
-async def schedule_planner_page(request: Request, user: User = Depends(manager_required)):
+async def schedule_planner_page(
+    request: Request, 
+    user: User = Depends(manager_required)
+):
+    """Отдает HTML-страницу планировщика."""
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
 
-# ✅ ИЗМЕНЕНИЕ: Доступ для Менеджера (Получение данных)
 @router.get("/api/schedule/events")
 async def get_schedule_events(
-    start: str, end: str, db: AsyncSession = Depends(get_db), user: User = Depends(manager_required)
+    start: str, 
+    end: str, 
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(manager_required)
 ):
+    """Возвращает JSON с событиями для FullCalendar."""
     try:
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
         end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
-        stmt = select(ScheduledTrain).where(and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date))
+        
+        stmt = select(ScheduledTrain).where(
+            and_(ScheduledTrain.schedule_date >= start_date, ScheduledTrain.schedule_date <= end_date)
+        )
         result = await db.execute(stmt)
         trains = result.scalars().all()
         
@@ -34,26 +45,78 @@ async def get_schedule_events(
             bg_color = getattr(t, 'color', '#111111') or '#111111'
             overload = getattr(t, 'overload_station', "")
             owner = getattr(t, 'wagon_owner', "")
+            
             events.append({
-                "id": str(t.id), "title": title, "start": t.schedule_date.isoformat(),
-                "allDay": True, "backgroundColor": bg_color, "borderColor": bg_color,
-                "extendedProps": {"service": t.service_name, "dest": t.destination, "stock": t.stock_info or "", "owner": owner or "", "overload": overload or "", "comment": t.comment or ""},
-                "editable": True, "startEditable": True, "durationEditable": False
+                "id": str(t.id), 
+                "title": title, 
+                "start": t.schedule_date.isoformat(),
+                "allDay": True, 
+                "backgroundColor": bg_color, 
+                "borderColor": bg_color,
+                "extendedProps": {
+                    "service": t.service_name, 
+                    "dest": t.destination, 
+                    "stock": t.stock_info or "", 
+                    "owner": owner or "", 
+                    "overload": overload or "", 
+                    "comment": t.comment or ""
+                },
+                # Front-end решит, можно ли двигать, на основе роли (IS_ADMIN)
+                "editable": True 
             })
         return JSONResponse(events)
     except Exception as e:
         return JSONResponse([], status_code=200)
 
-# ⛔️ ОСТАЛЬНЫЕ МЕТОДЫ (CREATE/UPDATE/DELETE) ОСТАЮТСЯ ПОД ADMIN_REQUIRED
+
+# --- 🔥 ЧАСТИЧНОЕ РЕДАКТИРОВАНИЕ (Доступно Менеджерам) ---
+
+@router.post("/api/schedule/{event_id}/update_details")
+async def update_schedule_details(
+    event_id: int,
+    stock: str = Form(None),
+    comment: str = Form(None),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(manager_required) # <--- Разрешаем Менеджеру
+):
+    """
+    Позволяет менеджеру обновить сток и комментарий, 
+    не меняя ключевые параметры рейса (дату, направление).
+    """
+    stmt = update(ScheduledTrain).where(ScheduledTrain.id == event_id).values(
+        stock_info=stock,
+        comment=comment
+    )
+    await db.execute(stmt)
+    await db.commit()
+    return {"status": "ok"}
+
+
+# --- ПОЛНОЕ УПРАВЛЕНИЕ (Только Админ) ---
+
 @router.post("/api/schedule/create")
 async def create_schedule_event(
-    date_str: str = Form(...), service: str = Form(...), destination: str = Form(...), 
-    stock: str = Form(None), owner: str = Form(None), overload_station: str = Form(None), color: str = Form("#111111"),
-    db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
+    date_str: str = Form(...), 
+    service: str = Form(...), 
+    destination: str = Form(...), 
+    stock: str = Form(None), 
+    owner: str = Form(None), 
+    overload_station: str = Form(None), 
+    color: str = Form("#111111"),
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required)
 ):
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
-        new_train = ScheduledTrain(schedule_date=dt, service_name=service, destination=destination, stock_info=stock, wagon_owner=owner, overload_station=overload_station, color=color)
+        new_train = ScheduledTrain(
+            schedule_date=dt, 
+            service_name=service, 
+            destination=destination, 
+            stock_info=stock, 
+            wagon_owner=owner, 
+            overload_station=overload_station, 
+            color=color
+        )
         db.add(new_train)
         await db.commit()
         return {"status": "ok", "id": new_train.id}
@@ -61,7 +124,12 @@ async def create_schedule_event(
         return JSONResponse({"status": "error", "detail": str(e)}, status_code=500)
 
 @router.post("/api/schedule/{event_id}/move")
-async def move_schedule_event(event_id: int, new_date: str = Form(...), db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
+async def move_schedule_event(
+    event_id: int, 
+    new_date: str = Form(...), 
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required) # <--- Только Админ может менять дату
+):
     dt = datetime.strptime(new_date, "%Y-%m-%d").date()
     stmt = update(ScheduledTrain).where(ScheduledTrain.id == event_id).values(schedule_date=dt)
     await db.execute(stmt)
@@ -69,11 +137,17 @@ async def move_schedule_event(event_id: int, new_date: str = Form(...), db: Asyn
     return {"status": "ok"}
 
 @router.delete("/api/schedule/{event_id}")
-async def delete_schedule_event(event_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)):
+async def delete_schedule_event(
+    event_id: int, 
+    db: AsyncSession = Depends(get_db), 
+    user: User = Depends(admin_required) # <--- Только Админ может удалять
+):
     stmt = select(ScheduledTrain).where(ScheduledTrain.id == event_id)
     res = await db.execute(stmt)
     obj = res.scalar_one_or_none()
-    if obj: await db.delete(obj); await db.commit()
+    if obj: 
+        await db.delete(obj)
+        await db.commit()
     return {"status": "ok"}
 
 @router.get("/api/schedule/links")

@@ -3,13 +3,14 @@
 {% block title %}Расчет ставки — Logistrail{% endblock %}
 
 {% block content %}
-<div class="max-w-[98%] mx-auto px-2 md:px-4 py-4 animate-fade-in">
+<!-- 🔥 ИЗМЕНЕНИЕ: max-w-5xl вместо max-w-[98%] делает таблицу уже и центрирует её -->
+<div class="max-w-5xl mx-auto px-2 md:px-4 py-6 animate-fade-in">
     
     <!-- Шапка -->
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-4">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-5">
         <div>
             <div class="flex items-center gap-3">
-                <div class="bg-mono-black text-white p-1.5 rounded-lg shadow-md">
+                <div class="bg-mono-black text-white p-2 rounded-lg shadow-md">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                 </div>
                 <div>
@@ -21,23 +22,26 @@
         
         <!-- Переключатель типа -->
         <div class="bg-white p-1 rounded-lg border border-mono-border flex shadow-sm">
-            <a href="/admin/costs?type=TRAIN" class="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'TRAIN' else 'text-mono-gray hover:bg-mono-bg' }}">
+            <a href="/admin/costs?type=TRAIN" class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'TRAIN' else 'text-mono-gray hover:bg-mono-bg' }}">
                 КП (Поезда)
             </a>
-            <a href="/admin/costs?type=SINGLE" class="px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'SINGLE' else 'text-mono-gray hover:bg-mono-bg' }}">
+            <a href="/admin/costs?type=SINGLE" class="px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition {{ 'bg-mono-black text-white shadow' if current_type == 'SINGLE' else 'text-mono-gray hover:bg-mono-bg' }}">
                 Одиночные
             </a>
         </div>
     </div>
 
-    <!-- ТАБЛИЦА (КОМПАКТНАЯ) -->
+    <!-- ТАБЛИЦА -->
     <div class="bg-white rounded-xl shadow-card border border-transparent overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-xs text-left border-collapse">
                 <thead class="bg-mono-bg text-mono-gray text-[9px] uppercase font-bold tracking-wider">
                     <tr>
-                        <th class="px-3 py-3 w-[250px]">Маршрут</th>
+                        <th class="px-3 py-3">Маршрут</th>
+                        
+                        <!-- Узкая колонка для маркера -->
                         <th class="px-1 py-3 w-[20px]"></th> 
+                        
                         <th class="px-2 py-3 w-[80px]">Тип</th>
                         
                         <!-- База -->
@@ -46,15 +50,15 @@
                         </th>
                         
                         <!-- ВВОД -->
-                        <th class="px-2 py-3 text-right bg-green-50/50 border-r border-green-100 w-[110px]">
+                        <th class="px-2 py-3 text-right bg-green-50/50 border-r border-green-100 w-[100px]">
                             <span class="text-green-800">МАРЖА</span>
                         </th>
                         
                         <!-- ИТОГ -->
-                        <th class="px-3 py-3 text-right bg-indigo-50/30 w-[110px]">
+                        <th class="px-3 py-3 text-right bg-indigo-50/30 w-[100px]">
                             ПРОДАЖА<br><span class="opacity-60 text-indigo-800">(б/НДС)</span>
                         </th>
-                        <th class="px-4 py-3 text-right bg-indigo-50 w-[130px] font-extrabold text-mono-black">
+                        <th class="px-4 py-3 text-right bg-indigo-50 w-[120px] font-extrabold text-mono-black">
                             ИТОГО<br><span class="opacity-60 text-indigo-800">(с НДС)</span>
                         </th>
                     </tr>
@@ -67,7 +71,7 @@
                         
                         <!-- Заголовок группы -->
                         <tr class="bg-mono-bg/40 border-t border-mono-border">
-                            <td colspan="7" class="px-3 py-1.5">
+                            <td colspan="7" class="px-3 py-2">
                                 <div class="flex items-center gap-2">
                                     <div class="w-1 h-1 rounded-full bg-mono-black"></div>
                                     <span class="text-[10px] font-bold text-mono-gray uppercase tracking-wide">
@@ -80,6 +84,7 @@
 
                         <!-- Строки -->
                         {% for calc in group.list %}
+                            <!-- Считаем дефолтную маржу -->
                             {% set default_margin = 0 %}
                             {% if calc.margin_type.value == 'FIX' %}
                                 {% set default_margin = calc.margin_value %}
@@ -87,6 +92,7 @@
                                 {% set default_margin = calc.total_cost * (calc.margin_value / 100) %}
                             {% endif %}
 
+                            <!-- Проверка актуальности -->
                             {% set is_active = True %}
                             {% if calc.valid_to and today and calc.valid_to < today %}
                                 {% set is_active = False %}
@@ -97,8 +103,8 @@
                                 data-vat="{{ calc.vat_rate }}">
                                 
                                 <!-- Маршрут -->
-                                <td class="px-3 py-2">
-                                    <div class="font-bold text-mono-black text-xs truncate max-w-[240px]" title="{{ calc.title }}">{{ calc.title }}</div>
+                                <td class="px-3 py-2.5">
+                                    <div class="font-bold text-mono-black text-xs truncate max-w-[220px]" title="{{ calc.title }}">{{ calc.title }}</div>
                                     <div class="text-[10px] text-mono-gray mt-0.5 font-mono flex items-center gap-1">
                                         {{ calc.station_from }} 
                                         <span class="text-gray-300">→</span>
@@ -110,7 +116,7 @@
                                 </td>
 
                                 <!-- Маркер -->
-                                <td class="px-1 py-2 text-center align-middle">
+                                <td class="px-1 py-2.5 text-center align-middle">
                                     {% if is_active %}
                                         <div class="w-2 h-2 rounded-full bg-green-500 mx-auto" title="Актуален"></div>
                                     {% else %}
@@ -119,21 +125,21 @@
                                 </td>
 
                                 <!-- Тип -->
-                                <td class="px-2 py-2">
+                                <td class="px-2 py-2.5">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded border border-mono-border bg-white text-[9px] font-bold text-mono-black whitespace-nowrap">
                                         {{ calc.container_type.replace('_', ' ') }}
                                     </span>
                                 </td>
 
                                 <!-- СЕБЕСТОИМОСТЬ -->
-                                <td class="px-3 py-2 text-right bg-gray-50 border-x border-gray-200">
+                                <td class="px-3 py-2.5 text-right bg-gray-50 border-x border-gray-200">
                                     <div class="font-bold text-mono-black text-xs font-mono cursor-help" title="Расходы">
                                         {{ "{:,.0f}".format(calc.total_cost).replace(',', ' ') }}
                                     </div>
                                 </td>
 
-                                <!-- ВВОД МАРЖИ (Compact) -->
-                                <td class="px-1 py-1 text-right bg-green-50/30 border-r border-green-100 p-0">
+                                <!-- ВВОД МАРЖИ -->
+                                <td class="px-1 py-1 text-right bg-green-50/30 border-r border-green-100 p-0 align-middle">
                                     <input type="number" 
                                            class="w-full h-full text-right px-2 py-1 bg-transparent text-xs font-bold text-green-700 focus:bg-white outline-none transition margin-input"
                                            value="{{ default_margin|int }}"
@@ -143,14 +149,14 @@
                                 </td>
 
                                 <!-- ИТОГ БЕЗ НДС -->
-                                <td class="px-3 py-2 text-right bg-indigo-50/10">
+                                <td class="px-3 py-2.5 text-right bg-indigo-50/10">
                                     <div class="font-medium text-mono-black text-xs font-mono price-netto">
                                         —
                                     </div>
                                 </td>
 
                                 <!-- ИТОГ С НДС -->
-                                <td class="px-4 py-2 text-right bg-indigo-50">
+                                <td class="px-4 py-2.5 text-right bg-indigo-50">
                                     <div class="font-bold text-mono-black text-sm font-mono price-gross">
                                         —
                                     </div>
@@ -179,6 +185,7 @@
         const margin = parseFloat(input.value) || 0;
         
         const priceNetto = baseCost + margin;
+        
         const safeVat = isNaN(vatRate) ? 0 : vatRate;
         const priceGross = priceNetto * (1 + safeVat / 100); 
         

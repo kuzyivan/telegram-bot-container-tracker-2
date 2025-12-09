@@ -5,9 +5,8 @@
 {% block content %}
 <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 
-<!-- Стили (без изменений) -->
 <style>
-    /* ... (Те же стили, что и раньше) ... */
+    /* --- FullCalendar Variables --- */
     :root {
         --fc-border-color: #E5E5EA;
         --fc-button-text-color: #111111;
@@ -22,21 +21,49 @@
         --fc-event-bg-color: transparent;
         --fc-event-border-color: transparent;
     }
+
+    /* --- Кнопки --- */
     .fc .fc-button {
-        border-radius: 10px !important; font-weight: 600 !important; text-transform: capitalize !important; padding: 0.5rem 1rem !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important; transition: all 0.2s ease !important; outline: none !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        text-transform: capitalize !important;
+        padding: 0.5rem 1rem !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        transition: all 0.2s ease !important;
+        outline: none !important;
     }
     .fc .fc-button-primary { background-color: #FFFFFF !important; border-color: #E5E5EA !important; color: #111111 !important; }
     .fc .fc-button-primary:hover { background-color: #F5F5F7 !important; border-color: #d1d5db !important; }
     .fc .fc-button-active { background-color: #111111 !important; border-color: #111111 !important; color: #FFFFFF !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; }
-    
+    .fc .fc-button:focus { box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.2) !important; }
+
+    /* --- Сетка и Текст --- */
     .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 800 !important; color: #111111 !important; letter-spacing: -0.02em !important; }
     .fc-col-header-cell-cushion { color: #8E8E93 !important; text-transform: uppercase !important; font-size: 0.75rem !important; font-weight: 700 !important; padding: 10px 0 !important; text-decoration: none !important; }
     .fc-daygrid-day-number { color: #111111 !important; font-weight: 600 !important; font-size: 0.9rem !important; padding: 8px !important; text-decoration: none !important; }
-    .fc-daygrid-event-dot { display: none; }
-    .fc-event { cursor: pointer; border: none !important; background: transparent !important; margin: 1px 0 !important; }
-    body.modal-open { overflow: hidden !important; touch-action: none; }
-    .custom-scrollbar { overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+    .fc-daygrid-event-dot { display: none; } /* Скрываем дефолтную точку */
+
+    /* --- События (Общее) --- */
+    .fc-event {
+        cursor: pointer;
+        border: none !important;
+        background: transparent !important;
+        margin: 1px 0 !important;
+    }
+
+    /* --- БЛОКИРОВКА СКРОЛЛА FONА --- */
+    body.modal-open {
+        overflow: hidden !important;
+        touch-action: none; /* Дополнительная защита для iOS */
+    }
+    
+    /* --- УЛУЧШЕННЫЙ СКРОЛЛ В МОДАЛКЕ --- */
+    .custom-scrollbar {
+        overscroll-behavior-y: contain; /* Не передает скролл родителю */
+        -webkit-overflow-scrolling: touch; /* Плавность на iOS */
+    }
+
+    /* --- МОБИЛЬНАЯ АДАПТАЦИЯ --- */
     @media (max-width: 768px) {
         .fc-toolbar-title { font-size: 1.1rem !important; }
         .fc .fc-button { padding: 0.4rem 0.6rem !important; font-size: 0.75rem !important; }
@@ -90,7 +117,7 @@
                 <h3 class="text-lg font-bold text-mono-black" id="modal-title">Рейс</h3>
                 <div class="flex items-center gap-2">
                     
-                    <!-- 🔥 КНОПКИ УПРАВЛЕНИЯ (ТОЛЬКО ДЛЯ АДМИНА) -->
+                    <!-- 🔥 КНОПКИ АДМИНА: РЕДАКТИРОВАТЬ / УДАЛИТЬ -->
                     {% if user.role == 'admin' %}
                     <div id="viewModeButtons" class="flex gap-2">
                         <button onclick="switchToEditMode()" class="p-2 bg-mono-bg rounded-lg text-mono-gray hover:text-mono-black hover:bg-mono-border transition" title="Редактировать">
@@ -145,15 +172,34 @@
                         </div>
                     </div>
 
-                    <div id="viewBlockStock" class="pt-4 border-t border-mono-bg hidden">
+                    <!-- 🔥 БЛОК СТОК (Редактируемый для Менеджера/Админа) -->
+                    <div class="pt-4 border-t border-mono-bg">
                         <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-2">Сток контейнеров</p>
-                        <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="viewStock">
-                            Stock Info
-                        </div>
+                        
+                        {% if user.role in ['admin', 'manager', 'owner'] %}
+                            <div class="flex gap-2">
+                                <input type="text" id="viewStockInput" placeholder="Например: 10x40HC"
+                                       class="flex-1 bg-mono-bg border border-mono-border rounded-lg px-3 py-2 text-sm text-mono-black font-mono focus:outline-none focus:ring-2 focus:ring-mono-black transition">
+                                
+                                <button onclick="saveStockDetails()" class="bg-mono-black text-white p-2 rounded-lg hover:bg-gray-800 transition shadow-sm" title="Сохранить сток">
+                                    <!-- Icon: Floppy disk -->
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"></path></svg>
+                                </button>
+                            </div>
+                        {% else %}
+                            <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="viewStock">
+                                —
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div id="blockComment" class="hidden pt-4 border-t border-mono-bg">
+                        <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Примечание</p>
+                        <p class="text-sm text-mono-gray italic" id="modalComment"></p>
                     </div>
                 </div>
 
-                <!-- EDIT MODE (ТОЛЬКО ЕСЛИ АДМИН - ИНАЧЕ УДАЛИТЬ ЛИШНЕЕ НЕ ПОМОЖЕТ, НО СКРОЕМ) -->
+                <!-- EDIT MODE (ТОЛЬКО ЕСЛИ АДМИН) -->
                 {% if user.role == 'admin' %}
                 <form id="createEventForm" class="space-y-5 hidden pb-2">
                     <input type="hidden" id="eventDate" name="date_str">
@@ -205,7 +251,7 @@
                 {% endif %}
             </div>
 
-            <!-- ФУТЕР (Кнопки действий) -->
+            <!-- ФУТЕР (Кнопки действий - Только Админ) -->
             {% if user.role == 'admin' %}
             <div id="modalFooter" class="px-6 py-4 border-t border-mono-bg shrink-0 hidden bg-white"> 
                 <div class="flex flex-col gap-3">
@@ -225,7 +271,7 @@
 <!-- Модалка ПОДЕЛИТЬСЯ (Тоже только для админа) -->
 {% if user.role == 'admin' %}
 <div id="shareModal" class="fixed inset-0 z-[60] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
+    <div class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeModal()"></div>
     <div class="flex items-start justify-center min-h-screen px-4 pt-4 md:pt-20 pb-4 pointer-events-none">
         <div class="pointer-events-auto w-full max-w-lg inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
             <div class="bg-white px-6 pt-6 pb-6 shrink-0">
@@ -251,6 +297,7 @@
     
     // 🔥 ПЕРЕДАЕМ ПРАВА В JS
     const IS_ADMIN = {{ 'true' if user.role == 'admin' else 'false' }};
+    const CAN_EDIT_STOCK = {{ 'true' if user.role in ['admin', 'manager', 'owner'] else 'false' }};
 
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
@@ -275,7 +322,7 @@
             
             events: '/admin/api/schedule/events', 
 
-            // 🔥 ЗАПРЕТ РЕДАКТИРОВАНИЯ ДЛЯ МЕНЕДЖЕРОВ
+            // 🔥 ЗАПРЕТ ПЕРЕТАСКИВАНИЯ ДЛЯ НЕ-АДМИНОВ
             editable: IS_ADMIN,
             eventStartEditable: IS_ADMIN,
             droppable: IS_ADMIN,
@@ -326,6 +373,8 @@
         calendar.render();
     });
 
+    // --- УПРАВЛЕНИЕ РЕЖИМАМИ (VIEW / EDIT) ---
+
     function openModalForCreate(dateStr) {
         selectedEventId = null;
         document.getElementById('modal-title').innerText = 'Новый рейс';
@@ -342,26 +391,76 @@
         let startStr = event.startStr; 
         
         currentEventData = {
-            id: event.id, startStr: startStr, service: props.service, dest: props.dest, stock: props.stock, owner: props.owner, overload: props.overload, color: event.backgroundColor || '#111111'
+            id: event.id, startStr: startStr, service: props.service, dest: props.dest, stock: props.stock, owner: props.owner, overload: props.overload, color: event.backgroundColor || '#111111', comment: props.comment
         };
 
+        // Заполняем текстовые поля
         document.getElementById('viewDest').innerText = props.dest || '—';
         document.getElementById('viewService').innerText = props.service || '—';
         document.getElementById('viewDate').innerText = new Date(startStr).toLocaleDateString('ru-RU');
         
         document.getElementById('viewOwner').innerText = props.owner || '—';
         document.getElementById('viewBlockOwner').style.display = props.owner ? 'block' : 'none';
+        
         document.getElementById('viewOverload').innerText = props.overload || '—';
         document.getElementById('viewBlockOverload').classList.toggle('hidden', !props.overload);
-        document.getElementById('viewStock').innerText = props.stock || '—';
-        document.getElementById('viewBlockStock').classList.toggle('hidden', !props.stock);
-
+        
+        // 🔥 ЗАПОЛНЯЕМ ПОЛЕ СТОКА (Если менеджер) или ТЕКСТ (если гость)
+        if (CAN_EDIT_STOCK) {
+            const stockInput = document.getElementById('viewStockInput');
+            if (stockInput) stockInput.value = props.stock || '';
+        } else {
+             const stockEl = document.getElementById('viewStock');
+             if(stockEl) {
+                 stockEl.innerText = props.stock || '—';
+                 document.getElementById('viewBlockStock').classList.toggle('hidden', !props.stock);
+             }
+        }
+        
         const header = document.getElementById('modalHeader');
         if(header) header.style.borderLeft = `6px solid ${currentEventData.color}`;
 
         showViewUI();
         document.getElementById('modal-title').innerText = 'Информация о рейсе';
         openModal();
+    }
+
+    // 🔥 ФУНКЦИЯ СОХРАНЕНИЯ СТОКА
+    async function saveStockDetails() {
+        if (!selectedEventId) return;
+        const newStock = document.getElementById('viewStockInput').value;
+        const formData = new FormData();
+        formData.append('stock', newStock);
+        
+        try {
+            const btn = document.querySelector("button[onclick='saveStockDetails()']");
+            const originalIcon = btn.innerHTML;
+            btn.innerHTML = '...'; // Индикатор загрузки
+            
+            let res = await fetch(`/admin/api/schedule/${selectedEventId}/update_details`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (res.ok) {
+                // Визуальное подтверждение
+                btn.classList.remove('bg-mono-black');
+                btn.classList.add('bg-green-600');
+                btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                setTimeout(() => {
+                     btn.innerHTML = originalIcon;
+                     btn.classList.remove('bg-green-600');
+                     btn.classList.add('bg-mono-black');
+                     calendar.refetchEvents(); // Обновить календарь
+                }, 1000);
+            } else {
+                alert("Ошибка сохранения");
+                btn.innerHTML = originalIcon;
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Ошибка сети");
+        }
     }
 
     function switchToEditMode() {
@@ -410,7 +509,7 @@
     function openModal() { document.body.classList.add('modal-open'); document.getElementById('eventModal').classList.remove('hidden'); }
     function closeModal() { document.body.classList.remove('modal-open'); document.getElementById('eventModal').classList.add('hidden'); }
 
-    // --- API (Только если есть права) ---
+    // --- API Админа ---
     async function submitCreate() {
         if (!IS_ADMIN) return;
         if (selectedEventId) { await deleteEvent(true); } 
