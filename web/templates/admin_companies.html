@@ -182,57 +182,68 @@
                 <tbody class="divide-y divide-mono-border">
                     {% for user in users %}
                     <tr class="hover:bg-mono-bg transition group">
-                        <form action="/admin/users/{{ user.id }}/update" method="POST">
+                        
+                        <!-- Генерируем уникальный ID для формы этой строки -->
+                        {% set form_id = 'user-form-' ~ user.id %}
+
+                        <td class="px-6 py-4 align-middle">
+                            <div class="font-bold text-mono-black">
+                                {{ user.first_name }} {{ user.last_name or '' }}
+                            </div>
+                            <div class="text-xs text-mono-gray font-mono mt-0.5">
+                                {% if user.username %}
+                                    @{{ user.username }}
+                                    <span class="inline-block ml-1 px-1.5 rounded bg-mono-black text-white text-[9px]">TG</span>
+                                {% elif user.email_login %}
+                                    {{ user.email_login }}
+                                    <span class="inline-block ml-1 px-1.5 rounded bg-gray-200 text-gray-600 text-[9px]">WEB</span>
+                                {% else %}
+                                    ID: {{ user.id }}
+                                {% endif %}
+                            </div>
+                        </td>
+                        
+                        <td class="px-6 py-4 align-middle">
+                            <!-- Привязываем select к форме через атрибут form -->
+                            <select name="company_id" form="{{ form_id }}"
+                                    class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition">
+                                <option value="0" {% if not user.company_id %}selected{% endif %}>— Нет —</option>
+                                {% for comp in companies %}
+                                <option value="{{ comp.id }}" {% if user.company_id == comp.id %}selected{% endif %}>
+                                    {{ comp.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+
+                        <td class="px-6 py-4 align-middle">
+                            <!-- Привязываем select к форме -->
+                            <select name="role" form="{{ form_id }}"
+                                    class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition uppercase font-bold tracking-wide">
+                                <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer</option>
+                                <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>Manager</option>
+                                <option value="owner" {% if user.role == 'owner' %}selected{% endif %}>Owner</option>
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>ADMIN</option>
+                            </select>
+                        </td>
+
+                        <!-- ПОЛЕ СМЕНЫ ПАРОЛЯ -->
+                        <td class="px-6 py-4 align-middle">
+                            <!-- Привязываем input к форме -->
+                            <input type="text" name="new_password" form="{{ form_id }}" placeholder="Новый пароль" 
+                                   class="w-full bg-white border-b border-mono-gray text-mono-black text-xs py-1 px-2 outline-none focus:border-mono-black focus:bg-white transition placeholder-gray-300">
+                        </td>
+
+                        <td class="px-6 py-4 text-right align-middle">
+                            <!-- Невидимая форма, которая собирает данные -->
+                            <form id="{{ form_id }}" action="/admin/users/{{ user.id }}/update" method="POST" class="hidden"></form>
                             
-                            <td class="px-6 py-4 align-middle">
-                                <div class="font-bold text-mono-black">
-                                    {{ user.first_name }} {{ user.last_name or '' }}
-                                </div>
-                                <div class="text-xs text-mono-gray font-mono mt-0.5">
-                                    {% if user.username %}
-                                        @{{ user.username }}
-                                        <span class="inline-block ml-1 px-1.5 rounded bg-mono-black text-white text-[9px]">TG</span>
-                                    {% elif user.email_login %}
-                                        {{ user.email_login }}
-                                        <span class="inline-block ml-1 px-1.5 rounded bg-gray-200 text-gray-600 text-[9px]">WEB</span>
-                                    {% else %}
-                                        ID: {{ user.id }}
-                                    {% endif %}
-                                </div>
-                            </td>
-                            
-                            <td class="px-6 py-4 align-middle">
-                                <select name="company_id" class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition">
-                                    <option value="0" {% if not user.company_id %}selected{% endif %}>— Нет —</option>
-                                    {% for comp in companies %}
-                                    <option value="{{ comp.id }}" {% if user.company_id == comp.id %}selected{% endif %}>
-                                        {{ comp.name }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </td>
-
-                            <td class="px-6 py-4 align-middle">
-                                <select name="role" class="bg-white border-b border-mono-gray text-mono-black text-xs focus:border-mono-black focus:ring-0 block w-full py-1 pr-8 bg-transparent outline-none cursor-pointer hover:bg-mono-bg transition uppercase font-bold tracking-wide">
-                                    <option value="viewer" {% if user.role == 'viewer' %}selected{% endif %}>Viewer</option>
-                                    <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>Manager</option>
-                                    <option value="owner" {% if user.role == 'owner' %}selected{% endif %}>Owner</option>
-                                    <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>ADMIN</option>
-                                </select>
-                            </td>
-
-                            <!-- ПОЛЕ СМЕНЫ ПАРОЛЯ -->
-                            <td class="px-6 py-4 align-middle">
-                                <input type="text" name="new_password" placeholder="Новый пароль" 
-                                       class="w-full bg-white border-b border-mono-gray text-mono-black text-xs py-1 px-2 outline-none focus:border-mono-black focus:bg-white transition placeholder-gray-300">
-                            </td>
-
-                            <td class="px-6 py-4 text-right align-middle">
-                                <button type="submit" class="text-mono-black hover:bg-mono-black hover:text-white font-bold text-xs bg-white border border-mono-border px-4 py-2 rounded-lg transition shadow-sm">
-                                    Сохранить
-                                </button>
-                            </td>
-                        </form>
+                            <!-- Кнопка сабмита, привязанная к форме -->
+                            <button type="submit" form="{{ form_id }}" 
+                                    class="text-mono-black hover:bg-mono-black hover:text-white font-bold text-xs bg-white border border-mono-border px-4 py-2 rounded-lg transition shadow-sm">
+                                Сохранить
+                            </button>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
