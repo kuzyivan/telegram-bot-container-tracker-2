@@ -348,7 +348,7 @@
     var IS_ADMIN = {{ 'true' if user.role == 'admin' else 'false' }};
     var CAN_EDIT_STOCK = {{ 'true' if user.role in ['admin', 'manager', 'owner'] else 'false' }};
 
-    // 🔥 Инициализация при загрузке и HTMX навигации
+    // 🔥 ВАЖНО: Используем htmx.onLoad вместо DOMContentLoaded, чтобы скрипт запускался и при AJAX-переходах
     if (typeof htmx !== 'undefined') {
         htmx.onLoad(function(content) {
             initCalendar();
@@ -361,10 +361,10 @@
         var calendarEl = document.getElementById('calendar');
         if (!calendarEl) return;
 
-        // Если календарь уже инициализирован, не делаем этого снова
+        // Если календарь уже инициализирован (есть класс 'fc'), не создаем заново
         if (calendarEl.classList.contains('fc')) return;
 
-        // Небольшая задержка, чтобы убедиться, что контейнер вставился в DOM
+        // 🔥 Добавляем небольшую задержку перед отрисовкой, чтобы HTMX успел вставить DOM
         setTimeout(() => {
             const isMobile = window.innerWidth < 768;
 
@@ -432,10 +432,13 @@
             });
             
             calendar.render();
-        }, 100); // 100ms задержки для надежности при HTMX переходе
+        }, 100); // 100ms задержка
     }
 
     // --- ФУНКЦИИ (Глобальные) ---
+
+    // ✅ ИСПРАВЛЕНИЕ: Используем более надежный подход для скрытия/показа модалки
+    // (без modal-state-closed/open классов, которые могли конфликтовать с Tailwind hidden)
 
     window.openModalForCreate = function(dateStr) {
         selectedEventId = null;
@@ -564,19 +567,19 @@
         btn.classList.remove('ring-transparent'); btn.classList.add('ring-mono-black');
     }
     
-    // --- 🔥 ИСПРАВЛЕННАЯ АНИМАЦИЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ---
+    // --- 🔥 НОВАЯ АНИМАЦИЯ (УПРОЩЕННАЯ) ---
     
     window.openModal = function(modalId) {
         const modal = document.getElementById(modalId || 'eventModal');
+        const backdrop = modal.querySelector('#modalBackdrop') || modal.querySelector('#shareModalBackdrop');
+        const panel = modal.querySelector('#modalPanel') || modal.querySelector('#shareModalPanel');
+
         document.body.classList.add('modal-open');
-        
-        // 1. Убираем display:none
         modal.classList.remove('hidden');
         
-        // 2. Форсируем отрисовку (reflow), чтобы CSS-переход сработал
+        // Force reflow
         void modal.offsetWidth; 
         
-        // 3. Запускаем анимацию входа (opacity: 1, scale: 1)
         modal.classList.remove('modal-state-closed');
         modal.classList.add('modal-state-open');
     }
@@ -584,11 +587,9 @@
     window.closeModal = function(modalId) {
         const modal = document.getElementById(modalId || 'eventModal');
         
-        // 1. Запускаем анимацию выхода (opacity: 0, scale: 0.95)
         modal.classList.remove('modal-state-open');
         modal.classList.add('modal-state-closed');
         
-        // 2. Ждем окончания CSS-транзишена (300ms), затем ставим display:none
         setTimeout(() => {
             modal.classList.add('hidden');
             document.body.classList.remove('modal-open');
@@ -631,5 +632,4 @@
     window.createLink = async function() { const nameInput = document.getElementById('newLinkName'); const name = nameInput.value.trim(); if (!name) return alert("Введите название"); const formData = new FormData(); formData.append('name', name); try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } }
     window.deleteLink = async function(id) { if (!confirm("Удалить?")) return; try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); } }
 </script>
-</body>
-</html>
+{% endblock %}
