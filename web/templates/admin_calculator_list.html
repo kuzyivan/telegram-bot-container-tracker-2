@@ -331,11 +331,26 @@
     <button onclick="submitBatchAction('DRAFT')" class="flex items-center gap-2 hover:opacity-80 transition font-bold text-xs bg-gray-600 px-3 py-1.5 rounded-lg">
         В Черновик
     </button>
+
+    <!-- Date Batch Action -->
+    <div class="h-4 w-px bg-white/20 mx-2"></div>
+    <div class="flex items-center gap-1 bg-white/10 rounded-lg p-1 ml-2">
+        <input type="text" id="batchDateInput" placeholder="Уст. срок" 
+               class="bg-transparent border-none text-white text-xs w-24 text-center focus:ring-0 placeholder-white/50 cursor-pointer batch-datepicker">
+        <button onclick="submitBatchDate()" class="bg-white text-mono-black hover:bg-gray-200 px-2 py-1 rounded-md text-xs font-bold transition" title="Применить срок">
+            OK
+        </button>
+    </div>
 </div>
 
-<!-- СКРЫТАЯ ФОРМА ДЛЯ МАССОВЫХ ДЕЙСТВИЙ -->
+<!-- СКРЫТАЯ ФОРМА ДЛЯ МАССОВЫХ ДЕЙСТВИЙ (СТАТУС) -->
 <form id="batchActionForm" action="/admin/calculator/batch_status" method="POST" class="hidden">
     <input type="hidden" name="data_json" id="batchActionData">
+</form>
+
+<!-- СКРЫТАЯ ФОРМА ДЛЯ МАССОВЫХ ДЕЙСТВИЙ (ДАТА) -->
+<form id="batchDateForm" action="/admin/calculator/batch_date" method="POST" class="hidden">
+    <input type="hidden" name="data_json" id="batchDateData">
 </form>
 
 <script>
@@ -352,6 +367,17 @@
     function resetUI() { label.textContent = 'Выберите файл Excel'; label.classList.remove('text-green-600'); dropZone.classList.remove('border-green-500', 'bg-green-50'); dropZone.classList.add('border-gray-300'); spinner.classList.add('hidden'); content.classList.remove('hidden'); submitBtn.disabled = false; submitBtn.innerText = 'Загрузить'; }
     function showLoading() { content.classList.add('hidden'); spinner.classList.remove('hidden'); submitBtn.disabled = true; submitBtn.innerText = 'Загрузка...'; }
     document.addEventListener('keydown', function(event) { if (event.key === "Escape" && !modal.classList.contains('hidden')) { closeModal(); } });
+
+    document.addEventListener("DOMContentLoaded", function() {
+        flatpickr(".batch-datepicker", {
+            locale: "ru",
+            dateFormat: "Y-m-d",
+            altInput: true,
+            altFormat: "d.m.Y",
+            disableMobile: "true",
+            position: "auto center"
+        });
+    });
 
     // --- ЛОГИКА МАССОВЫХ ДЕЙСТВИЙ ---
     
@@ -388,6 +414,22 @@
         jsonField.value = JSON.stringify({ids: ids, status: status});
         
         document.getElementById('batchActionForm').submit();
+    }
+
+    function submitBatchDate() {
+        const checkedBoxes = document.querySelectorAll('.calc-checkbox:checked');
+        const ids = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+        
+        // Получаем значение из скрытого input'а, который создает flatpickr (или основного, если altInput=false)
+        // Но при altInput=true, flatpickr пишет реальное значение в исходный input
+        const dateVal = document.getElementById('batchDateInput').value; 
+        
+        if (ids.length === 0) return;
+        
+        const jsonField = document.getElementById('batchDateData');
+        jsonField.value = JSON.stringify({ids: ids, date: dateVal});
+        
+        document.getElementById('batchDateForm').submit();
     }
 
     // 🔥 СКРИПТ ФИЛЬТРАЦИИ 🔥
