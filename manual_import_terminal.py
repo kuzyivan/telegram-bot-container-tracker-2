@@ -1,72 +1,79 @@
 import asyncio
-import os
+import logging
 import sys
-from sqlalchemy import text
+import os
 
-# Добавляем текущую директорию в путь, чтобы видеть модули проекта
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Добавляем текущую директорию в путь, чтобы Python видел модули проекта
+sys.path.append(os.getcwd())
 
-from db import SessionLocal
+# --- БЛОК ИМПОРТОВ БД ---
+# ВАЖНО: Проверь, что путь к async_session_factory правильный для твоего проекта
+try:
+    from database.db import async_session_factory
+except ImportError:
+    try:
+        # Попытка альтернативного импорта, если первый не сработал
+        from database import async_session_factory
+    except ImportError:
+        print("❌ ОШИБКА: Не могу найти async_session_factory.")
+        print("Проверь в файле manual_import_terminal.py строку: from database.db import async_session_factory")
+        sys.exit(1)
+
 from services.terminal_importer import process_terminal_report_file
 
-# ⚙️ НАСТРОЙКИ
-# Укажите точное имя вашего файла
-FILENAME = "A-Terminal 11.12.2025.xlsx" 
+# Настройка простого логирования для консоли
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Имя файла для импорта
+FILENAME = "A-Terminal 11.12.2025.xlsx"
 
 async def main():
-    # 1. Проверка файла
-    if not os.path.exists(FILENAME):
-        print(f"❌ Файл '{FILENAME}' не найден в корневой папке!")
-        print(f"Текущая папка: {os.getcwd()}")
-        return
-
     print("="*60)
-    print(f"⚠️  ВНИМАНИЕ! Вы запускаете РУЧНОЙ импорт.")
+    print("⚠️  ВНИМАНИЕ! Вы запускаете РУЧНОЙ импорт.")
     print(f"Файл: {FILENAME}")
-    print("Действие: ПОЛНАЯ ОЧИСТКА таблицы 'terminal_containers' и загрузка заново.")
+    print("Действие: Загрузка данных в таблицу 'terminal_containers'.")
     print("="*60)
+
+    # Проверка наличия файла
+    if not os.path.exists(FILENAME):
+        print(f"❌ ОШИБКА: Файл '{FILENAME}' не найден в текущей папке!")
+        return
 
     confirm = input("Введите 'y' для подтверждения или любую другую клавишу для отмены: ")
     if confirm.lower() != 'y':
         print("Отмена.")
         return
 
-    # 2. Очистка таблицы
-    print("\n🧹 Очистка базы данных...")
-    async with SessionLocal() as session:
+    print("\n🚀 Подключаюсь к БД и начинаю обработку...")
+
+    # Создаем сессию БД (контекстный менеджер сам её закроет)
+    async with async_session_factory() as session:
         try:
-            # TRUNCATE удаляет данные мгновенно и сбрасывает ID
-            await session.execute(text("TRUNCATE TABLE terminal_containers RESTART IDENTITY CASCADE;"))
-            await session.commit()
-            print("✅ Таблица 'terminal_containers' полностью очищена.")
+            # ВЫЗОВ ФУНКЦИИ ИМПОРТА
+            # Передаем сессию первым аргументом, путь к файлу вторым
+            await process_terminal_report_file(session, FILENAME)
+            
+            print("\n" + "="*60)
+            print("🏁 ИМПОРТ ЗАВЕРШЕН УСПЕШНО!")
+            print("="*60)
+            
         except Exception as e:
-            print(f"❌ Ошибка при очистке таблицы: {e}")
-            return
-
-    # 3. Запуск импорта
-    print(f"\n🚀 Начинаю обработку файла {FILENAME}...")
-    try:
-        # Вызываем функцию импортера
-        stats = await process_terminal_report_file(FILENAME)
-        
-        print("\n" + "="*60)
-        print("🏁 ИМПОРТ ЗАВЕРШЕН УСПЕШНО!")
-        print("="*60)
-        print(f"📥 Добавлено (новых записей): {stats.get('added', 0)}")
-        print(f"🔄 Обновлено (существующих):  {stats.get('updated', 0)}")
-        print("="*60)
-
-    except Exception as e:
-        print(f"\n❌ Критическая ошибка при импорте: {e}")
-        import traceback
-        traceback.print_exc()
+            print(f"\n❌ КРИТИЧЕСКАЯ ОШИБКА во время импорта:\n{e}")
+            # Полный трейсбек для отладки
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
-    # Настройка для Windows (если запускаешь локально), на Linux не мешает
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
     try:
+        # Запуск асинхронного цикла
+        if sys.platform == 'win32':
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n⛔ Скрипт остановлен пользователем.")
+        print("\n⛔ Прервано пользователем.")
+    except SystemExit:
+        pass
