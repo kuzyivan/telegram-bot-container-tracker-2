@@ -45,7 +45,9 @@
                         
                         <th class="px-3 py-3 text-center w-[250px]">Маршрут</th>
                         <th class="px-1 py-3 w-[20px] text-center"></th> 
-                        <th class="px-2 py-3 w-[100px] text-center">Тип</th>
+                        <th class="px-2 py-3 w-[80px] text-center">Тип</th>
+                        <!-- 🔥 НОВАЯ КОЛОНКА -->
+                        <th class="px-2 py-3 w-[80px] text-center">Срок</th>
                         
                         <th class="px-3 py-3 text-center text-mono-black bg-gray-50 border-x border-gray-200 w-[100px]">
                             СЕБЕСТ.<br><span class="opacity-60">(б/НДС)</span>
@@ -69,9 +71,9 @@
                     
                     {% for group in calculations|groupby(groupby_field) %}
                         
-                        <!-- Заголовок группы -->
+                        <!-- Заголовок группы (colspan=9, т.к. добавили колонку) -->
                         <tr class="bg-mono-bg/40 border-t border-mono-border">
-                            <td colspan="8" class="px-3 py-2">
+                            <td colspan="9" class="px-3 py-2">
                                 <div class="flex items-center gap-2">
                                     <div class="w-1 h-1 rounded-full bg-mono-black"></div>
                                     <span class="text-[10px] font-bold text-mono-gray uppercase tracking-wide">
@@ -127,7 +129,7 @@
                                     {% endif %}
                                 </td>
 
-                                <!-- Маркер актуальности -->
+                                <!-- Маркер актуальности (Точка) -->
                                 <td class="px-1 py-3 text-center align-middle">
                                     {% if is_active %}
                                         <div class="w-2.5 h-2.5 rounded-full bg-green-500 mx-auto shadow-sm" title="Актуален"></div>
@@ -138,14 +140,31 @@
 
                                 <!-- Тип контейнера -->
                                 <td class="px-2 py-3 text-center align-middle">
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded border border-mono-border bg-mono-bg text-xs font-medium text-mono-black whitespace-nowrap shadow-sm tracking-wide">
-                                        {% if calc.container_type == '20_REF' %} 20' Легкая
-                                        {% elif calc.container_type == '20_HEAVY' %} 20' Тяжелая
-                                        {% elif calc.container_type == '20_EXTRA' %} 20' Экстра
-                                        {% elif calc.container_type == '40_STD' %} 40' Легкая
-                                        {% elif calc.container_type == '40_HEAVY' %} 40' Тяжелая
-                                        {% else %} {{ calc.container_type.replace('_', "' ") }} {% endif %}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded border border-mono-border bg-mono-bg text-[10px] font-bold text-mono-black whitespace-nowrap shadow-sm">
+                                        {% if calc.container_type == '20_REF' %} 20' REF
+                                        {% elif calc.container_type == '20_HEAVY' %} 20' HVY
+                                        {% elif calc.container_type == '20_EXTRA' %} 20' EXT
+                                        {% elif calc.container_type == '40_STD' %} 40' STD
+                                        {% elif calc.container_type == '40_HEAVY' %} 40' HVY
+                                        {% else %} {{ calc.container_type.replace('_', ' ') }} {% endif %}
                                     </span>
+                                </td>
+
+                                <!-- 🔥 Срок действия -->
+                                <td class="px-2 py-3 text-center align-middle whitespace-nowrap">
+                                    {% if calc.valid_to %}
+                                        {% if not is_active %}
+                                            <span class="text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded border border-red-100">
+                                                Истек {{ calc.valid_to.strftime('%d.%m') }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-[10px] font-mono text-mono-gray">
+                                                до {{ calc.valid_to.strftime('%d.%m') }}
+                                            </span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-[10px] text-gray-300">∞</span>
+                                    {% endif %}
                                 </td>
 
                                 <!-- СЕБЕСТОИМОСТЬ -->
@@ -201,7 +220,7 @@
     </div>
     <div class="h-4 w-px bg-white/20"></div>
     <button onclick="exportCommercialProposal()" class="flex items-center gap-2 hover:opacity-80 transition font-bold text-sm">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
         Экспорт КП (PDF)
     </button>
 </div>
