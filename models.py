@@ -222,6 +222,7 @@ class Train(Base):
     eta_days: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    arrival_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     
 class EventAlertRule(Base):
     __tablename__ = "event_alert_rules"
