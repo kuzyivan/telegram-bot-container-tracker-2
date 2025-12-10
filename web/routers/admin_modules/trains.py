@@ -54,7 +54,7 @@ async def admin_train_detail(
     stmt = (
         select(TerminalContainer, ContainerFinance)
         .join(ContainerFinance, TerminalContainer.id == ContainerFinance.terminal_container_id, isouter=True)
-        # Подгружаем расчет, чтобы знать тип контейнера (20/40) из расчета, если он не указан в терминале
+        # Подгружаем расчет, чтобы иметь доступ к данным расчета (если нужно)
         .options(selectinload(ContainerFinance.calculation)) 
         .where(TerminalContainer.train == train.terminal_train_number)
         .order_by(TerminalContainer.container_number)
@@ -71,35 +71,22 @@ async def admin_train_detail(
         sale = fin.sales_price if fin else 0.0
         margin = sale - cost
         
-        # --- ЛОГИКА ОПРЕДЕЛЕНИЯ ТИПА КОНТЕЙНЕРА ---
-        # 1. Сначала берем "живые" данные из терминала (импорт)
-        # 2. Если их нет, пробуем взять из привязанного финансового расчета
-        c_type = "—"
-        
-        if tc.container_type:
-            # Данные из базы (например "40HC", "20GP")
-            c_type = tc.container_type
-        elif fin and fin.calculation:
-            # Данные из расчета (например "40_STD") -> упрощаем для красивого вывода
-            raw_type = fin.calculation.container_type or ""
-            if "20" in raw_type: c_type = "20'"
-            elif "40" in raw_type: c_type = "40'"
-            else: c_type = raw_type
+        # --- БЕРЕМ РАЗМЕР ИЗ БАЗЫ ТЕРМИНАЛА ---
+        c_size = tc.size if tc and tc.size else "—"
         
         total_cost += cost
         total_sales += sale
         
         containers_data.append({
-            "tc": tc,   # В объекте tc уже есть поле .client, которое будет использовано в шаблоне
+            "tc": tc,   # В объекте tc уже есть поле .client
             "fin": fin,
             "cost": cost,
             "sale": sale,
             "margin": margin,
-            "type": c_type # Приоритетно реальный тип из терминальной базы
+            "size": c_size # <-- Используем размер (20, 40, 45...)
         })
 
     # Считаем итоги С НДС (приблизительно, для KPI карточек)
-    # В таблице будем выводить точно
     total_margin = total_sales - total_cost
     
     # 3. Загружаем доступные расчеты для выпадающего списка
