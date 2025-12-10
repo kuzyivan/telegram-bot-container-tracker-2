@@ -1,40 +1,151 @@
 {% extends "base.html" %}
-{% block title %}Поезда — Logistrail{% endblock %}
-{% block content %}
-<div class="max-w-7xl mx-auto px-4 py-8">
-    <h1 class="text-3xl font-bold mb-6">Реестр поездов</h1>
 
-    <div class="bg-white rounded-xl shadow overflow-hidden">
-        <table class="w-full text-sm text-left">
-            <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
-                <tr>
-                    <th class="px-6 py-3">Номер</th>
-                    <th class="px-6 py-3">Дата отправления</th>
-                    <th class="px-6 py-3">Дата прибытия</th>
-                    <th class="px-6 py-3">Направление</th>
-                    <th class="px-6 py-3 text-center">Контейнеров</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-200">
-                {% for train in trains %}
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/admin/trains/{{ train.id }}'">
-                    <td class="px-6 py-4 font-bold">{{ train.terminal_train_number }}</td>
-                    <td class="px-6 py-4">{{ train.departure_date.strftime('%d.%m.%Y') if train.departure_date else '—' }}</td>
-                    <td class="px-6 py-4">
-                        {% if train.arrival_date %}
-                            <span class="text-green-600 font-bold">{{ train.arrival_date.strftime('%d.%m.%Y') }}</span>
-                        {% else %}
-                            <span class="text-gray-400">В пути</span>
-                        {% endif %}
-                    </td>
-                    <td class="px-6 py-4">{{ train.destination_station or '—' }}</td>
-                    <td class="px-6 py-4 text-center">
-                        <span class="bg-gray-100 px-2 py-1 rounded">{{ train.container_count or 0 }}</span>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+{% block title %}Реестр поездов — Logistrail{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8 animate-fade-in">
+    
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-mono-black tracking-tight">Реестр поездов</h1>
+            <p class="text-sm text-mono-gray">Управление рейсами и финансами</p>
+        </div>
+        
+        <!-- Глобальный поиск (Серверный) -->
+        <form action="/admin/trains" method="GET" class="relative">
+            <input type="text" name="q" value="{{ q }}" placeholder="Глобальный поиск..." 
+                   class="pl-10 pr-4 py-2 bg-white border border-mono-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-mono-black transition w-64 shadow-sm">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left border-collapse" id="trainsTable">
+                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider">
+                    <!-- Заголовки -->
+                    <tr>
+                        <th class="px-6 py-4">Номер (Терминал)</th>
+                        <th class="px-6 py-4">РЖД Номер</th>
+                        <th class="px-6 py-4">Дата выхода</th>
+                        <th class="px-6 py-4">Дата приб. (План)</th>
+                        <th class="px-6 py-4">Назначение</th>
+                        <th class="px-6 py-4 text-center">Конт.</th>
+                        <th class="px-6 py-4 text-right">Действие</th>
+                    </tr>
+                    
+                    <!-- 🔥 Строка фильтров (Inputs) -->
+                    <tr class="bg-white border-b border-mono-border">
+                        <th class="px-6 py-2">
+                            <input type="text" id="filterTerminal" onkeyup="filterTable()" placeholder="Поиск..." 
+                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black transition">
+                        </th>
+                        <th class="px-6 py-2">
+                            <input type="text" id="filterRzd" onkeyup="filterTable()" placeholder="Поиск..." 
+                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black transition">
+                        </th>
+                        <th class="px-6 py-2">
+                            <input type="text" id="filterDepDate" onkeyup="filterTable()" placeholder="ДД.ММ.ГГГГ" 
+                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black transition">
+                        </th>
+                        <th class="px-6 py-2">
+                            <input type="text" id="filterArrDate" onkeyup="filterTable()" placeholder="ДД.ММ.ГГГГ" 
+                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black transition">
+                        </th>
+                        <th class="px-6 py-2">
+                            <input type="text" id="filterDest" onkeyup="filterTable()" placeholder="Поиск..." 
+                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black transition">
+                        </th>
+                        <th colspan="2"></th> <!-- Пустые ячейки для счетчика и действий -->
+                    </tr>
+                </thead>
+                
+                <tbody class="divide-y divide-mono-border">
+                    {% for train in trains %}
+                    <!-- Добавляем data-атрибуты для фильтрации -->
+                    <tr class="hover:bg-mono-bg transition group cursor-pointer train-row" 
+                        onclick="window.location='/admin/trains/{{ train.id }}'"
+                        data-terminal="{{ train.terminal_train_number }}"
+                        data-rzd="{{ train.rzd_train_number or '' }}"
+                        data-dep="{{ train.departure_date.strftime('%d.%m.%Y') if train.departure_date else '' }}"
+                        data-arr="{{ train.arrival_date.strftime('%d.%m.%Y') if train.arrival_date else '' }}"
+                        data-dest="{{ train.destination_station or '' }}">
+                        
+                        <td class="px-6 py-4">
+                            <span class="font-mono font-bold text-mono-black text-sm">{{ train.terminal_train_number }}</span>
+                        </td>
+                        <td class="px-6 py-4 text-mono-gray font-mono text-xs">
+                            {{ train.rzd_train_number or '—' }}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if train.departure_date %}
+                                <span class="font-medium text-mono-black">{{ train.departure_date.strftime('%d.%m.%Y') }}</span>
+                            {% else %}
+                                <span class="text-gray-300 text-xs">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if train.arrival_date %}
+                                <span class="font-medium text-green-700 bg-green-50 px-2 py-1 rounded text-xs">{{ train.arrival_date.strftime('%d.%m.%Y') }}</span>
+                            {% else %}
+                                <span class="text-gray-300 text-xs font-mono">В пути</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 font-medium text-mono-black">
+                            {{ train.destination_station or '—' }}
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <span class="bg-mono-bg text-mono-black px-2 py-1 rounded text-xs font-bold">{{ train.container_count or 0 }}</span>
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <svg class="w-5 h-5 text-gray-400 group-hover:text-mono-black transition inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-12 text-center text-mono-gray">Поезда не найдены</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
+
+<script>
+    function filterTable() {
+        // Получаем значения из инпутов (в нижнем регистре для нечувствительности к регистру)
+        const termVal = document.getElementById('filterTerminal').value.toLowerCase();
+        const rzdVal = document.getElementById('filterRzd').value.toLowerCase();
+        const depVal = document.getElementById('filterDepDate').value.toLowerCase();
+        const arrVal = document.getElementById('filterArrDate').value.toLowerCase();
+        const destVal = document.getElementById('filterDest').value.toLowerCase();
+
+        const rows = document.querySelectorAll('.train-row');
+
+        rows.forEach(row => {
+            // Получаем данные из data-атрибутов
+            const t = row.getAttribute('data-terminal').toLowerCase();
+            const r = row.getAttribute('data-rzd').toLowerCase();
+            const d = row.getAttribute('data-dep').toLowerCase();
+            const a = row.getAttribute('data-arr').toLowerCase();
+            const dst = row.getAttribute('data-dest').toLowerCase();
+
+            // Проверяем совпадение (все условия должны выполняться)
+            const matchTerm = t.includes(termVal);
+            const matchRzd = r.includes(rzdVal);
+            const matchDep = d.includes(depVal);
+            const matchArr = a.includes(arrVal);
+            const matchDest = dst.includes(destVal);
+
+            if (matchTerm && matchRzd && matchDep && matchArr && matchDest) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+</script>
 {% endblock %}
