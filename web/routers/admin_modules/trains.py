@@ -1,4 +1,3 @@
-# web/routers/admin_modules/trains.py
 from datetime import datetime, date
 from typing import List, Optional
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
@@ -51,16 +50,17 @@ async def admin_train_detail(
     if not train:
         raise HTTPException(404, "Поезд не найден")
 
-    # 2. Получаем контейнеры поезда + Финансы
-    # Используем outerjoin, так как финансы могут быть еще не созданы
+    # 2. Получаем контейнеры поезда + Финансы + (NEW) Расчет для типа контейнера
     stmt = (
         select(TerminalContainer, ContainerFinance)
         .join(ContainerFinance, TerminalContainer.id == ContainerFinance.terminal_container_id, isouter=True)
+        # Подгружаем расчет, чтобы знать тип контейнера (20/40)
+        .options(selectinload(ContainerFinance.calculation)) 
         .where(TerminalContainer.train == train.terminal_train_number)
         .order_by(TerminalContainer.container_number)
     )
     result = await db.execute(stmt)
-    rows = result.all() # Список кортежей (TerminalContainer, ContainerFinance)
+    rows = result.all() 
 
     containers_data = []
     total_cost = 0.0
@@ -71,21 +71,31 @@ async def admin_train_detail(
         sale = fin.sales_price if fin else 0.0
         margin = sale - cost
         
+        # Получаем тип контейнера из привязанного расчета
+        c_type = "—"
+        if fin and fin.calculation:
+            # Упрощаем тип для отображения (40_STD -> 40)
+            raw_type = fin.calculation.container_type or ""
+            if "20" in raw_type: c_type = "20'"
+            elif "40" in raw_type: c_type = "40'"
+        
         total_cost += cost
         total_sales += sale
         
         containers_data.append({
             "tc": tc,
-            "fin": fin, # Может быть None
+            "fin": fin,
             "cost": cost,
             "sale": sale,
-            "margin": margin
+            "margin": margin,
+            "type": c_type # <-- Передаем в шаблон
         })
 
+    # Считаем итоги С НДС (приблизительно, для KPI карточек)
+    # В таблице будем выводить точно
     total_margin = total_sales - total_cost
     
-    # 3. Загружаем доступные расчеты (Calculations) для выпадающего списка
-    # Берем только опубликованные расчеты типа TRAIN
+    # 3. Загружаем доступные расчеты
     calcs_res = await db.execute(
         select(Calculation)
         .where(Calculation.service_type == 'TRAIN')
@@ -131,7 +141,6 @@ async def update_train_dates(
         train.overload_station_name = overload_station
 
     await db.commit()
-    # Возвращаемся на ту же страницу
     return RedirectResponse(f"/admin/trains/{train_id}", status_code=303)
 
 # --- 4. INLINE ОБНОВЛЕНИЕ ФИНАНСОВ (HTMX) ---
@@ -142,7 +151,6 @@ async def update_container_finance(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(manager_required)
 ):
-    # Ищем или создаем запись финансов
     fin = await db.scalar(select(ContainerFinance).where(ContainerFinance.terminal_container_id == tc_id))
     
     if not fin:
@@ -150,12 +158,10 @@ async def update_container_finance(
         db.add(fin)
     
     fin.sales_price = sales_price
-    # Пересчитываем абсолютную маржу (если храним её в базе, или просто для UI)
     fin.margin_abs = fin.sales_price - fin.cost_value
     
     await db.commit()
     
-    # Возвращаем HTML фрагмент ячейки с маржой
     margin_class = "text-green-600" if fin.margin_abs > 0 else "text-red-600"
     return HTMLResponse(f'<span class="font-bold {margin_class}">{fin.margin_abs:,.0f}</span>'.replace(',', ' '))
 
@@ -164,19 +170,16 @@ async def update_container_finance(
 async def apply_calculation_to_train(
     train_id: int,
     calculation_id: int = Form(...),
-    selected_containers: List[int] = Form(...), # Список ID TerminalContainer
+    selected_containers: List[int] = Form(...),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(manager_required)
 ):
-    # 1. Получаем расчет (себестоимость)
     calc = await db.get(Calculation, calculation_id)
     if not calc:
         raise HTTPException(404, "Расчет не найден")
     
-    # Берем себестоимость БЕЗ НДС (так как маржинальность обычно считается net-net)
     cost_to_apply = calc.total_cost 
 
-    # 2. Обновляем контейнеры
     for tc_id in selected_containers:
         fin = await db.scalar(select(ContainerFinance).where(ContainerFinance.terminal_container_id == tc_id))
         
@@ -202,7 +205,6 @@ async def add_container_to_train(
     train = await db.get(Train, train_id)
     if not train: return RedirectResponse("/admin/trains", 303)
     
-    # Ищем контейнер
     tc = await db.scalar(select(TerminalContainer).where(TerminalContainer.container_number == container_number.strip().upper()))
     if tc:
         tc.train = train.terminal_train_number
@@ -219,7 +221,7 @@ async def remove_container_from_train(
 ):
     tc = await db.get(TerminalContainer, tc_id)
     if tc:
-        tc.train = None # Отвязываем от поезда
+        tc.train = None
         await db.commit()
         
     return RedirectResponse(f"/admin/trains/{train_id}", status_code=303)
