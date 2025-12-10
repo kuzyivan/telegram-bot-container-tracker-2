@@ -6,7 +6,7 @@ import os
 import re
 from typing import List, Tuple, Optional, Dict, Any
 import pandas as pd
-from sqlalchemy import select, update, insert
+from sqlalchemy import select, update, insert, text
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime, date, time, timedelta
 from zoneinfo import ZoneInfo
@@ -20,384 +20,303 @@ logger = get_logger(__name__)
 imap_service = ImapService()
 DOWNLOAD_DIR_TERMINAL = "downloads/terminal"
 
-# --- ОБНОВЛЕННЫЕ КОНСТАНТЫ IMAP ДЛЯ ОТЧЕТА ТЕРМИНАЛА (более мягкие) ---
-# Ищет "Executive summary" в любом месте темы (регистронезависимо)
+# --- КОНСТАНТЫ IMAP ---
 SUBJECT_FILTER_TERMINAL = r'executive\s*summary' 
-# Отправитель остается строгим (почтовый адрес должен быть точным)
 SENDER_FILTER_TERMINAL = 'aterminal@effex.ru' 
-# Ищет "A-Terminal" в любом месте имени файла (регистронезависимо), допуская xlsx/xls
-FILENAME_PATTERN_TERMINAL = r'A-Terminal.*\.(xlsx|xls)$'
-# ----------------------------------------------------------------------
+FILENAME_PATTERN_TERMINAL = r'A-Terminal.*\.(xlsx|xls|csv)$'
 
-# ✅ ФИНАЛЬНЫЙ СЛОВАРЬ СОПОСТАВЛЕНИЯ (на основе вашего списка столбцов)
-# Ключи - точные названия из Excel-файла
-TERMINAL_COLUMN_MAPPING = {
-    'Контейнер': 'container_number',
-    'Клиент': 'client',
-    'Состояние': 'status',     # Используем "Состояние" вместо "Статус"
-    'Принят': 'accept_datetime', # Временный ключ, т.к. в БД два поля (date и time)
+# --- ПАТТЕРНЫ ЛИСТОВ (для Excel) ---
+# Если файл многостраничный, ищем эти листы. Если CSV или один лист - не используется.
+SHEET_PATTERN_ARRIVAL = r'(arrival|прибытие|принят|поступление)'
+SHEET_PATTERN_DISPATCH = r'(dispatch|отправка|отправлен|отгрузка)'
+
+# ==========================================
+# === КАРТА КОЛОНОК (Source Header -> DB Field) ===
+# ==========================================
+
+# 1. Идентификация
+COL_CONTAINER = ['Контейнер', 'Container']
+
+# 2. Общие данные (Arrival Sheet / Левая часть таблицы)
+MAPPING_ARRIVAL = {
+    'terminal': ['Терминал', 'Terminal'],
+    'zone': ['Зона', 'Zone'],
+    'client': ['Клиент', 'Client'],
+    'inn': ['ИНН', 'INN'],
+    'short_name': ['Краткое наименование', 'Short Name'],
+    'stock': ['Сток', 'Stock'],
+    'customs_mode': ['Таможенный режим', 'Customs'],
+    'direction': ['Направление', 'Direction'],
+    'container_type': ['Тип', 'Type'],
+    'size': ['Размер', 'Size'],
+    'payload': ['Грузоподъёмность', 'Payload'],
+    'tare': ['Тара', 'Tare'],
+    'manufacture_year': ['Год изготовления', 'Year'],
+    'weight_client': ['Брутто клиента', 'Client Gross'],
+    'weight_terminal': ['Брутто терминала', 'Terminal Gross'],
+    'state': ['Состояние', 'State'],
+    'cargo': ['Груз', 'Cargo'],
+    'temperature': ['Температура', 'Temp'],
+    'seals': ['Пломбы', 'Seals'],
+    
+    # Вход (Левые колонки)
+    'in_id': ['Id', 'ID'], 
+    'in_transport': ['Транспорт', 'Transport'],
+    'in_number': ['Номер вагона | Номер тягача', 'Transport No'],
+    'in_driver': ['Станция | Водитель', 'Station/Driver']
 }
+COL_DATE_IN = ['Принят', 'Date In'] 
 
-# --- Вспомогательные функции ---
+# 3. Данные отправки (Правая часть таблицы)
+# В CSV колонки дублируются. Pandas добавляет суффикс .1 ко вторым экземплярам.
+# Мы ищем именно эти суффиксы для блока отправки.
+MAPPING_DISPATCH = {
+    'order_number': ['Номер заказа', 'Order No'],
+    
+    # Правые колонки (с суффиксом .1 или просто дубли в сыром виде)
+    'out_id': ['Id.1', 'ID.1', 'Id_1'], 
+    'out_transport': ['Транспорт.1', 'Transport.1', 'Транспорт_1'],
+    'out_number': ['Номер вагона | Номер тягача.1', 'Transport No.1'],
+    'out_driver': ['Станция | Водитель.1', 'Station/Driver.1'],
+    
+    'release': ['Релиз', 'Release'],
+    'carrier': ['Перевозчик', 'Carrier'],
+    'manager': ['Менеджер', 'Manager'],
+    'comment': ['Примечание', 'Comment']
+}
+COL_DATE_OUT = ['Отправлен', 'Date Out'] 
+
+
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 def _get_vladivostok_date_str(days_offset: int = 0) -> str:
-    """
-    Возвращает дату во Владивостоке в формате ДД.ММ.ГГГГ со смещением.
-    """
     tz = ZoneInfo("Asia/Vladivostok")
     target_date = datetime.now(tz) - timedelta(days=days_offset)
     return target_date.strftime("%d.%m.%Y")
 
-def extract_train_code_from_filename(filename: str) -> str | None:
-    """Извлекаем код поезда из имени файла."""
-    if not filename: return None
-    base = os.path.basename(filename)
-    name, _ = os.path.splitext(base)
-    m = re.search(r"([КK]\s*\d{2}[-–— ]?\s*\d{3})", name, flags=re.IGNORECASE)
-    if not m: return None
-    code = m.group(1).upper().replace("K", "К").replace(" ", "").replace("–", "-").replace("—", "-")
-    return code
-
-
 def normalize_container(value) -> str | None:
-    """
-    Нормализует номер контейнера: убирает пробелы, приводит к верхнему регистру, убирает .0
-    """
     if pd.isna(value) or value is None: return None
     s = str(value).strip().upper()
     if s.endswith('.0'): s = s[:-2]
-    # Дополнительно убираем все небуквенно-цифровые символы на всякий случай
+    # Оставляем только латиницу и цифры
     s = re.sub(r'[^A-Z0-9]', '', s)
-    return s if s else None
-
-
-def find_container_column(df: pd.DataFrame) -> str | None:
-    """Пытаемся найти колонку с номерами контейнеров."""
-    candidates = ["контейнер", "container", "container no", "container no.",
-                  "номер контейнера", "№ контейнера", "номенклатура"]
-
-    # Ищем точное совпадение "Контейнер" сначала
-    for col in df.columns:
-        if str(col).strip() == "Контейнер":
-            return col
-
-    # Если не нашли, ищем по вариантам
-    # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 115): Гарантируем, что оба элемента - строки.
-    cols_norm = {str(c).strip().lower(): str(c) for c in df.columns}
-    for cand in candidates:
-        if cand in cols_norm:
-             return cols_norm[cand]
-
-    # Ищем по частичному совпадению (менее надежно)
-    for col in df.columns:
-        name = str(col).strip().lower()
-        if name.startswith("contain") or "контейнер" in name:
-            return col
-
-    return None
+    if len(s) < 4: return None
+    return s
 
 def normalize_client_name(value) -> str | None:
-    """Нормализует имя клиента."""
     if pd.isna(value) or value is None: return None
     s = str(value).strip()
     return s if s else None
 
+def clean_value(val):
+    if pd.isna(val) or val is None: return None
+    if isinstance(val, str): return val.strip()
+    return val
 
-def _read_terminal_excel_data(filepath: str) -> Optional[pd.DataFrame]:
-    """Считывает данные из Excel-файла отчета A-Terminal, ища лист 'Loaded...'."""
-    try:
-        xl = pd.ExcelFile(filepath)
-        sheet_names = xl.sheet_names
-        target_sheet_name = None
-
-        # 1. Поиск листа, начинающегося с "Loaded"
-        for name in sheet_names:
-            if name.strip().lower().startswith('loaded'):
-                target_sheet_name = name
-                break
-
-        if not target_sheet_name:
-            logger.warning(f"[Terminal Report] Лист, начинающийся с 'Loaded', не найден в файле {os.path.basename(filepath)}. Пропускаю.")
-            return None
-
-        # 2. Считывание данных с найденного листа
-        # header=0 означает, что первая строка - это заголовки
-        df = pd.read_excel(xl, sheet_name=target_sheet_name, header=0)
-
-        # 3. Очистка имен колонок (убираем только лишние пробелы)
-        df.columns = [str(c).strip() for c in df.columns] 
-        df = df.dropna(how='all') # Удаляем полностью пустые строки
-
-        # 4. Выбираем только нужные столбцы из TERMINAL_COLUMN_MAPPING
-        required_cols = list(TERMINAL_COLUMN_MAPPING.keys())
+def find_col(df: pd.DataFrame, candidates: List[str]) -> str | None:
+    """Ищет колонку в DataFrame, игнорируя регистр."""
+    df_cols_lower = {str(c).strip().lower(): str(c) for c in df.columns}
+    for cand in candidates:
+        cand_lower = cand.lower()
         
-        # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 183): Создаем список строковых имен колонок для безопасного сравнения
-        df_columns_str = [str(c) for c in df.columns] 
-        existing_required_cols = [col for col in required_cols if col in df_columns_str] 
+        # 1. Точное совпадение
+        if cand_lower in df_cols_lower:
+            return df_cols_lower[cand_lower]
+            
+        # 2. Совпадение с суффиксом .1 (для дубликатов)
+        if f"{cand_lower}.1" in df_cols_lower:
+             return df_cols_lower[f"{cand_lower}.1"]
+             
+    return None
 
-        # Проверяем наличие 'Контейнер'
-        if 'Контейнер' not in existing_required_cols:
-             logger.error(f"❌ [Terminal Report] В файле {os.path.basename(filepath)} на листе '{target_sheet_name}' не найден столбец 'Контейнер'.")
-             return None
+def parse_datetime(val) -> Tuple[Optional[date], Optional[time]]:
+    """Пытается распарсить дату/время из любого формата."""
+    if pd.isna(val) or val is None or str(val).strip() == '': return None, None
+    try:
+        # Если pandas уже распознал как datetime
+        if isinstance(val, datetime): return val.date(), val.time()
+        
+        val_str = str(val).strip()
+        # Пробуем разные форматы строк
+        for fmt in ['%Y-%m-%d %H:%M:%S', '%d.%m.%Y %H:%M:%S', '%d.%m.%Y %H:%M', '%Y-%m-%d', '%d.%m.%Y']:
+            try:
+                dt = datetime.strptime(val_str, fmt)
+                return dt.date(), dt.time()
+            except ValueError: pass
+            
+        # Fallback: pandas to_datetime
+        dt = pd.to_datetime(val, dayfirst=True)
+        return dt.date(), dt.time()
+    except: return None, None
 
-        df = df[existing_required_cols] 
+def extract_train_from_string(text: str) -> str | None:
+    """Ищет номер поезда (К25-103) в строке."""
+    if not isinstance(text, str): return None
+    # Ищем К/K + цифры. Игнорируем регистр.
+    match = re.search(r'([КK]\s*\d{2}[-–—\s]?\d{3})', text, re.IGNORECASE)
+    if match:
+        # Нормализуем: Латинскую K меняем на Русскую, убираем пробелы
+        raw = match.group(1).upper().replace('K', 'К').replace(' ', '')
+        # Добавляем дефис если нет (К25103 -> К25-103)
+        if '-' not in raw and len(raw) >= 5: 
+            raw = raw[:3] + '-' + raw[3:]
+        return raw
+    return None
 
-        return df
-    except Exception as e:
-        logger.error(f"❌ Ошибка чтения Excel-файла A-Terminal {filepath}: {e}", exc_info=True)
-        return None
+# --- ГЛАВНАЯ ЛОГИКА ОБРАБОТКИ ---
 
+async def _process_full_table(session, df: pd.DataFrame, stats: Dict[str, int]):
+    """
+    Обрабатывает DataFrame, содержащий ВСЕ колонки (и Arrival, и Dispatch).
+    """
+    # 1. Ищем главную колонку - Контейнер
+    col_cont = find_col(df, COL_CONTAINER)
+    if not col_cont:
+        logger.warning(f"❌ В файле не найдена колонка 'Контейнер'. Заголовки: {list(df.columns)}")
+        return
+
+    # 2. Определяем реальные имена колонок для ARRIVAL
+    map_arr_actual = {}
+    for db_field, candidates in MAPPING_ARRIVAL.items():
+        found = find_col(df, candidates)
+        if found: map_arr_actual[db_field] = found
+    col_date_in = find_col(df, COL_DATE_IN)
+
+    # 3. Определяем реальные имена колонок для DISPATCH
+    map_disp_actual = {}
+    for db_field, candidates in MAPPING_DISPATCH.items():
+        found = find_col(df, candidates)
+        if found: map_disp_actual[db_field] = found
+    col_date_out = find_col(df, COL_DATE_OUT)
+
+    # Превращаем в список словарей для итерации
+    records = df.to_dict('records')
+    
+    logger.info(f"Найдено строк данных: {len(records)}")
+
+    for row in records:
+        container_no = normalize_container(row.get(col_cont))
+        if not container_no: continue
+
+        data = {}
+
+        # --- СБОР ДАННЫХ ПРИБЫТИЯ ---
+        for db_field, excel_col in map_arr_actual.items():
+            val = clean_value(row.get(excel_col))
+            if val is not None: data[db_field] = val
+            
+        if col_date_in:
+            d, t = parse_datetime(row.get(col_date_in))
+            if d: 
+                data['accept_date'] = d
+                data['accept_time'] = t
+
+        # --- СБОР ДАННЫХ ОТПРАВКИ ---
+        for db_field, excel_col in map_disp_actual.items():
+            val = clean_value(row.get(excel_col))
+            if val is not None: data[db_field] = val
+            
+        # Логика даты отправки и статуса
+        if col_date_out:
+            d_out, t_out = parse_datetime(row.get(col_date_out))
+            if d_out:
+                data['dispatch_date'] = d_out
+                data['dispatch_time'] = t_out
+                data['status'] = 'ОТГРУЖЕН'
+            else:
+                data['status'] = 'ПРИНЯТ' # Если даты нет, значит еще на терминале
+        else:
+            data['status'] = 'ПРИНЯТ'
+
+        # Извлекаем поезд из номера заказа, если он есть
+        if 'order_number' in data and data['order_number']:
+            train_val = extract_train_from_string(str(data['order_number']))
+            if train_val: 
+                data['train'] = train_val
+            # Fallback: иногда поезд пишут в Примечании
+            elif 'comment' in data and data['comment']:
+                 train_val_comment = extract_train_from_string(str(data['comment']))
+                 if train_val_comment: data['train'] = train_val_comment
+
+        # --- СОХРАНЕНИЕ В БД (Upsert) ---
+        
+        # 1. Пробуем обновить (UPDATE), если контейнер уже есть
+        stmt_update = update(TerminalContainer).where(
+            TerminalContainer.container_number == container_no
+        ).values(**data)
+        
+        res = await session.execute(stmt_update)
+        
+        if res.rowcount > 0:
+            stats['updated'] += 1
+        else:
+            # 2. Если не нашли, создаем новый (INSERT)
+            data['container_number'] = container_no
+            try:
+                await session.execute(insert(TerminalContainer).values(**data))
+                stats['added'] += 1
+            except SQLAlchemyError as e:
+                # В случае гонки или дубля
+                await session.rollback()
+                continue
 
 async def process_terminal_report_file(filepath: str) -> Dict[str, int]:
-    """
-    Обрабатывает один файл отчета терминала, обновляя или создавая записи в TerminalContainer.
-    """
-    logger.info(f"[Terminal Report] Начало обработки файла: {os.path.basename(filepath)}")
-
-    df = await asyncio.to_thread(_read_terminal_excel_data, filepath)
-    if df is None or df.empty:
-        logger.warning(f"[Terminal Report] Файл {os.path.basename(filepath)} пуст, не содержит данных или нужных столбцов.")
-        return {'updated': 0, 'added': 0}
-
-    records_to_process = df.to_dict('records')
-    updated_count = 0
-    added_count = 0
-
-    async with SessionLocal() as session:
-        async with session.begin():
-            for record in records_to_process:
-                container_number_raw = record.get('Контейнер')
-
-                # ✅ Используем `normalize_container` для стандартизации номера
-                container_number = normalize_container(container_number_raw)
-
-                if not container_number:
-                    continue
-
-                cleaned_record_for_db = {}
-                # key_excel - это "Контейнер", "Клиент", "Состояние", "Принят"
-                for key_excel, value in record.items():
-                    # Проверяем, что ключ есть в маппинге и значение не пустое
-                    if key_excel in TERMINAL_COLUMN_MAPPING and pd.notna(value):
-
-                        mapped_key_db = TERMINAL_COLUMN_MAPPING[key_excel]
-
-                        # ✅ Особая обработка даты/времени из "Принят"
-                        if mapped_key_db == 'accept_datetime':
-                            try:
-                                # Пытаемся распознать дату и время
-                                if isinstance(value, datetime):
-                                    cleaned_record_for_db['accept_date'] = value.date()
-                                    cleaned_record_for_db['accept_time'] = value.time()
-                                elif isinstance(value, date): # Если только дата
-                                    cleaned_record_for_db['accept_date'] = value
-                                elif isinstance(value, time): # Если только время
-                                     cleaned_record_for_db['accept_time'] = value
-                                elif isinstance(value, (str, int, float)): # Пытаемся распарсить строку/число
-                                    # Эта строка может потребовать адаптации под ваш точный формат в Excel
-                                    dt = pd.to_datetime(value)
-                                    cleaned_record_for_db['accept_date'] = dt.date()
-                                    cleaned_record_for_db['accept_time'] = dt.time()
-                            except Exception as dt_err:
-                                logger.warning(f"Не удалось распознать дату/время '{value}' для {container_number}: {dt_err}")
-                            continue # Переходим к следующему полю
-
-                        # Пропускаем 'container_number', он пойдет отдельно
-                        elif mapped_key_db == 'container_number':
-                            continue
-
-                        # Нормализуем клиента
-                        elif mapped_key_db == 'client':
-                            cleaned_record_for_db[mapped_key_db] = normalize_client_name(value)
-                        # Остальные поля
-                        else:
-                            cleaned_record_for_db[mapped_key_db] = value
-
-                # Пропускаем, если в словаре нет ничего полезного
-                if not cleaned_record_for_db:
-                    continue
-
-                # 1. Попытка обновить (UPDATE) существующий контейнер
-                update_stmt = update(TerminalContainer).where(
-                    TerminalContainer.container_number == container_number
-                ).values(**cleaned_record_for_db)
-
-                result = await session.execute(update_stmt)
-
-                if result.rowcount > 0:
-                    updated_count += 1
-                else:
-                    # 2. Если не обновили (не нашли), то вставляем новую запись (INSERT)
-                    # Добавляем container_number, который был обработан отдельно
-                    cleaned_record_for_db['container_number'] = container_number
-                    insert_stmt = insert(TerminalContainer).values(**cleaned_record_for_db)
-                    try:
-                        await session.execute(insert_stmt)
-                        added_count += 1
-                    except SQLAlchemyError as e:
-                        # Ловим ошибку, если контейнер уже существует (например, из-за гонки потоков)
-                        await session.rollback() # Откатываем транзакцию для этой строки
-                        logger.warning(f"Ошибка INSERT для {container_number} (возможно, уже существует): {e}. Попытка UPDATE...")
-                        # Попробуем обновить еще раз на всякий случай
-                        try:
-                             update_stmt_retry = update(TerminalContainer).where(
-                                 TerminalContainer.container_number == container_number
-                             ).values(**cleaned_record_for_db)
-                             result_retry = await session.execute(update_stmt_retry)
-                             if result_retry.rowcount > 0:
-                                 updated_count += 1
-                                 logger.info(f"Контейнер {container_number} успешно обновлен после ошибки INSERT.")
-                             else:
-                                 logger.error(f"Не удалось ни вставить, ни обновить {container_number} после ошибки INSERT.")
-                        except Exception as update_err:
-                             logger.error(f"Ошибка при повторном UPDATE для {container_number}: {update_err}")
-                        await session.begin() # Начинаем новую "мини-транзакцию" для следующей строки
-
-        logger.info(f"✅ [Terminal Report] Обновление завершено. Добавлено: {added_count}, Обновлено: {updated_count}.")
-
-    return {'updated': updated_count, 'added': added_count}
-
-
-# --- Функции импорта файла поезда ---
-
-async def _collect_containers_from_excel(file_path: str) -> Dict[str, str]:
-    """
-    Читает Excel (для файла поезда) и возвращает словарь {container_number: client_name}.
-    """
-    xl = pd.ExcelFile(file_path)
-    container_client_map: Dict[str, str] = {}
-
-    for sheet in xl.sheet_names:
-        try:
-            df = pd.read_excel(xl, sheet_name=sheet)
-            df.columns = [str(c).strip() for c in df.columns]
-
-            container_col_header = find_container_column(df) # Ищет 'Контейнер' и другие варианты
-
-            CLIENT_COLUMN_INDEX = 11 # L-колонка для клиента (индекс 11)
-            if CLIENT_COLUMN_INDEX >= len(df.columns):
-                logger.warning(f"[train_importer] На листе '{sheet}' нет колонки {CLIENT_COLUMN_INDEX+1} (Клиент). Пропускаю.")
-                continue
-
-            # Получаем имя столбца клиента по индексу
-            client_col_header = df.columns[CLIENT_COLUMN_INDEX]
-
-            if not container_col_header:
-                logger.warning(f"[train_importer] На листе '{sheet}' не найдена колонка контейнеров ('Контейнер' или похожая). Пропускаю.")
-                continue
-
-            for _, row in df.iterrows():
-                # ✅ Используем normalize_container для стандартизации
-                cn = normalize_container(row.get(container_col_header))
-                client = normalize_client_name(row.get(client_col_header))
-
-                if cn and client:
-                    # ✅ ИСПРАВЛЕНИЕ PYLANCE (строка 391): Гарантируем, что значение - str.
-                    container_client_map[cn] = str(client) 
-        except Exception as e:
-            logger.error(f"[train_importer] Ошибка при чтении листа '{sheet}': {e}", exc_info=True)
-
-    return container_client_map
-
-
-async def import_train_from_excel(src_file_path: str) -> Tuple[int, int, str]:
-    """Проставляет номер поезда и клиента в terminal_containers."""
-    train_code = extract_train_code_from_filename(src_file_path)
-    if not train_code:
-        raise ValueError(f"Не удалось извлечь номер поезда из имени файла: {os.path.basename(src_file_path)}")
-
-    container_client_map = await _collect_containers_from_excel(src_file_path)
-    total_in_file = len(container_client_map)
-
-    if total_in_file == 0:
-        logger.warning(f"[train_importer] В файле поезда '{os.path.basename(src_file_path)}' нет распознанных контейнеров.")
-        return 0, 0, train_code
-
-    updated = 0
+    logger.info(f"[Import] Запуск обработки файла: {os.path.basename(filepath)}")
+    stats = {'updated': 0, 'added': 0}
+    
     try:
+        # Читаем файл. Поддержка CSV и Excel.
+        if filepath.lower().endswith('.csv'):
+            # Читаем CSV (авто-детект разделителя, или пробуем стандартные)
+            try:
+                df = pd.read_csv(filepath, sep=None, engine='python')
+            except:
+                df = pd.read_csv(filepath, sep=';') # Пробуем ; если авто не сработал
+        else:
+            # Читаем Excel
+            xl = pd.ExcelFile(filepath)
+            # Берем первый лист (обычно он и нужен)
+            df = pd.read_excel(xl, sheet_name=0)
+
         async with SessionLocal() as session:
-            async with session.begin(): # Используем транзакцию
-                # `cn` здесь уже нормализован (UPPER, no spaces, no .0)
-                for cn, client_name in container_client_map.items():
+            async with session.begin():
+                logger.info(f"Таблица загружена ({len(df)} строк). Начинаю импорт в БД...")
+                await _process_full_table(session, df, stats)
 
-                    # `client_name` также нормализован (strip)
-                    update_stmt = update(TerminalContainer).where(
-                        TerminalContainer.container_number == cn
-                    ).values(
-                        train=train_code,
-                        client=client_name
-                    )
+        logger.info(f"✅ Импорт завершен. Добавлено: {stats['added']}, Обновлено: {stats['updated']}")
+        return stats
 
-                    result = await session.execute(update_stmt)
-                    updated += result.rowcount
-
-            # Коммит произойдет автоматически
-
-        logger.info(f"✅ [train_importer] Поезд {train_code}: обновлено {updated} из {total_in_file} (найденных в файле).")
-        return updated, total_in_file, train_code
-
-    except SQLAlchemyError as e:
-        logger.error(f"[train_importer] Ошибка БД при импорте поезда {train_code}: {e}", exc_info=True)
-        raise
     except Exception as e:
-        logger.error(f"[train_importer] Неожиданная ошибка при импорте поезда {train_code}: {e}", exc_info=True)
-        raise
+        logger.error(f"❌ Ошибка импорта: {e}", exc_info=True)
+        return stats
 
+# --- Совместимость с Scheduler ---
 
 async def check_and_process_terminal_report() -> Optional[Dict[str, Any]]:
     """
-    Функция для scheduler (ежедневная проверка почты).
-    Ищет отчет Executive summary за сегодня или вчера.
+    Функция для планировщика. Скачивает файл с почты и запускает процессинг.
     """
-    logger.info("[Terminal Import] Проверка почты на наличие отчета терминала...")
-    filepath = None
-    stats = None
+    logger.info("[Scheduler] Поиск отчета терминала (IMAP)...")
     
-    # 1. Поиск отчета за сегодня
-    today_str = _get_vladivostok_date_str(days_offset=0)
-    # Используем fr-строку для корректной обработки \s*
-    subject_today = fr"{SUBJECT_FILTER_TERMINAL}\s*{today_str}"
-    logger.info(f"Ищу '{subject_today}'...")
-    filepath = await asyncio.to_thread(
-        imap_service.download_latest_attachment,
-        subject_filter=subject_today,
-        sender_filter=SENDER_FILTER_TERMINAL,
-        filename_pattern=FILENAME_PATTERN_TERMINAL
+    # Ищем письмо с темой, содержащей 'Executive summary'
+    fp = await asyncio.to_thread(
+        imap_service.download_latest_attachment, 
+        fr"{SUBJECT_FILTER_TERMINAL}", 
+        SENDER_FILTER_TERMINAL, 
+        FILENAME_PATTERN_TERMINAL
     )
-
-    # 2. Поиск отчета за вчера, если сегодня не найден
-    if not filepath:
-        yesterday_str = _get_vladivostok_date_str(days_offset=1)
-        # Используем fr-строку для корректной обработки \s*
-        subject_yesterday = fr"{SUBJECT_FILTER_TERMINAL}\s*{yesterday_str}"
-        logger.info(f"Отчет за сегодня не найден. Ищу '{subject_yesterday}'...")
-        filepath = await asyncio.to_thread(
-            imap_service.download_latest_attachment,
-            subject_filter=subject_yesterday,
-            sender_filter=SENDER_FILTER_TERMINAL,
-            filename_pattern=FILENAME_PATTERN_TERMINAL
-        )
-
-    if not filepath:
-        logger.info("Актуальный файл 'Executive summary' не найден.")
-        return {'file_name': 'Not found', 'sheets_processed': 0, 'total_added': 0}
-
+    
+    if not fp: 
+        logger.info("Новых отчетов на почте не найдено.")
+        return {'file_name': 'Not found'}
+    
     try:
-        logger.info(f"Найден файл {filepath}. Запускаю импорт в terminal_containers...")
-        # Вызываем основную логику обработки файла
-        stats = await process_terminal_report_file(filepath) 
-        
-        # Добавляем имя файла в статистику для логирования/уведомления
-        stats['file_name'] = os.path.basename(filepath)
-        stats['sheets_processed'] = 1 
-        stats['total_added'] = stats.get('added', 0)
-        
-        logger.info(f"Импорт из '{os.path.basename(filepath)}' завершен.")
+        stats = await process_terminal_report_file(fp)
+        stats['file_name'] = os.path.basename(fp)
         return stats
-    except Exception as e:
-        logger.error(f"❌ Ошибка при импорте файла '{filepath}': {e}", exc_info=True)
-        # Бросаем исключение, чтобы job_daily_terminal_import уведомил админа
-        raise
     finally:
-        if filepath and os.path.exists(filepath):
-            os.remove(filepath)
+        if fp and os.path.exists(fp): os.remove(fp)
+
+# Заглушки для обратной совместимости (если где-то вызываются)
+async def import_train_from_excel(src): return 0,0,""
+async def _collect_containers_from_excel(src): return {}
