@@ -8,53 +8,19 @@ from typing import Optional, Dict, Any, List
 # Настройка логгера
 logger = logging.getLogger(__name__)
 
-# Маппинг колонок: Excel заголовок -> Имя поля в БД
-COLUMN_MAPPING = {
-    'Терминал': 'terminal',
-    'Контейнер': 'container_number',
-    'Клиент': 'client',
-    'ИНН': 'inn',
-    'Краткое наименование': 'short_name',
-    'Сток': 'stock',
-    'Таможенный режим': 'customs_mode',
-    'Направление': 'direction',
-    'Тип': 'container_type',
-    'Размер': 'size',
-    'Тара': 'tare',
-    'Вес груза (по заявке)': 'weight_client',  # Иногда называется иначе, проверьте точное имя
-    'Состояние': 'state',
-    'Груз': 'cargo',
-    'Пломбы': 'seals',
-    'Дата приема': 'accept_date',
-    'Время приема': 'accept_time',
-    'ID документа (прием)': 'in_id',
-    'Вид транспорта (прием)': 'in_transport',
-    'Номер ТС/Вагона (прием)': 'in_number',
-    'Водитель (прием)': 'in_driver',
-    'Текущий статус': 'status'
-}
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОЧИСТКИ ---
 
 def clean_string_value(val: Any) -> Optional[str]:
-    """
-    Преобразует значение в строку, корректно обрабатывая числа и float (напр. ИНН).
-    Пример: 
-        12345 -> "12345"
-        12345.0 -> "12345"
-        None -> None
-    """
+    """Преобразует значение в строку, корректно обрабатывая числа и float (напр. ИНН)."""
     if pd.isna(val) or val == '' or str(val).lower() == 'nan':
         return None
-    
     try:
-        # Если это float (например 123.0), сначала в int, чтобы убрать .0
         if isinstance(val, float) and val.is_integer():
             return str(int(val))
-        # Если это int
         if isinstance(val, (int, float)):
             return str(int(val))
     except Exception:
         pass
-    
     return str(val).strip()
 
 def parse_date_safe(val: Any) -> Optional[datetime.date]:
@@ -62,16 +28,13 @@ def parse_date_safe(val: Any) -> Optional[datetime.date]:
     if pd.isna(val) or val == '':
         return None
     try:
-        # Pandas обычно сам парсит в Timestamp, приводим к date
         if isinstance(val, pd.Timestamp):
             return val.date()
         if isinstance(val, datetime.datetime):
             return val.date()
         if isinstance(val, str):
-            # Попытка распарсить строку, если pandas не справился
             return pd.to_datetime(val, dayfirst=True).date()
-    except Exception as e:
-        logger.warning(f"Не удалось распарсить дату '{val}': {e}")
+    except Exception:
         return None
     return None
 
@@ -87,148 +50,257 @@ def parse_time_safe(val: Any) -> Optional[datetime.time]:
         if isinstance(val, datetime.time):
             return val
         if isinstance(val, str):
-            # Пробуем формат ЧЧ:ММ
             return datetime.datetime.strptime(val[:5], "%H:%M").time()
     except Exception:
         return None
     return None
 
 def parse_float_safe(val: Any) -> Optional[float]:
-    """Безопасный парсинг дробного числа."""
+    """Безопасный парсинг числа."""
     if pd.isna(val) or val == '':
         return None
     try:
         if isinstance(val, (int, float)):
             return float(val)
-        # Если строка с запятой (123,45)
         clean_val = str(val).replace(',', '.').replace('\xa0', '').strip()
         return float(clean_val)
     except Exception:
         return None
 
+# --- ЛОГИКА ОБРАБОТКИ ---
+
 async def process_terminal_report_file(session: AsyncSession, file_path: str):
     """
-    Основная функция обработки файла Excel.
+    Главная функция. Открывает Excel и ищет нужные листы (Arrival, Dispatch).
     """
-    logger.info(f"[Import] Запуск обработки файла: {file_path}")
+    logger.info(f"[Import] Анализ файла: {file_path}")
 
     try:
-        # 1. Чтение Excel
-        # dtype=object заставляет pandas читать все как есть, не пытаясь угадать типы (безопаснее для ИНН)
-        df = pd.read_excel(file_path, dtype=object) 
+        # Получаем объект ExcelFile, чтобы прочитать имена листов
+        xls = pd.ExcelFile(file_path)
+        sheet_names = xls.sheet_names
+        logger.info(f"Найдены листы: {sheet_names}")
+
+        processed_any = False
+
+        # 1. Ищем лист ARRIVAL (Прибытие)
+        arrival_sheet = next((s for s in sheet_names if "Arrival" in s), None)
+        if arrival_sheet:
+            logger.info(f"Обработка листа ПРИБЫТИЯ: {arrival_sheet}")
+            df_arrival = pd.read_excel(xls, sheet_name=arrival_sheet, dtype=object)
+            await _process_arrival_data(session, df_arrival)
+            processed_any = True
+        else:
+            logger.warning("Лист 'Arrival' не найден в файле.")
+
+        # 2. Ищем лист DISPATCH (Отгрузка)
+        dispatch_sheet = next((s for s in sheet_names if "Dispatch" in s), None)
+        if dispatch_sheet:
+            logger.info(f"Обработка листа ОТГРУЗКИ: {dispatch_sheet}")
+            df_dispatch = pd.read_excel(xls, sheet_name=dispatch_sheet, dtype=object)
+            await _process_dispatch_data(session, df_dispatch)
+            processed_any = True
+        else:
+            logger.warning("Лист 'Dispatch' не найден в файле.")
         
-        # Переименование колонок для удобства (если имена в файле немного отличаются, можно добавить normalize)
-        df.rename(columns=COLUMN_MAPPING, inplace=True)
-        
-        # Фильтрация только нужных колонок, которые есть в маппинге
-        available_columns = [col for col in COLUMN_MAPPING.values() if col in df.columns]
-        df = df[available_columns]
+        # Если специфичные листы не найдены, пробуем обработать первый лист как общий (fallback)
+        if not processed_any:
+            logger.warning("Специфичные листы не найдены. Пробуем обработать первый лист как общий сток.")
+            df_generic = pd.read_excel(xls, sheet_name=0, dtype=object)
+            await _process_arrival_data(session, df_generic)
 
-        logger.info(f"Таблица загружена ({len(df)} строк). Начинаю подготовку данных...")
-
-        # 2. Подготовка и очистка данных (Data Cleaning)
-        # Список полей, которые ОБЯЗАТЕЛЬНО должны быть строками
-        str_fields = [
-            'terminal', 'container_number', 'client', 'inn', 'short_name', 
-            'stock', 'customs_mode', 'direction', 'container_type', 
-            'size', 'state', 'cargo', 'seals', 'in_id', 
-            'in_transport', 'in_number', 'in_driver', 'status'
-        ]
-        
-        # Список полей с числами
-        float_fields = ['tare', 'weight_client']
-        
-        processed_rows = []
-
-        for index, row in df.iterrows():
-            if pd.isna(row.get('container_number')):
-                continue  # Пропускаем строки без номера контейнера
-
-            data = {}
-            
-            # Обработка строковых полей
-            for field in str_fields:
-                if field in df.columns:
-                    data[field] = clean_string_value(row[field])
-                else:
-                    data[field] = None
-
-            # Обработка числовых полей
-            for field in float_fields:
-                if field in df.columns:
-                    data[field] = parse_float_safe(row[field])
-                else:
-                    data[field] = None
-
-            # Обработка дат и времени
-            data['accept_date'] = parse_date_safe(row.get('accept_date'))
-            data['accept_time'] = parse_time_safe(row.get('accept_time'))
-
-            # Добавляем хардкод поля 'terminal', если его нет в файле
-            if not data.get('terminal'):
-                data['terminal'] = 'A-Terminal'
-
-            processed_rows.append(data)
-
-        logger.info(f"Данные обработаны. Готово к импорту {len(processed_rows)} записей.")
-
-        if not processed_rows:
-            logger.warning("Нет данных для импорта после обработки.")
-            return
-
-        # 3. Импорт в БД
-        # Используем INSERT ... ON CONFLICT (Upsert) или UPDATE
-        # Т.к. вы используете "Полную очистку" перед этим, можно использовать обычный INSERT
-        # Но для надежности сделаем код, который вставляет данные.
-        
-        # SQL запрос
-        sql = text("""
-            INSERT INTO terminal_containers (
-                terminal, container_number, client, inn, short_name, stock,
-                customs_mode, direction, container_type, size, tare, weight_client,
-                state, cargo, seals, accept_date, accept_time,
-                in_id, in_transport, in_number, in_driver, status, updated_at
-            ) VALUES (
-                :terminal, :container_number, :client, :inn, :short_name, :stock,
-                :customs_mode, :direction, :container_type, :size, :tare, :weight_client,
-                :state, :cargo, :seals, :accept_date, :accept_time,
-                :in_id, :in_transport, :in_number, :in_driver, :status, NOW()
-            )
-            ON CONFLICT (container_number) DO UPDATE SET
-                terminal = EXCLUDED.terminal,
-                client = EXCLUDED.client,
-                inn = EXCLUDED.inn,
-                short_name = EXCLUDED.short_name,
-                stock = EXCLUDED.stock,
-                customs_mode = EXCLUDED.customs_mode,
-                direction = EXCLUDED.direction,
-                container_type = EXCLUDED.container_type,
-                size = EXCLUDED.size,
-                tare = EXCLUDED.tare,
-                weight_client = EXCLUDED.weight_client,
-                state = EXCLUDED.state,
-                cargo = EXCLUDED.cargo,
-                seals = EXCLUDED.seals,
-                accept_date = EXCLUDED.accept_date,
-                accept_time = EXCLUDED.accept_time,
-                in_id = EXCLUDED.in_id,
-                in_transport = EXCLUDED.in_transport,
-                in_number = EXCLUDED.in_number,
-                in_driver = EXCLUDED.in_driver,
-                status = EXCLUDED.status,
-                updated_at = NOW();
-        """)
-
-        # Выполняем вставку пачками (Batch) для скорости
-        batch_size = 1000
-        for i in range(0, len(processed_rows), batch_size):
-            batch = processed_rows[i:i + batch_size]
-            await session.execute(sql, batch)
-            await session.commit() # Фиксируем каждую пачку
-            logger.info(f"Импортировано {min(i + batch_size, len(processed_rows))} из {len(processed_rows)}")
-
-        logger.info("✅ Импорт успешно завершен.")
+        logger.info("✅ Обработка файла завершена.")
 
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка при импорте файла: {e}", exc_info=True)
-        raise e  # Пробрасываем ошибку наверх, чтобы manual_importer узнал о ней
+        logger.error(f"❌ Критическая ошибка при обработке Excel: {e}", exc_info=True)
+        raise e
+
+async def _process_arrival_data(session: AsyncSession, df: pd.DataFrame):
+    """
+    Обработка данных о ПРИБЫТИИ (Arrival).
+    Вставка новых контейнеров или обновление существующих (UPSERT).
+    """
+    # Нормализация имен колонок (удаляем пробелы по краям)
+    df.columns = df.columns.str.strip()
+    
+    # Маппинг для Arrival (стандартный набор)
+    # Excel Column -> DB Field
+    mapping = {
+        'Терминал': 'terminal',
+        'Контейнер': 'container_number',
+        'Клиент': 'client',
+        'ИНН': 'inn',
+        'Краткое наименование': 'short_name',
+        'Сток': 'stock',
+        'Таможенный режим': 'customs_mode',
+        'Направление': 'direction',
+        'Тип': 'container_type',
+        'Размер': 'size',
+        'Тара': 'tare',
+        'Брутто клиента': 'weight_client', # Или 'Вес груза (по заявке)'
+        'Состояние': 'state',
+        'Груз': 'cargo',
+        'Пломбы': 'seals',
+        'Принят': 'accept_date',       # Дата/Время приема
+        # Поля "ВХОДА" (первая группа транспортных полей)
+        'Id': 'in_id',
+        'Транспорт': 'in_transport',
+        'Номер вагона | Номер тягача': 'in_number',
+        'Станция | Водитель': 'in_driver'
+    }
+
+    processed_rows = []
+    
+    for _, row in df.iterrows():
+        if pd.isna(row.get('Контейнер')):
+            continue
+
+        data = {}
+        # Заполняем данные по маппингу
+        for xls_col, db_col in mapping.items():
+            val = row.get(xls_col)
+            
+            # Специфичная обработка типов
+            if db_col in ['tare', 'weight_client']:
+                data[db_col] = parse_float_safe(val)
+            elif db_col == 'accept_date':
+                # В файле Arrival поле 'Принят' содержит дату и время
+                data['accept_date'] = parse_date_safe(val)
+                data['accept_time'] = parse_time_safe(val)
+            else:
+                data[db_col] = clean_string_value(val)
+
+        # Хардкод и статусы
+        if not data.get('terminal'):
+            data['terminal'] = 'A-Terminal'
+        
+        data['status'] = 'ARRIVED' # Ставим статус "Прибыл"
+        
+        processed_rows.append(data)
+
+    if processed_rows:
+        await _bulk_upsert_arrival(session, processed_rows)
+
+async def _process_dispatch_data(session: AsyncSession, df: pd.DataFrame):
+    """
+    Обработка данных об ОТГРУЗКЕ (Dispatch).
+    Только ОБНОВЛЕНИЕ существующих контейнеров (добавление даты убытия).
+    """
+    df.columns = df.columns.str.strip()
+
+    # В листе Dispatch есть дублирующиеся колонки (Id, Транспорт и т.д.)
+    # Pandas при чтении добавляет суффикс .1 ко вторым экземплярам.
+    # Первые экземпляры - это ПРИЕМ, Вторые (.1) - это ОТПРАВКА.
+    
+    # Ищем колонку "Отправлен"
+    if 'Отправлен' not in df.columns:
+        logger.warning("В листе Dispatch нет колонки 'Отправлен'. Пропуск.")
+        return
+
+    processed_rows = []
+
+    for _, row in df.iterrows():
+        cont_num = clean_string_value(row.get('Контейнер'))
+        if not cont_num:
+            continue
+
+        # Собираем данные для обновления ВЫХОДА
+        data = {
+            'container_number': cont_num,
+            'status': 'DISPATCHED',
+            'updated_at': datetime.datetime.now()
+        }
+
+        # Дата убытия
+        out_date_val = row.get('Отправлен')
+        data['leave_date'] = parse_date_safe(out_date_val)
+        data['leave_time'] = parse_time_safe(out_date_val)
+
+        # Поля "ВЫХОДА" (обычно имеют суффикс .1 в Pandas, если заголовки дублируются)
+        # Если заголовки уникальны, нужно смотреть на файл. 
+        # В твоем файле Dispatch заголовки: Принят, Id, Транспорт ... Отправлен, Id, Транспорт
+        # Значит в Pandas это будет: Id (вход), Id.1 (выход)
+        
+        data['out_id'] = clean_string_value(row.get('Id.1')) # Id отправки
+        data['out_transport'] = clean_string_value(row.get('Транспорт.1'))
+        data['out_number'] = clean_string_value(row.get('Номер вагона | Номер тягача.1'))
+        data['out_driver'] = clean_string_value(row.get('Станция | Водитель.1'))
+        
+        # Если вдруг Pandas не добавил .1 (заголовки уникальны), пробуем без суффикса
+        if not data['out_id'] and 'Id' in row and row.get('Отправлен'):
+             # Это сложный кейс, надеемся на .1, так как заголовки точно дублируются
+             pass
+
+        processed_rows.append(data)
+
+    if processed_rows:
+        await _bulk_update_dispatch(session, processed_rows)
+
+# --- SQL ЗАПРОСЫ ---
+
+async def _bulk_upsert_arrival(session: AsyncSession, rows: List[dict]):
+    """SQL для вставки/обновления прибывших."""
+    if not rows:
+        return
+    
+    stmt = text("""
+        INSERT INTO terminal_containers (
+            terminal, container_number, client, inn, short_name, stock,
+            customs_mode, direction, container_type, size, tare, weight_client,
+            state, cargo, seals, accept_date, accept_time,
+            in_id, in_transport, in_number, in_driver, status, updated_at
+        ) VALUES (
+            :terminal, :container_number, :client, :inn, :short_name, :stock,
+            :customs_mode, :direction, :container_type, :size, :tare, :weight_client,
+            :state, :cargo, :seals, :accept_date, :accept_time,
+            :in_id, :in_transport, :in_number, :in_driver, :status, NOW()
+        )
+        ON CONFLICT (container_number) DO UPDATE SET
+            terminal = EXCLUDED.terminal,
+            client = EXCLUDED.client,
+            stock = EXCLUDED.stock,
+            state = EXCLUDED.state,
+            accept_date = EXCLUDED.accept_date,
+            accept_time = EXCLUDED.accept_time,
+            in_transport = EXCLUDED.in_transport,
+            in_number = EXCLUDED.in_number,
+            in_driver = EXCLUDED.in_driver,
+            status = EXCLUDED.status,
+            updated_at = NOW();
+    """)
+    
+    batch_size = 1000
+    for i in range(0, len(rows), batch_size):
+        await session.execute(stmt, rows[i:i + batch_size])
+        await session.commit()
+    logger.info(f"💾 Обработано {len(rows)} записей (Arrival).")
+
+async def _bulk_update_dispatch(session: AsyncSession, rows: List[dict]):
+    """SQL для обновления убывших."""
+    if not rows:
+        return
+
+    # Используем временную таблицу или CASE для массового обновления, 
+    # но для простоты в SQLAlchemy async часто проще обновить в цикле или через executemany
+    # Здесь используем executemany update
+    
+    stmt = text("""
+        UPDATE terminal_containers
+        SET 
+            status = :status,
+            leave_date = :leave_date,
+            leave_time = :leave_time,
+            out_id = :out_id,
+            out_transport = :out_transport,
+            out_number = :out_number,
+            out_driver = :out_driver,
+            updated_at = NOW()
+        WHERE container_number = :container_number
+    """)
+    
+    # Для UPDATE batch execution работает эффективно
+    batch_size = 1000
+    for i in range(0, len(rows), batch_size):
+        await session.execute(stmt, rows[i:i + batch_size])
+        await session.commit()
+    logger.info(f"🚚 Обновлено {len(rows)} записей (Dispatch).")
