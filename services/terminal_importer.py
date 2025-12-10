@@ -1,12 +1,24 @@
 import logging
 import pandas as pd
 import datetime
+import os
+import asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Dict, Any, List
+from zoneinfo import ZoneInfo
+
+# --- Импорты для работы с почтой и БД ---
+from db import SessionLocal
+from services.imap_service import ImapService
+from imap_tools.query import AND
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
+
+# Папка для загрузок
+TERMINAL_DOWNLOAD_FOLDER = "download_container"
+os.makedirs(TERMINAL_DOWNLOAD_FOLDER, exist_ok=True)
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ОЧИСТКИ ---
 
@@ -67,11 +79,91 @@ def parse_float_safe(val: Any) -> Optional[float]:
     except Exception:
         return None
 
-# --- ЛОГИКА ОБРАБОТКИ ---
+def _get_vladivostok_date_str(days_offset: int = 0) -> str:
+    """Возвращает дату во Владивостоке в формате ДД.ММ.ГГГГ со смещением."""
+    try:
+        tz = ZoneInfo("Asia/Vladivostok")
+    except Exception:
+        # Fallback если ZoneInfo не настроен
+        tz = datetime.timezone(datetime.timedelta(hours=10))
+        
+    target_date = datetime.datetime.now(tz) - datetime.timedelta(days=days_offset)
+    return target_date.strftime("%d.%m.%Y")
+
+# --- ГЛАВНАЯ ФУНКЦИЯ ДЛЯ ПЛАНИРОВЩИКА ---
+
+async def check_and_process_terminal_report() -> Optional[Dict[str, Any]]:
+    """
+    Проверяет почту на наличие отчета A-Terminal (Executive summary),
+    скачивает его и запускает обработку в БД.
+    """
+    imap = ImapService()
+    filepath = None
+    
+    # 1. Поиск за СЕГОДНЯ (по Владивостоку)
+    today_str = _get_vladivostok_date_str(days_offset=0)
+    logger.info(f"[Terminal Check] Ищу 'Executive summary' за {today_str}...")
+    
+    # Критерии поиска
+    criteria_today = AND(from_="aterminal@effex.ru", subject=f"Executive summary {today_str}")
+    
+    filepath = await asyncio.to_thread(
+        imap.download_latest_attachment,
+        subject_filter=f"Executive summary {today_str}", # Используем фильтр по теме для download_latest_attachment
+        sender_filter="aterminal@effex.ru",
+        filename_pattern=r'\.xlsx$'
+    )
+
+    # 2. Если не нашли за сегодня, ищем за ВЧЕРА
+    if not filepath:
+        yesterday_str = _get_vladivostok_date_str(days_offset=1)
+        logger.info(f"[Terminal Check] За сегодня нет. Ищу за вчера ({yesterday_str})...")
+        
+        filepath = await asyncio.to_thread(
+            imap.download_latest_attachment,
+            subject_filter=f"Executive summary {yesterday_str}",
+            sender_filter="aterminal@effex.ru",
+            filename_pattern=r'\.xlsx$'
+        )
+
+    if not filepath:
+        logger.info("[Terminal Check] Актуальный файл терминала не найден.")
+        return None
+
+    # 3. Обработка найденного файла
+    stats = None
+    try:
+        logger.info(f"[Terminal Check] Файл найден: {filepath}. Запуск импорта...")
+        
+        async with SessionLocal() as session:
+            # Вызываем функцию обработки (которая уже есть в этом файле ниже)
+            await process_terminal_report_file(session, filepath)
+            # Примечание: process_terminal_report_file пока не возвращает статистику,
+            # но мы можем добавить базовый возврат здесь для логов
+            
+            stats = {
+                "file_name": os.path.basename(filepath),
+                "status": "success"
+            }
+            
+        await session.close() # На всякий случай
+        
+    except Exception as e:
+        logger.error(f"❌ [Terminal Check] Ошибка при обработке файла: {e}", exc_info=True)
+        stats = {"error": str(e)}
+    finally:
+        # Удаляем временный файл
+        if filepath and os.path.exists(filepath):
+            os.remove(filepath)
+            logger.info(f"[Terminal Check] Временный файл удален.")
+
+    return stats
+
+# --- ЛОГИКА ОБРАБОТКИ ФАЙЛА (СУЩЕСТВУЮЩАЯ) ---
 
 async def process_terminal_report_file(session: AsyncSession, file_path: str):
     """
-    Главная функция. Открывает Excel и ищет нужные листы (Arrival, Dispatch).
+    Главная функция парсинга Excel. Открывает файл и ищет нужные листы (Arrival, Dispatch).
     """
     logger.info(f"[Import] Анализ файла: {file_path}")
 
@@ -108,10 +200,12 @@ async def process_terminal_report_file(session: AsyncSession, file_path: str):
             logger.warning("Специфичные листы не найдены. Пробуем обработать первый лист как общий сток.")
             df_generic = pd.read_excel(xls, sheet_name=0, dtype=object)
             await _process_arrival_data(session, df_generic)
-
-        logger.info("✅ Обработка файла завершена.")
+        
+        await session.commit()
+        logger.info("✅ Обработка файла завершена (commit выполнен).")
 
     except Exception as e:
+        await session.rollback()
         logger.error(f"❌ Критическая ошибка при обработке Excel: {e}", exc_info=True)
         raise e
 
@@ -213,22 +307,19 @@ async def _process_dispatch_data(session: AsyncSession, df: pd.DataFrame):
 
         # Дата убытия
         out_date_val = row.get('Отправлен')
-        data['leave_date'] = parse_date_safe(out_date_val)
-        data['leave_time'] = parse_time_safe(out_date_val)
+        # В БД нет полей leave_date/leave_time в модели TerminalContainer, 
+        # но есть dispatch_date/dispatch_time. Используем их.
+        data['dispatch_date'] = parse_date_safe(out_date_val)
+        data['dispatch_time'] = parse_time_safe(out_date_val)
 
-        # Поля "ВЫХОДА" (обычно имеют суффикс .1 в Pandas, если заголовки дублируются)
-        # Если заголовки уникальны, нужно смотреть на файл. 
-        # В твоем файле Dispatch заголовки: Принят, Id, Транспорт ... Отправлен, Id, Транспорт
-        # Значит в Pandas это будет: Id (вход), Id.1 (выход)
-        
-        data['out_id'] = clean_string_value(row.get('Id.1')) # Id отправки
+        # Поля "ВЫХОДА" (обычно имеют суффикс .1 в Pandas)
+        data['out_id'] = clean_string_value(row.get('Id.1')) 
         data['out_transport'] = clean_string_value(row.get('Транспорт.1'))
         data['out_number'] = clean_string_value(row.get('Номер вагона | Номер тягача.1'))
         data['out_driver'] = clean_string_value(row.get('Станция | Водитель.1'))
         
-        # Если вдруг Pandas не добавил .1 (заголовки уникальны), пробуем без суффикса
+        # Fallback если нет суффикса (редкий случай)
         if not data['out_id'] and 'Id' in row and row.get('Отправлен'):
-             # Это сложный кейс, надеемся на .1, так как заголовки точно дублируются
              pass
 
         processed_rows.append(data)
@@ -269,38 +360,35 @@ async def _bulk_upsert_arrival(session: AsyncSession, rows: List[dict]):
             updated_at = NOW();
     """)
     
+    # Разбиваем на пакеты по 1000, чтобы не перегружать
     batch_size = 1000
     for i in range(0, len(rows), batch_size):
         await session.execute(stmt, rows[i:i + batch_size])
-        await session.commit()
-    logger.info(f"💾 Обработано {len(rows)} записей (Arrival).")
+    
+    logger.info(f"💾 Подготовлено к коммиту {len(rows)} записей (Arrival).")
 
 async def _bulk_update_dispatch(session: AsyncSession, rows: List[dict]):
     """SQL для обновления убывших."""
     if not rows:
         return
 
-    # Используем временную таблицу или CASE для массового обновления, 
-    # но для простоты в SQLAlchemy async часто проще обновить в цикле или через executemany
-    # Здесь используем executemany update
-    
+    # Внимание: используем правильные имена полей модели (dispatch_date вместо leave_date)
     stmt = text("""
         UPDATE terminal_containers
         SET 
             status = :status,
-            leave_date = :leave_date,
-            leave_time = :leave_time,
+            dispatch_date = :dispatch_date,
+            dispatch_time = :dispatch_time,
             out_id = :out_id,
             out_transport = :out_transport,
             out_number = :out_number,
             out_driver = :out_driver,
-            updated_at = NOW()
+            updated_at = :updated_at
         WHERE container_number = :container_number
     """)
     
-    # Для UPDATE batch execution работает эффективно
     batch_size = 1000
     for i in range(0, len(rows), batch_size):
         await session.execute(stmt, rows[i:i + batch_size])
-        await session.commit()
-    logger.info(f"🚚 Обновлено {len(rows)} записей (Dispatch).")
+        
+    logger.info(f"🚚 Подготовлено к коммиту {len(rows)} записей (Dispatch).")
