@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import APIRouter, Request, Depends, Query, Form, HTTPException, UploadFile, File
 from fastapi.responses import RedirectResponse, HTMLResponse
-from sqlalchemy import select, desc, distinct, func
+from sqlalchemy import select, desc, distinct, func, delete, update
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,6 +89,68 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
     return result_list
 
 # --- РОУТЫ ---
+
+# ✅ УДАЛЕНИЕ РАСЧЕТА
+@router.post("/calculator/{calc_id}/delete")
+async def calculator_delete(
+    calc_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    """Удаляет расчет."""
+    # Получаем тип сервиса для правильного редиректа
+    stmt = select(Calculation.service_type).where(Calculation.id == calc_id)
+    result = await db.execute(stmt)
+    service_type = result.scalar_one_or_none()
+    
+    if not service_type:
+        return RedirectResponse("/admin/calculator", status_code=303)
+
+    # Удаляем
+    await db.execute(delete(Calculation).where(Calculation.id == calc_id))
+    await db.commit()
+    
+    return RedirectResponse(f"/admin/calculator?type={service_type.value}", status_code=303)
+
+# ✅ ПАКЕТНОЕ ИЗМЕНЕНИЕ СТАТУСА
+@router.post("/calculator/batch_status")
+async def calculator_batch_status(
+    request: Request,
+    data_json: str = Form(...), # JSON: {"ids": [1, 2], "status": "ARCHIVED"}
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    try:
+        payload = json.loads(data_json)
+        ids = [int(id) for id in payload.get('ids', [])]
+        new_status_str = payload.get('status')
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(400, "Invalid Data")
+
+    if not ids or not new_status_str:
+        return RedirectResponse("/admin/calculator", status_code=303)
+
+    # Валидация статуса
+    if new_status_str == "ARCHIVED":
+        status_enum = CalculationStatus.ARCHIVED
+    elif new_status_str == "PUBLISHED":
+        status_enum = CalculationStatus.PUBLISHED
+    elif new_status_str == "DRAFT":
+        status_enum = CalculationStatus.DRAFT
+    else:
+        return RedirectResponse("/admin/calculator?error_msg=Неверный статус", status_code=303)
+
+    # Массовое обновление
+    stmt = update(Calculation).where(Calculation.id.in_(ids)).values(status=status_enum)
+    await db.execute(stmt)
+    await db.commit()
+    
+    # Пытаемся определить текущий тип по первому ID для редиректа
+    first_calc = await db.scalar(select(Calculation.service_type).where(Calculation.id == ids[0]))
+    type_param = first_calc.value if first_calc else "TRAIN"
+    
+    return RedirectResponse(f"/admin/calculator?type={type_param}", status_code=303)
+
 
 # ✅ НОВЫЙ РОУТ: Генерация КП (Print View)
 @router.post("/export/kp", response_class=HTMLResponse)
