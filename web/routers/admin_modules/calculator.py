@@ -93,12 +93,12 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
 # ✅ УДАЛЕНИЕ РАСЧЕТА
 @router.post("/calculator/{calc_id}/delete")
 async def calculator_delete(
+    request: Request,
     calc_id: int,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
+    user: User = Depends(manager_required) 
 ):
     """Удаляет расчет."""
-    # Получаем тип сервиса для правильного редиректа
     stmt = select(Calculation.service_type).where(Calculation.id == calc_id)
     result = await db.execute(stmt)
     service_type = result.scalar_one_or_none()
@@ -106,9 +106,12 @@ async def calculator_delete(
     if not service_type:
         return RedirectResponse("/admin/calculator", status_code=303)
 
-    # Удаляем
     await db.execute(delete(Calculation).where(Calculation.id == calc_id))
     await db.commit()
+    
+    referer = request.headers.get("referer", "")
+    if "costs" in referer:
+        return RedirectResponse(f"/admin/costs?type={service_type.value}", status_code=303)
     
     return RedirectResponse(f"/admin/calculator?type={service_type.value}", status_code=303)
 
@@ -116,9 +119,9 @@ async def calculator_delete(
 @router.post("/calculator/batch_status")
 async def calculator_batch_status(
     request: Request,
-    data_json: str = Form(...), # JSON: {"ids": [1, 2], "status": "ARCHIVED"}
+    data_json: str = Form(...), 
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(admin_required)
+    user: User = Depends(manager_required)
 ):
     try:
         payload = json.loads(data_json)
@@ -130,7 +133,6 @@ async def calculator_batch_status(
     if not ids or not new_status_str:
         return RedirectResponse("/admin/calculator", status_code=303)
 
-    # Валидация статуса
     if new_status_str == "ARCHIVED":
         status_enum = CalculationStatus.ARCHIVED
     elif new_status_str == "PUBLISHED":
@@ -140,14 +142,57 @@ async def calculator_batch_status(
     else:
         return RedirectResponse("/admin/calculator?error_msg=Неверный статус", status_code=303)
 
-    # Массовое обновление
     stmt = update(Calculation).where(Calculation.id.in_(ids)).values(status=status_enum)
     await db.execute(stmt)
     await db.commit()
     
-    # Пытаемся определить текущий тип по первому ID для редиректа
     first_calc = await db.scalar(select(Calculation.service_type).where(Calculation.id == ids[0]))
     type_param = first_calc.value if first_calc else "TRAIN"
+    
+    referer = request.headers.get("referer", "")
+    if "costs" in referer:
+        return RedirectResponse(f"/admin/costs?type={type_param}", status_code=303)
+    
+    return RedirectResponse(f"/admin/calculator?type={type_param}", status_code=303)
+
+# ✅ ПАКЕТНОЕ ИЗМЕНЕНИЕ ДАТЫ
+@router.post("/calculator/batch_date")
+async def calculator_batch_date(
+    request: Request,
+    data_json: str = Form(...), # JSON: {"ids": [1, 2], "date": "2025-12-31"}
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(manager_required)
+):
+    try:
+        payload = json.loads(data_json)
+        ids = [int(id) for id in payload.get('ids', [])]
+        date_str = payload.get('date')
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(400, "Invalid Data")
+
+    if not ids:
+        return RedirectResponse("/admin/calculator", status_code=303)
+
+    # Если дата пустая - очищаем срок (делаем бессрочным), иначе парсим
+    new_date = None
+    if date_str:
+        try:
+            new_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return RedirectResponse("/admin/calculator?error_msg=Неверный формат даты", status_code=303)
+
+    # Массовое обновление
+    stmt = update(Calculation).where(Calculation.id.in_(ids)).values(valid_to=new_date)
+    await db.execute(stmt)
+    await db.commit()
+    
+    # Редирект
+    first_calc = await db.scalar(select(Calculation.service_type).where(Calculation.id == ids[0]))
+    type_param = first_calc.value if first_calc else "TRAIN"
+    
+    referer = request.headers.get("referer", "")
+    if "costs" in referer:
+        return RedirectResponse(f"/admin/costs?type={type_param}", status_code=303)
     
     return RedirectResponse(f"/admin/calculator?type={type_param}", status_code=303)
 
@@ -156,7 +201,7 @@ async def calculator_batch_status(
 @router.post("/export/kp", response_class=HTMLResponse)
 async def export_commercial_proposal(
     request: Request,
-    data_json: str = Form(...), # JSON строка: [{"id": 1, "custom_margin": 20000}, ...]
+    data_json: str = Form(...), 
     db: AsyncSession = Depends(get_db),
     user: User = Depends(manager_required)
 ):
@@ -165,32 +210,24 @@ async def export_commercial_proposal(
     except json.JSONDecodeError:
         raise HTTPException(400, "Invalid JSON data")
     
-    # 1. Собираем ID и маппинг маржи
     ids = [int(item['id']) for item in items_data]
     margins_map = {int(item['id']): float(item['custom_margin']) for item in items_data}
     
     if not ids:
         return HTMLResponse("Нет выбранных элементов для экспорта")
 
-    # 2. Загружаем данные из БД
     stmt = select(Calculation).where(Calculation.id.in_(ids))
     result = await db.execute(stmt)
     calculations = result.scalars().all()
     
-    # 3. Подготавливаем данные для шаблона (пересчитываем итог с новой маржой)
     kp_rows = []
     today_date = datetime.now().date()
     
     for calc in calculations:
-        # Берем маржу, которую прислал фронтенд (она актуальнее базы)
         margin = margins_map.get(calc.id, calc.margin_value)
-        
-        # Расчет
         price_no_vat = calc.total_cost + margin
         vat_amount = price_no_vat * (calc.vat_rate / 100)
         total_price = price_no_vat + vat_amount
-        
-        # Округление до сотен (красивая цена), как было в макете
         total_price_rounded = round(total_price / 100) * 100
         
         kp_rows.append({
@@ -213,23 +250,15 @@ async def export_commercial_proposal(
 @router.get("/costs")
 async def cost_dashboard_page(
     request: Request,
-    type: str = Query("TRAIN"), # Фильтр по типу (TRAIN/SINGLE)
+    type: str = Query("TRAIN"), 
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(manager_required) # <-- Используем новую зависимость
+    user: User = Depends(manager_required) 
 ):
-    """
-    Публичная страница себестоимости для менеджеров.
-    Показывает детализацию затрат.
-    """
     current_type_upper = type.upper()
-    
-    # Определяем сортировку (как в основном калькуляторе)
     primary_sort_field = Calculation.service_provider
     if current_type_upper == 'SINGLE':
         primary_sort_field = Calculation.station_to
 
-    # Загружаем расчеты вместе с элементами (items), чтобы показать детали расходов
-    # 🔥 ИСПРАВЛЕНИЕ: Фильтруем только ОПУБЛИКОВАННЫЕ (PUBLISHED) расчеты
     stmt = select(Calculation).options(selectinload(Calculation.items))\
         .where(Calculation.service_type == current_type_upper)\
         .where(Calculation.status == CalculationStatus.PUBLISHED)\
@@ -253,19 +282,11 @@ async def cost_dashboard_page(
 @router.get("/calculator")
 async def calculator_list(
     request: Request, 
-    # Параметр фильтрации (по умолчанию TRAIN)
     type: str = Query("TRAIN"),
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
 ):
-    """Список расчетов с фильтрацией по типу и ДИНАМИЧЕСКОЙ СОРТИРОВКОЙ."""
-    
     current_type_upper = type.upper()
-
-    # 🔥 ОПРЕДЕЛЯЕМ ПОЛЕ ДЛЯ ГРУППИРОВКИ (СОРТИРОВКИ)
-    # Если SINGLE -> Группируем по Станции назначения (station_to)
-    # Если TRAIN -> Группируем по Поставщику (service_provider)
-    
     primary_sort_field = Calculation.service_provider
     if current_type_upper == 'SINGLE':
         primary_sort_field = Calculation.station_to
@@ -273,9 +294,9 @@ async def calculator_list(
     stmt = select(Calculation).where(
         Calculation.service_type == current_type_upper
     ).order_by(
-        primary_sort_field,             # 1. Группировка (динамическая)
-        Calculation.container_type,     # 2. Порядок внутри группы
-        desc(Calculation.created_at)    # 3. Самые свежие сверху
+        primary_sort_field,             
+        Calculation.container_type,     
+        desc(Calculation.created_at)    
     )
     
     result = await db.execute(stmt)
@@ -286,19 +307,17 @@ async def calculator_list(
         "user": user, 
         "calculations": calculations, 
         "CalculationStatus": CalculationStatus,
-        "today": datetime.now().date(), # Для проверки срока действия (неон)
-        "current_type": current_type_upper # Для активной вкладки и логики в шаблоне
+        "today": datetime.now().date(), 
+        "current_type": current_type_upper 
     })
 
 @router.get("/calculator/new")
 async def calculator_create_page(
     request: Request, 
-    # Параметр type для предустановки селекта (UX)
     type: str = Query("TRAIN"), 
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
 ):
-    """Страница создания нового расчета."""
     settings_stmt = select(SystemSetting)
     settings_res = await db.execute(settings_stmt)
     settings = {s.key: s.value for s in settings_res.scalars()}
@@ -312,8 +331,8 @@ async def calculator_create_page(
         "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, 
         "stations_from": stations_from,
         "calc": None,
-        "default_service_type": type.upper(), # Передаем в шаблон для автовыбора
-        "CalculationStatus": CalculationStatus # Передаем Enum для шаблона
+        "default_service_type": type.upper(), 
+        "CalculationStatus": CalculationStatus 
     })
 
 @router.get("/calculator/{calc_id}")
@@ -323,7 +342,6 @@ async def calculator_edit_page(
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(admin_required)
 ):
-    """Страница редактирования существующего расчета."""
     stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
     result = await db.execute(stmt)
     calc = result.scalar_one_or_none()
@@ -338,7 +356,6 @@ async def calculator_edit_page(
     stations_from = await get_tariff_stations(db, is_departure=True)
     stations_to = await get_tariff_stations(db, is_departure=False, filter_from_code=calc.station_from, service_type=calc.service_type)
 
-    # Восстанавливаем состояние чекбоксов и значений из сохраненных строк
     saved_prr = 0.0
     saved_service_rate = 0.0
     include_rail_tariff = False
@@ -353,7 +370,6 @@ async def calculator_edit_page(
         elif "Ставка сервиса" in item.name or "Транспортный сервис" in item.name:
             saved_service_rate = item.cost_price
 
-    # Для старых расчетов (без явных строк) включаем ПРР по умолчанию, если сумма > 0
     if not include_prr and saved_prr == 0:
         default_prr = calculate_prr_cost_internal(calc.wagon_type, calc.container_type)
         if default_prr > 0:
@@ -380,7 +396,6 @@ async def calculator_copy(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """Создает копию расчета."""
     stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
     result = await db.execute(stmt)
     original_calc = result.scalar_one_or_none()
@@ -396,7 +411,7 @@ async def calculator_copy(
         container_type=original_calc.container_type,
         station_from=original_calc.station_from,
         station_to=original_calc.station_to,
-        valid_from=datetime.now().date(), # Обновляем дату начала на сегодня
+        valid_from=datetime.now().date(), 
         valid_to=original_calc.valid_to,
         total_cost=original_calc.total_cost,
         margin_type=original_calc.margin_type,
@@ -423,7 +438,6 @@ async def calculator_copy(
     return RedirectResponse(f"/admin/calculator/{new_calc.id}", status_code=303)
 
 
-# HTMX: Получение значения ПРР для инпута
 @router.get("/api/calc/get_prr_input")
 async def get_prr_input_html(
     wagon_type: str = Query(...),
@@ -458,7 +472,6 @@ async def get_available_destinations(
         
     return HTMLResponse(options_html)
 
-# ПРЕВЬЮ: Основная логика расчета (HTMX)
 @router.post("/api/calc/preview")
 async def calculator_preview(
     request: Request,
@@ -469,20 +482,17 @@ async def calculator_preview(
     wagon_type: str = Form(...),
     margin_type: str = Form(...),
     margin_value: float = Form(0.0),
-    # Новые поля
     prr_value: float = Form(0.0), 
     service_rate_value: float = Form(0.0), 
-    include_rail_tariff: bool = Form(False), # Чекбокс
-    include_prr: bool = Form(False),         # Чекбокс
+    include_rail_tariff: bool = Form(False), 
+    include_prr: bool = Form(False),         
     expense_names: List[str] = Form([]),
     expense_values: List[float] = Form([]),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """Живой расчет цены."""
     extra_expenses_total = sum(expense_values)
     
-    # 1. ЖД Тариф
     base_rate = 0.0
     tariff_found = False
     gondola_coeff = 1.0
@@ -495,26 +505,21 @@ async def calculator_preview(
             base_rate = tariff.rate_no_vat
             tariff_found = True
         
-        # Коэффициент на вагон
         if wagon_type == WagonType.GONDOLA:
             setting = await db.get(SystemSetting, "gondola_coeff")
             if setting: gondola_coeff = float(setting.value)
         
         adjusted_base_rate = base_rate * gondola_coeff
     
-    # 2. ПРР
     final_prr_cost = prr_value if include_prr else 0.0
 
-    # 3. Итоговая себестоимость
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
-    # НДС
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else 20.0
     
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
-    # 4. Цена продажи
     sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
     vat_amount = sales_price_netto * (vat_rate / 100)
     total_price_with_vat = sales_price_netto + vat_amount
@@ -538,7 +543,6 @@ async def calculator_preview(
         "total_price_with_vat": total_price_with_vat,
     })
 
-# ЛОГИКА СОХРАНЕНИЯ С УЧЕТОМ СТАТУСА
 async def _save_calculation_logic(
     db: AsyncSession,
     title: str, station_from: str, station_to: str, container_type: str,
@@ -547,11 +551,9 @@ async def _save_calculation_logic(
     prr_value: float, service_rate_value: float,
     include_rail_tariff: bool, include_prr: bool,
     valid_until: Optional[str] = None,
-    # Принимаем статус
     status: Optional[str] = "PUBLISHED", 
     calc_id: Optional[int] = None
 ):
-    # Повторяем расчет для БД
     base_rate = 0.0
     adjusted_base_rate = 0.0
     
@@ -585,7 +587,6 @@ async def _save_calculation_logic(
         calc = Calculation(created_at=func.now())
         db.add(calc)
 
-    # Парсинг даты валидности
     valid_to_date = None
     if valid_until:
         try:
@@ -593,8 +594,7 @@ async def _save_calculation_logic(
         except ValueError:
             pass
 
-    # Конвертируем строку статуса в Enum
-    status_enum = CalculationStatus.PUBLISHED # Default
+    status_enum = CalculationStatus.PUBLISHED 
     if status == "DRAFT": status_enum = CalculationStatus.DRAFT
     elif status == "ARCHIVED": status_enum = CalculationStatus.ARCHIVED
 
@@ -613,7 +613,6 @@ async def _save_calculation_logic(
     calc.margin_value = margin_value
     calc.total_price_netto = sales_price_netto
     calc.vat_rate = vat_rate
-    # Записываем статус в БД
     calc.status = status_enum 
 
     await db.flush()
@@ -649,8 +648,6 @@ async def calculator_create(
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
     await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, status, None)
-    
-    # 🔥 ИЗМЕНЕНИЕ: Редирект на нужную вкладку
     return RedirectResponse(f"/admin/calculator?type={service_type}", status_code=303)
 
 @router.post("/calculator/{calc_id}/update")
@@ -667,8 +664,6 @@ async def calculator_update(
     db: AsyncSession = Depends(get_db), user: User = Depends(admin_required)
 ):
     await _save_calculation_logic(db, title, station_from, station_to, container_type, service_type, wagon_type, margin_type, margin_value, service_provider, expense_names, expense_values, prr_value, service_rate_value, include_rail_tariff, include_prr, valid_until, status, calc_id)
-    
-    # 🔥 ИЗМЕНЕНИЕ: Редирект на нужную вкладку
     return RedirectResponse(f"/admin/calculator?type={service_type}", status_code=303)
 
 @router.post("/tariffs/upload")
@@ -678,12 +673,7 @@ async def upload_tariffs_excel(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(admin_required)
 ):
-    """
-    Принимает Excel файл, обрабатывает и сохраняет тарифы.
-    """
     content = await file.read()
-    
-    # Запуск логики импорта
     result = await process_tariff_import(content, db)
     
     if "error" in result:
@@ -700,7 +690,6 @@ async def upload_tariffs_excel(
         stations_str += "..."
         
     success_msg = f"Успешно загружено {count} тарифов. Станции: {stations_str}"
-    
     if result.get("errors"):
         success_msg += f" (Предупреждений: {len(result['errors'])})"
 
