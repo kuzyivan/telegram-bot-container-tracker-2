@@ -91,8 +91,8 @@
 </head>
 
 <!-- 
-    ИСПРАВЛЕНИЕ: Убрали hx-indicator="#global-loader" из body.
-    Теперь мы контролируем его появление через JS внизу файла.
+    hx-boost="true" делает навигацию плавной (SPA), 
+    но для Выхода/Входа мы его отключим точечно.
 -->
 <body class="min-h-screen flex flex-col antialiased bg-mono-bg" hx-boost="true">
 
@@ -191,12 +191,13 @@
                         </div>
                     </a>
 
-                    <!-- КНОПКА ВЫХОДА -->
-                    <a href="/logout" class="ml-1 text-mono-gray hover:text-red-600 transition p-2 rounded-lg hover:bg-mono-bg" title="Выйти">
+                    <!-- КНОПКА ВЫХОДА (hx-boost="false" ОБЯЗАТЕЛЬНО) -->
+                    <a href="/logout" hx-boost="false" class="ml-1 text-mono-gray hover:text-red-600 transition p-2 rounded-lg hover:bg-mono-bg" title="Выйти">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                     </a>
                 {% else %}
-                    <a href="/login" class="text-sm font-bold text-mono-black hover:opacity-70 transition">Войти</a>
+                    <!-- КНОПКА ВХОДА (hx-boost="false") -->
+                    <a href="/login" hx-boost="false" class="text-sm font-bold text-mono-black hover:opacity-70 transition">Войти</a>
                 {% endif %}
             </div>
         </div>
@@ -256,7 +257,8 @@
         {% endif %}
 
         {% if not user %}
-            <a href="/login" class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if request.url.path == '/login' else 'text-mono-gray hover:text-mono-black' }} transition">
+            <!-- КНОПКА ВХОДА (hx-boost="false") -->
+            <a href="/login" hx-boost="false" class="flex flex-col items-center gap-1 w-full {{ 'text-mono-black' if request.url.path == '/login' else 'text-mono-gray hover:text-mono-black' }} transition">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
                 <span class="text-[10px] font-bold">Войти</span>
             </a>
