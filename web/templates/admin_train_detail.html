@@ -43,27 +43,20 @@
                 </div>
             </form>
 
-            <!-- 🔥 ОПИСАНИЕ МАРШРУТА -->
+            <!-- ОПИСАНИЕ МАРШРУТА -->
             <div class="mt-6 pt-4 border-t border-mono-border">
                 <div class="flex flex-wrap items-center gap-4 text-sm">
-                    <!-- Станция отправления -->
                     <div class="flex items-center gap-2">
                         <div class="w-2.5 h-2.5 rounded-full bg-mono-gray/50"></div>
                         <span class="font-medium text-mono-gray">{{ train.last_known_station or 'Отправление' }}</span>
                     </div>
-                    
-                    <!-- Стрелка -->
                     <div class="text-mono-border">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
                     </div>
-
-                    <!-- Станция назначения -->
                     <div class="flex items-center gap-2">
                         <div class="w-2.5 h-2.5 rounded-full bg-mono-black"></div>
                         <span class="font-bold text-mono-black text-base">{{ train.destination_station or 'Назначение' }}</span>
                     </div>
-                    
-                    <!-- Перегруз -->
                     {% if train.overload_station_name %}
                     <div class="ml-auto flex items-center gap-2 bg-yellow-50 px-3 py-1 rounded-lg border border-yellow-100 text-yellow-800">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
@@ -102,10 +95,10 @@
     </div>
 
     <!-- БЛОК 3: ТАБЛИЦА -->
-    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden flex flex-col">
+    <div class="bg-white rounded-2xl shadow-card border border-transparent overflow-hidden flex flex-col pb-40">
         
         <!-- Панель действий -->
-        <div class="px-6 py-4 border-b border-mono-border bg-white flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-0 z-20">
+        <div class="px-6 py-4 border-b border-mono-border bg-white flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-0 z-30">
             <h3 class="font-bold text-mono-black">Состав поезда <span class="ml-2 text-xs bg-mono-bg px-2 py-0.5 rounded border border-mono-border text-mono-gray">{{ containers|length }}</span></h3>
             
             <form action="/admin/trains/{{ train.id }}/apply_calculation" method="POST" class="flex items-center gap-2 w-full sm:w-auto">
@@ -124,60 +117,93 @@
             </form>
         </div>
 
-        <div class="overflow-x-auto w-full">
+        <div class="overflow-visible w-full min-h-[400px]">
             <table class="w-full text-sm text-left border-collapse" id="containersTable">
-                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider sticky top-[73px] z-10 shadow-sm">
+                <thead class="bg-mono-bg text-mono-gray text-[10px] uppercase font-bold tracking-wider sticky top-[73px] z-20 shadow-sm">
                     <!-- Заголовки -->
                     <tr>
                         <th class="px-4 py-3 w-10 text-center bg-mono-bg">
                             <input type="checkbox" onclick="toggleAll(this)" class="rounded text-mono-black focus:ring-mono-black cursor-pointer">
                         </th>
-                        <th class="px-4 py-3 bg-mono-bg">Контейнер</th>
-                        <th class="px-4 py-3 bg-mono-bg">Клиент</th>
-                        
-                        <!-- 🔥 ИЗМЕНЕНИЕ: Заголовок "Размер" -->
-                        <th class="px-4 py-3 text-center bg-mono-bg">Размер</th>
-                        
+                        <th class="px-4 py-3 bg-mono-bg w-[15%]">Контейнер</th>
+                        <th class="px-4 py-3 bg-mono-bg w-[25%]">Клиент</th>
+                        <th class="px-4 py-3 text-center bg-mono-bg w-[10%]">Размер</th>
                         <th class="px-4 py-3 text-right bg-mono-bg">Себест. (с НДС)</th>
                         <th class="px-4 py-3 text-right w-40 bg-mono-bg">Продажа (с НДС)</th>
-                        
                         <th class="px-4 py-3 text-right bg-mono-bg cursor-pointer hover:text-mono-black transition select-none group" onclick="sortTable('margin')">
                             <div class="flex items-center justify-end gap-1">
                                 Маржа (Net)
                                 <span class="text-gray-400 group-hover:text-mono-black">↕</span>
                             </div>
                         </th>
-                        
                         {% if user.role == 'admin' %}
                         <th class="px-4 py-3 text-center bg-mono-bg"></th>
                         {% endif %}
                     </tr>
                     
-                    <!-- 🔥 СТРОКА ФИЛЬТРАЦИИ -->
+                    <!-- 🔥 СТРОКА ФИЛЬТРОВ С COMBOBOX -->
                     <tr class="bg-white border-b border-mono-border">
-                        <th class="px-4 py-2"></th>
-                        <th class="px-4 py-2">
-                            <input type="text" id="filterContainer" onkeyup="filterTable()" placeholder="Поиск..." 
-                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black">
+                        <th class="px-4 py-2 align-top"></th>
+                        
+                        <!-- 1. Обычный поиск по Контейнеру -->
+                        <th class="px-4 py-2 align-top">
+                            <input type="text" id="filterContainer" onkeyup="filterTable()" placeholder="Номер..." 
+                                   class="w-full px-3 py-2 text-xs border border-mono-border rounded-lg focus:outline-none focus:border-mono-black focus:ring-1 focus:ring-mono-black transition">
                         </th>
-                        <th class="px-4 py-2">
-                            <input type="text" id="filterClient" onkeyup="filterTable()" placeholder="Фильтр по клиенту" 
-                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded focus:outline-none focus:border-mono-black">
+                        
+                        <!-- 2. 🔥 COMBOBOX: КЛИЕНТ -->
+                        <th class="px-4 py-2 align-top relative group">
+                            <div class="combobox-wrapper relative w-full" id="clientCombobox">
+                                <div class="relative w-full cursor-default overflow-hidden rounded-lg bg-white text-left border border-mono-border focus-within:border-mono-black focus-within:ring-1 focus-within:ring-mono-black transition sm:text-xs shadow-sm">
+                                    <input type="text" id="filterClientInput"
+                                           class="w-full border-none py-2 pl-3 pr-10 text-xs leading-5 text-mono-black focus:ring-0 outline-none placeholder-gray-400"
+                                           placeholder="Выбрать..."
+                                           oninput="handleComboboxInput('client')"
+                                           onfocus="openCombobox('client')"
+                                           onblur="setTimeout(() => closeCombobox('client'), 200)">
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <!-- Dropdown List -->
+                                <ul id="filterClientOptions" 
+                                    class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-xs hidden custom-scrollbar origin-top transition-all duration-100 ease-out">
+                                    <!-- Опции генерируются JS -->
+                                </ul>
+                            </div>
                         </th>
-                        <!-- 🔥 ИЗМЕНЕНИЕ: Фильтр размера -->
-                        <th class="px-4 py-2">
-                            <input type="text" id="filterSize" onkeyup="filterTable()" placeholder="20/40" 
-                                   class="w-full px-2 py-1 text-xs border border-mono-border rounded text-center focus:outline-none focus:border-mono-black">
+
+                        <!-- 3. 🔥 COMBOBOX: РАЗМЕР -->
+                        <th class="px-4 py-2 align-top relative">
+                            <div class="combobox-wrapper relative w-full" id="sizeCombobox">
+                                <div class="relative w-full cursor-default overflow-hidden rounded-lg bg-white text-left border border-mono-border focus-within:border-mono-black focus-within:ring-1 focus-within:ring-mono-black transition sm:text-xs shadow-sm">
+                                    <input type="text" id="filterSizeInput"
+                                           class="w-full border-none py-2 pl-3 pr-10 text-xs leading-5 text-mono-black focus:ring-0 outline-none text-center placeholder-gray-400"
+                                           placeholder="Все"
+                                           oninput="handleComboboxInput('size')"
+                                           onfocus="openCombobox('size')"
+                                           onblur="setTimeout(() => closeCombobox('size'), 200)">
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                                        <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <ul id="filterSizeOptions" 
+                                    class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-xs hidden custom-scrollbar">
+                                    <!-- Опции генерируются JS -->
+                                </ul>
+                            </div>
                         </th>
+
                         <th colspan="4"></th>
                     </tr>
                 </thead>
                 
                 <tbody class="divide-y divide-mono-border bg-white" id="tableBody">
                     {% for item in containers %}
-                    <!-- 
-                        🔥 ИЗМЕНЕНИЕ: data-size вместо data-type 
-                    -->
                     <tr class="hover:bg-mono-bg transition group container-row" 
                         data-client="{{ item.tc.client or '' }}" 
                         data-container="{{ item.tc.container_number }}"
@@ -193,18 +219,12 @@
                         <td class="px-4 py-3 text-xs text-mono-dark max-w-[200px] truncate" title="{{ item.tc.client }}">
                             {{ item.tc.client or '—' }}
                         </td>
-                        
-                        <!-- 🔥 ИЗМЕНЕНИЕ: Вывод размера (item.size) -->
                         <td class="px-4 py-3 text-center text-xs font-bold text-mono-black">
                             <span class="bg-mono-bg border border-mono-border px-1.5 py-0.5 rounded">{{ item.size }}</span>
                         </td>
-                        
-                        <!-- Себестоимость с НДС (x1.2) -->
                         <td class="px-4 py-3 text-right font-mono text-xs text-mono-gray">
                             {{ "{:,.0f}".format(item.cost * 1.2).replace(',', ' ') }}
                         </td>
-                        
-                        <!-- Продажа -->
                         <td class="px-4 py-3 text-right">
                             <div class="flex items-center justify-end gap-1">
                                 <input type="number" 
@@ -215,19 +235,15 @@
                                        hx-post="/admin/trains/container/{{ item.tc.id }}/update_finance"
                                        hx-trigger="change"
                                        hx-target="#margin-{{ item.tc.id }}"
-                                       hx-swap="innerHTML"
-                                       title="Введите цену БЕЗ НДС">
+                                       hx-swap="innerHTML">
                                 <span class="text-[10px] text-gray-400">+НДС</span>
                             </div>
                         </td>
-                        
-                        <!-- Маржа Чистая (Net) -->
                         <td class="px-4 py-3 text-right font-mono text-sm" id="margin-{{ item.tc.id }}">
                             <span class="font-bold {{ 'text-green-600' if item.margin > 0 else 'text-red-600' }}">
                                 {{ "{:,.0f}".format(item.margin).replace(',', ' ') }}
                             </span>
                         </td>
-                        
                         {% if user.role == 'admin' %}
                         <td class="px-4 py-3 text-center">
                             <form action="/admin/trains/{{ train.id }}/remove_container" method="POST" onsubmit="return confirm('Убрать из поезда?')">
@@ -245,7 +261,7 @@
         </div>
     </div>
 
-    <!-- Admin: Добавить контейнер вручную -->
+    <!-- Admin: Добавить контейнер -->
     {% if user.role == 'admin' %}
     <div class="mt-8 bg-mono-bg p-6 rounded-2xl border border-mono-border">
         <h3 class="text-sm font-bold text-mono-gray uppercase tracking-wider mb-4">Ручное добавление контейнера</h3>
@@ -262,6 +278,133 @@
 </div>
 
 <script>
+    // --- ИНИЦИАЛИЗАЦИЯ ДАННЫХ ДЛЯ COMBOBOX ---
+    // Собираем уникальные значения из таблицы для заполнения списков
+    let allClients = new Set();
+    let allSizes = new Set();
+
+    document.addEventListener("DOMContentLoaded", () => {
+        initComboboxData();
+    });
+
+    // Если используется HTMX, обновляем данные после загрузки контента
+    if (typeof htmx !== 'undefined') {
+        htmx.onLoad(function(content) {
+            initComboboxData();
+        });
+    }
+
+    function initComboboxData() {
+        allClients.clear();
+        allSizes.clear();
+        
+        document.querySelectorAll('.container-row').forEach(row => {
+            const client = row.getAttribute('data-client');
+            const size = row.getAttribute('data-size');
+            if (client && client !== '—') allClients.add(client);
+            if (size && size !== '—') allSizes.add(size);
+        });
+    }
+
+    // --- ЛОГИКА COMBOBOX ---
+
+    function openCombobox(type) {
+        const list = document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}Options`);
+        const input = document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}Input`);
+        
+        // Генерируем опции на основе текущего ввода
+        generateOptions(type, input.value);
+        
+        list.classList.remove('hidden');
+    }
+
+    function closeCombobox(type) {
+        // Задержка нужна, чтобы успел сработать клик по опции
+        const list = document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}Options`);
+        list.classList.add('hidden');
+    }
+
+    function handleComboboxInput(type) {
+        const input = document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}Input`);
+        generateOptions(type, input.value);
+        filterTable(); // Фильтруем таблицу на лету
+    }
+
+    function selectOption(type, value) {
+        const input = document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}Input`);
+        input.value = value;
+        filterTable(); // Применяем фильтр
+    }
+
+    function generateOptions(type, query) {
+        const listElement = document.getElementById(`filter${type.charAt(0).toUpperCase() + type.slice(1)}Options`);
+        const dataSet = (type === 'client') ? Array.from(allClients) : Array.from(allSizes);
+        
+        // Очистка списка
+        listElement.innerHTML = '';
+
+        // Фильтрация вариантов
+        const filtered = query === '' 
+            ? dataSet 
+            : dataSet.filter(item => item.toLowerCase().includes(query.toLowerCase()));
+
+        // Добавляем вариант "Все" / "Сброс"
+        const resetLi = document.createElement('li');
+        resetLi.className = "relative cursor-pointer select-none py-2 pl-4 pr-4 text-mono-gray hover:bg-mono-bg hover:text-mono-black italic";
+        resetLi.textContent = "Все";
+        resetLi.onmousedown = () => selectOption(type, ''); // onmousedown срабатывает до blur инпута
+        listElement.appendChild(resetLi);
+
+        if (filtered.length === 0 && query !== '') {
+            const emptyLi = document.createElement('li');
+            emptyLi.className = "relative cursor-default select-none py-2 pl-4 pr-4 text-gray-500";
+            emptyLi.textContent = "Ничего не найдено";
+            listElement.appendChild(emptyLi);
+        } else {
+            filtered.sort().forEach(item => {
+                const li = document.createElement('li');
+                // Стилизация как в Headless UI примере
+                li.className = "relative cursor-pointer select-none py-2 pl-4 pr-4 text-mono-black hover:bg-mono-black hover:text-white transition-colors duration-100";
+                
+                // Подсветка выбранного
+                if (item === query) {
+                    li.classList.add('font-bold', 'bg-mono-light');
+                }
+
+                li.textContent = item;
+                li.onmousedown = () => selectOption(type, item);
+                listElement.appendChild(li);
+            });
+        }
+    }
+
+    // --- ОБЩАЯ ФИЛЬТРАЦИЯ ---
+    function filterTable() {
+        const filterContainer = document.getElementById('filterContainer').value.toUpperCase();
+        
+        // Берем значения из наших новых инпутов
+        const filterClient = document.getElementById('filterClientInput').value.toUpperCase();
+        const filterSize = document.getElementById('filterSizeInput').value.toUpperCase();
+        
+        const rows = document.querySelectorAll('.container-row');
+        
+        rows.forEach(row => {
+            const container = row.getAttribute('data-container').toUpperCase();
+            const client = row.getAttribute('data-client').toUpperCase();
+            const size = row.getAttribute('data-size').toUpperCase();
+            
+            const matchContainer = container.includes(filterContainer);
+            const matchClient = filterClient === '' || client.includes(filterClient);
+            const matchSize = filterSize === '' || size.includes(filterSize);
+            
+            if (matchContainer && matchClient && matchSize) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
+
     function toggleAll(source) {
         document.querySelectorAll('.container-checkbox').forEach(cb => cb.checked = source.checked);
     }
@@ -287,34 +430,7 @@
         container.closest('form').submit();
     }
 
-    // --- ФИЛЬТРАЦИЯ (Обновлено для Size) ---
-    function filterTable() {
-        const filterContainer = document.getElementById('filterContainer').value.toUpperCase();
-        const filterClient = document.getElementById('filterClient').value.toUpperCase();
-        const filterSize = document.getElementById('filterSize').value.toUpperCase(); // <-- Ищем по filterSize
-        
-        const rows = document.querySelectorAll('.container-row');
-        
-        rows.forEach(row => {
-            const container = row.getAttribute('data-container').toUpperCase();
-            const client = row.getAttribute('data-client').toUpperCase();
-            const size = row.getAttribute('data-size').toUpperCase(); // <-- data-size
-            
-            const matchContainer = container.includes(filterContainer);
-            const matchClient = client.includes(filterClient);
-            const matchSize = size.includes(filterSize); // <-- Проверка размера
-            
-            if (matchContainer && matchClient && matchSize) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    }
-
-    // --- СОРТИРОВКА ПО МАРЖЕ ---
     let sortDirection = 1;
-
     function sortTable(key) {
         const tbody = document.getElementById('tableBody');
         const rows = Array.from(tbody.querySelectorAll('tr'));
