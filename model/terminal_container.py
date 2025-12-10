@@ -1,7 +1,4 @@
 # model/terminal_container.py
-"""
-Определяет ORM-модель SQLAlchemy для контейнеров на терминале.
-"""
 from typing import TYPE_CHECKING, Optional
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, DateTime, Time, Date, Float, Integer, Text
@@ -14,76 +11,83 @@ if TYPE_CHECKING:
     from models_finance import ContainerFinance
 
 class TerminalContainer(Base):
-    """Модель для хранения информации о контейнерах на терминале (полная копия Effex)."""
+    """Модель для хранения информации о контейнерах на терминале."""
     __tablename__ = 'terminal_containers'
 
     id: Mapped[int] = mapped_column(primary_key=True)
     
-    # --- Основная информация ---
+    # --- Блок 1: Идентификация и Локация ---
     container_number: Mapped[str] = mapped_column(String(11), index=True, unique=True)
-    client: Mapped[str | None] = mapped_column(String) # Клиент
-    terminal: Mapped[str | None] = mapped_column(String) # Терминал (A-Terminal)
-    zone: Mapped[str | None] = mapped_column(String) # Зона
+    terminal: Mapped[str | None] = mapped_column(String)
+    zone: Mapped[str | None] = mapped_column(String)
+    client: Mapped[str | None] = mapped_column(String)
     
-    # --- Параметры контейнера ---
-    container_type: Mapped[str | None] = mapped_column(String(20)) # Тип (45G1)
-    size: Mapped[str | None] = mapped_column(String(20)) # Размер (40 HC)
-    stock: Mapped[str | None] = mapped_column(String) # Сток
-    customs_mode: Mapped[str | None] = mapped_column(String) # Таможенный режим
-    direction: Mapped[str | None] = mapped_column(String) # Направление
+    # 🔥 НОВЫЕ ПОЛЯ (которых не хватало)
+    inn: Mapped[str | None] = mapped_column(String) # ИНН
+    short_name: Mapped[str | None] = mapped_column(String) # Краткое наименование
     
-    # --- Весовые характеристики ---
-    payload: Mapped[float | None] = mapped_column(Float) # Грузоподъёмность
-    tare: Mapped[float | None] = mapped_column(Float) # Тара
-    weight_client: Mapped[float | None] = mapped_column(Float) # Брутто клиента
-    weight_terminal: Mapped[float | None] = mapped_column(Float) # Брутто терминала (он же weight_brutto)
+    stock: Mapped[str | None] = mapped_column(String)
     
-    # Используем weight_terminal как основной weight_brutto для совместимости
+    # --- Блок 2: Параметры ---
+    customs_mode: Mapped[str | None] = mapped_column(String)
+    direction: Mapped[str | None] = mapped_column(String)
+    container_type: Mapped[str | None] = mapped_column(String(20))
+    size: Mapped[str | None] = mapped_column(String(20))
+    payload: Mapped[float | None] = mapped_column(Float)
+    tare: Mapped[float | None] = mapped_column(Float)
+    
+    # 🔥 НОВОЕ ПОЛЕ
+    manufacture_year: Mapped[str | None] = mapped_column(String) # Год изготовления
+    
+    # --- Блок 3: Веса ---
+    weight_client: Mapped[float | None] = mapped_column(Float)
+    weight_terminal: Mapped[float | None] = mapped_column(Float)
+
     @property
     def weight_brutto(self):
         return self.weight_terminal
 
-    # --- Состояние и Груз ---
-    state: Mapped[str | None] = mapped_column(String) # Состояние (Без повреждений)
-    cargo: Mapped[str | None] = mapped_column(String) # Груз
-    temperature: Mapped[str | None] = mapped_column(String) # Температура
-    seals: Mapped[str | None] = mapped_column(String) # Пломбы
+    # --- Блок 4: Состояние ---
+    state: Mapped[str | None] = mapped_column(String)
+    cargo: Mapped[str | None] = mapped_column(String)
+    temperature: Mapped[str | None] = mapped_column(String)
+    seals: Mapped[str | None] = mapped_column(String)
     
-    # --- ПРИБЫТИЕ (Arrival) ---
-    accept_date: Mapped[date | None] = mapped_column(Date) # Принят (Дата)
-    accept_time: Mapped[time | None] = mapped_column(Time) # Принят (Время)
-    in_id: Mapped[str | None] = mapped_column(String) # Id (входа)
-    in_transport: Mapped[str | None] = mapped_column(String) # Транспорт (Автотягач/ЖД)
-    in_number: Mapped[str | None] = mapped_column(String) # Номер вагона | Номер тягача
-    in_driver: Mapped[str | None] = mapped_column(String) # Станция | Водитель
+    # --- Блок 5: ПРИБЫТИЕ ---
+    accept_date: Mapped[date | None] = mapped_column(Date)
+    accept_time: Mapped[time | None] = mapped_column(Time)
+    in_id: Mapped[str | None] = mapped_column(String)
+    in_transport: Mapped[str | None] = mapped_column(String)
+    in_number: Mapped[str | None] = mapped_column(String)
+    in_driver: Mapped[str | None] = mapped_column(String)
     
-    # --- ОТПРАВКА (Dispatch) ---
-    order_number: Mapped[str | None] = mapped_column(String) # Номер заказа
-    train: Mapped[str | None] = mapped_column(String, index=True) # Поезд (Вычисляется из заказа)
+    # --- Блок 6: ОТПРАВКА ---
+    order_number: Mapped[str | None] = mapped_column(String)
+    train: Mapped[str | None] = mapped_column(String, index=True)
     
-    dispatch_date: Mapped[date | None] = mapped_column(Date) # Отправлен (Дата)
-    dispatch_time: Mapped[time | None] = mapped_column(Time) # Отправлен (Время)
-    out_id: Mapped[str | None] = mapped_column(String) # Id (выхода)
-    out_transport: Mapped[str | None] = mapped_column(String) # Транспорт
-    out_number: Mapped[str | None] = mapped_column(String) # Номер вагона | Номер тягача
-    out_driver: Mapped[str | None] = mapped_column(String) # Станция | Водитель
+    dispatch_date: Mapped[date | None] = mapped_column(Date)
+    dispatch_time: Mapped[time | None] = mapped_column(Time)
+    out_id: Mapped[str | None] = mapped_column(String)
+    out_transport: Mapped[str | None] = mapped_column(String)
+    out_number: Mapped[str | None] = mapped_column(String)
+    out_driver: Mapped[str | None] = mapped_column(String)
     
-    # --- Прочее ---
-    release: Mapped[str | None] = mapped_column(String) # Релиз
-    carrier: Mapped[str | None] = mapped_column(String) # Перевозчик
-    manager: Mapped[str | None] = mapped_column(String) # Менеджер
-    comment: Mapped[str | None] = mapped_column(Text) # Примечание
+    # --- Блок 7: Прочее ---
+    release: Mapped[str | None] = mapped_column(String)
+    carrier: Mapped[str | None] = mapped_column(String)
+    manager: Mapped[str | None] = mapped_column(String)
+    comment: Mapped[str | None] = mapped_column(Text)
     
-    status: Mapped[str | None] = mapped_column(String) # 'ПРИНЯТ', 'ОТГРУЖЕН' (Вычисляемое)
+    status: Mapped[str | None] = mapped_column(String)
 
-    # Системные поля
-    weight_netto: Mapped[float | None] = mapped_column(Float) # Оставляем для совместимости
+    # Системные
+    weight_netto: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
     
     finance: Mapped["ContainerFinance"] = relationship(
         "ContainerFinance", back_populates="container", uselist=False, cascade="all, delete-orphan"
     )
-    
+
     def __repr__(self) -> str:
-        return f"<TerminalContainer {self.container_number} ({self.status})>"
+        return f"<TerminalContainer {self.container_number}>"
