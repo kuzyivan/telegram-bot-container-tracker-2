@@ -22,10 +22,9 @@ class TerminalContainer(Base):
     zone: Mapped[str | None] = mapped_column(String)
     client: Mapped[str | None] = mapped_column(String)
     
-    # 🔥 НОВЫЕ ПОЛЯ (которых не хватало)
-    inn: Mapped[str | None] = mapped_column(String) # ИНН
-    short_name: Mapped[str | None] = mapped_column(String) # Краткое наименование
-    
+    # 🔥 ВАЖНО: Эти поля вызывали ошибку, их не было в модели
+    inn: Mapped[str | None] = mapped_column(String) 
+    short_name: Mapped[str | None] = mapped_column(String) 
     stock: Mapped[str | None] = mapped_column(String)
     
     # --- Блок 2: Параметры ---
@@ -35,9 +34,7 @@ class TerminalContainer(Base):
     size: Mapped[str | None] = mapped_column(String(20))
     payload: Mapped[float | None] = mapped_column(Float)
     tare: Mapped[float | None] = mapped_column(Float)
-    
-    # 🔥 НОВОЕ ПОЛЕ
-    manufacture_year: Mapped[str | None] = mapped_column(String) # Год изготовления
+    manufacture_year: Mapped[str | None] = mapped_column(String) 
     
     # --- Блок 3: Веса ---
     weight_client: Mapped[float | None] = mapped_column(Float)
