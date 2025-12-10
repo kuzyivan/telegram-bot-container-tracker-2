@@ -167,8 +167,10 @@ async def cost_dashboard_page(
         primary_sort_field = Calculation.station_to
 
     # Загружаем расчеты вместе с элементами (items), чтобы показать детали расходов
+    # 🔥 ИСПРАВЛЕНИЕ: Фильтруем только ОПУБЛИКОВАННЫЕ (PUBLISHED) расчеты
     stmt = select(Calculation).options(selectinload(Calculation.items))\
         .where(Calculation.service_type == current_type_upper)\
+        .where(Calculation.status == CalculationStatus.PUBLISHED)\
         .order_by(
             primary_sort_field,
             Calculation.container_type,
