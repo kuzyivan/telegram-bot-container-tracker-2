@@ -71,7 +71,7 @@
                     
                     {% for group in calculations|groupby(groupby_field) %}
                         
-                        <!-- Заголовок группы (colspan=9, т.к. добавили колонку) -->
+                        <!-- Заголовок группы -->
                         <tr class="bg-mono-bg/40 border-t border-mono-border">
                             <td colspan="9" class="px-3 py-2">
                                 <div class="flex items-center gap-2">
@@ -129,7 +129,7 @@
                                     {% endif %}
                                 </td>
 
-                                <!-- Маркер актуальности (Точка) -->
+                                <!-- Маркер актуальности -->
                                 <td class="px-1 py-3 text-center align-middle">
                                     {% if is_active %}
                                         <div class="w-2.5 h-2.5 rounded-full bg-green-500 mx-auto shadow-sm" title="Актуален"></div>
@@ -138,19 +138,19 @@
                                     {% endif %}
                                 </td>
 
-                                <!-- Тип контейнера -->
+                                <!-- Тип контейнера (ОБНОВЛЕННЫЕ НАЗВАНИЯ) -->
                                 <td class="px-2 py-3 text-center align-middle">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded border border-mono-border bg-mono-bg text-[10px] font-bold text-mono-black whitespace-nowrap shadow-sm">
-                                        {% if calc.container_type == '20_REF' %} 20' REF
-                                        {% elif calc.container_type == '20_HEAVY' %} 20' HVY
-                                        {% elif calc.container_type == '20_EXTRA' %} 20' EXT
-                                        {% elif calc.container_type == '40_STD' %} 40' STD
-                                        {% elif calc.container_type == '40_HEAVY' %} 40' HVY
-                                        {% else %} {{ calc.container_type.replace('_', ' ') }} {% endif %}
+                                        {% if calc.container_type == '20_REF' %} 20' Легкая
+                                        {% elif calc.container_type == '20_HEAVY' %} 20' Тяжелая
+                                        {% elif calc.container_type == '20_EXTRA' %} 20' Экстра
+                                        {% elif calc.container_type == '40_STD' %} 40' Легкая
+                                        {% elif calc.container_type == '40_HEAVY' %} 40' Тяжелая
+                                        {% else %} {{ calc.container_type.replace('_', "' ") }} {% endif %}
                                     </span>
                                 </td>
 
-                                <!-- 🔥 Срок действия -->
+                                <!-- Срок действия -->
                                 <td class="px-2 py-3 text-center align-middle whitespace-nowrap">
                                     {% if calc.valid_to %}
                                         {% if not is_active %}
