@@ -25,8 +25,7 @@ SUBJECT_FILTER_TERMINAL = r'executive\s*summary'
 SENDER_FILTER_TERMINAL = 'aterminal@effex.ru' 
 FILENAME_PATTERN_TERMINAL = r'A-Terminal.*\.(xlsx|xls|csv)$'
 
-# --- ПАТТЕРНЫ ЛИСТОВ (для Excel) ---
-# Если файл многостраничный, ищем эти листы. Если CSV или один лист - не используется.
+# --- ПАТТЕРНЫ ЛИСТОВ ---
 SHEET_PATTERN_ARRIVAL = r'(arrival|прибытие|принят|поступление)'
 SHEET_PATTERN_DISPATCH = r'(dispatch|отправка|отправлен|отгрузка)'
 
@@ -69,7 +68,6 @@ COL_DATE_IN = ['Принят', 'Date In']
 
 # 3. Данные отправки (Правая часть таблицы)
 # В CSV колонки дублируются. Pandas добавляет суффикс .1 ко вторым экземплярам.
-# Мы ищем именно эти суффиксы для блока отправки.
 MAPPING_DISPATCH = {
     'order_number': ['Номер заказа', 'Order No'],
     
