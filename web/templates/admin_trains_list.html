@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Поезда — Logistrail{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">Реестр поездов</h1>
+
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+        <table class="w-full text-sm text-left">
+            <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
+                <tr>
+                    <th class="px-6 py-3">Номер</th>
+                    <th class="px-6 py-3">Дата отправления</th>
+                    <th class="px-6 py-3">Дата прибытия</th>
+                    <th class="px-6 py-3">Направление</th>
+                    <th class="px-6 py-3 text-center">Контейнеров</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for train in trains %}
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/admin/trains/{{ train.id }}'">
+                    <td class="px-6 py-4 font-bold">{{ train.terminal_train_number }}</td>
+                    <td class="px-6 py-4">{{ train.departure_date.strftime('%d.%m.%Y') if train.departure_date else '—' }}</td>
+                    <td class="px-6 py-4">
+                        {% if train.arrival_date %}
+                            <span class="text-green-600 font-bold">{{ train.arrival_date.strftime('%d.%m.%Y') }}</span>
+                        {% else %}
+                            <span class="text-gray-400">В пути</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4">{{ train.destination_station or '—' }}</td>
+                    <td class="px-6 py-4 text-center">
+                        <span class="bg-gray-100 px-2 py-1 rounded">{{ train.container_count or 0 }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

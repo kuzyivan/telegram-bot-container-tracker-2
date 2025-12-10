@@ -11,10 +11,11 @@ router = APIRouter(
 )
 
 # 2. Импортируем модули
-from web.routers.admin_modules import dashboard, calculator, schedule, companies
+from web.routers.admin_modules import dashboard, calculator, schedule, companies, trains
 
 # 3. Подключаем роуты из модулей
 router.include_router(dashboard.router)
 router.include_router(calculator.router)
 router.include_router(schedule.router)
 router.include_router(companies.router)
+router.include_router(trains.router)

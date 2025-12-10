@@ -125,6 +125,11 @@
                                class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/admin/dashboard' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
                                 Дашборд
                             </a>
+                            <!-- 👇 НОВАЯ ССЫЛКА НА ПОЕЗДА 👇 -->
+                            <a href="/admin/trains" 
+                            class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if '/admin/trains' in request.url.path else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                                Поезда
+                            </a>
                             <a href="/admin/schedule_planner" 
                                class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/admin/schedule_planner' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
                                 График
