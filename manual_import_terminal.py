@@ -3,79 +3,46 @@ import logging
 import sys
 import os
 
-# Добавляем текущую директорию в путь, чтобы Python видел модули проекта
+# Добавляем текущую директорию в путь
 sys.path.append(os.getcwd())
 
-# --- НАСТРОЙКА ЛОГГЕРА ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- ИМПОРТЫ ---
-try:
-    # Импортируем SessionLocal из твоего файла db.py
-    # и сразу переименовываем для понятности в async_session_factory
-    from db import SessionLocal as async_session_factory
-except ImportError as e:
-    logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА ИМПОРТА: Не удалось загрузить SessionLocal из 'db.py'.")
-    logger.error(f"Детали: {e}")
-    sys.exit(1)
+from db import SessionLocal
+# Импортируем ваш существующий сервис импорта
+from services.terminal_importer import process_terminal_report_file
 
-try:
-    from services.terminal_importer import process_terminal_report_file
-except ImportError as e:
-    logger.error(f"❌ ОШИБКА: Не найден модуль services.terminal_importer.")
-    logger.error(f"Детали: {e}")
-    sys.exit(1)
-
-# Имя файла для импорта
-FILENAME = "A-Terminal 11.12.2025.xlsx"
+# Имя вашего файла (положите его в корень папки проекта)
+FILENAME = "A-Terminal 11.12.2025.csv"
 
 async def main():
-    print("="*60)
-    print("⚠️  ВНИМАНИЕ! Вы запускаете РУЧНОЙ импорт.")
-    print(f"Файл: {FILENAME}")
-    print("="*60)
-
-    # Проверка наличия файла
+    print(f"🚀 Запуск ручного импорта файла: {FILENAME}")
+    
     if not os.path.exists(FILENAME):
-        print(f"❌ ОШИБКА: Файл '{FILENAME}' не найден в текущей папке!")
-        print(f"📂 Текущая папка: {os.getcwd()}")
+        print(f"❌ Файл не найден! Положите {FILENAME} в папку с ботом.")
         return
 
-    confirm = input("Введите 'y' для подтверждения начала загрузки: ")
-    if confirm.lower() != 'y':
-        print("Отмена операции.")
-        return
-
-    print("\n🚀 Подключаюсь к базе данных...")
-
-    # Создаем сессию и передаем её в импортер
-    async with async_session_factory() as session:
+    # Используем вашу асинхронную сессию
+    async with SessionLocal() as session:
         try:
-            # Запускаем процесс
-            await process_terminal_report_file(session, FILENAME)
+            # Ваш сервис сам определит, что это CSV, и использует нужный парсер
+            stats = await process_terminal_report_file(session, FILENAME)
             
-            print("\n" + "="*60)
-            print("🏁 ИМПОРТ ЗАВЕРШЕН УСПЕШНО!")
-            print("="*60)
+            print("-" * 30)
+            print(f"✅ Импорт завершен!")
+            print(f"📄 Файл: {stats.get('file_name')}")
+            print(f"➕ Добавлено/Обработано строк: {stats.get('total_added', 0)}")
+            print("-" * 30)
             
         except Exception as e:
-            print(f"\n❌ КРИТИЧЕСКАЯ ОШИБКА ВО ВРЕМЯ ВЫПОЛНЕНИЯ:\n{e}")
-            # Выводим полный стек ошибки для отладки
+            print(f"❌ Ошибка при импорте: {e}")
             import traceback
             traceback.print_exc()
 
 if __name__ == "__main__":
-    try:
-        # Настройка цикла событий для Windows (если вдруг запустишь там)
-        if sys.platform == 'win32':
-            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n⛔ Скрипт остановлен пользователем.")
-    except SystemExit:
-        pass
+    # Запуск асинхронного цикла
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    asyncio.run(main())
