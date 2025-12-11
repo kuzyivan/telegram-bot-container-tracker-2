@@ -223,7 +223,7 @@
                                     
                                     <!-- 2. Список чекбоксов -->
                                     <div id="stockCheckboxesContainer" class="hidden">
-                                        <label class="text-[10px] text-mono-gray font-bold uppercase block mb-1">2. Выберите/снимите стоки</label>
+                                        <label class="text-[10px] font-bold text-mono-gray uppercase block mb-1">2. Выберите/снимите стоки</label>
                                         <div id="stockList" class="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
                                             <!-- JS заполнит -->
                                         </div>
@@ -250,6 +250,12 @@
                     <input type="hidden" id="eventDate" name="date_str">
                     <input type="hidden" name="color" id="inpColor" value="#111111">
                     <input type="hidden" name="stock" id="inpStockHidden"> <!-- Сюда пишем JSON строку стоков -->
+                    
+                    <!-- 🔥 NEW: Отображение даты для создания -->
+                    <div class="mb-4 pb-2 border-b border-mono-bg">
+                        <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Дата создания рейса</p>
+                        <p class="text-lg font-bold text-mono-black tracking-tight" id="createModalDateDisplay">—</p>
+                    </div>
                     
                     <div>
                         <label class="block text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-3">Маркировка цветом</label>
@@ -531,6 +537,10 @@
     // 3.1. Инициализация модалки для создания
     window.openModalForCreate = function(dateStr) {
         selectedEventId = null;
+        
+        // 🔥 NEW: Отображение даты
+        document.getElementById('createModalDateDisplay').innerText = new Date(dateStr).toLocaleDateString('ru-RU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
         document.getElementById('modal-title').innerText = 'Новый рейс';
         document.getElementById('eventDate').value = dateStr;
         document.getElementById('createEventForm').reset();
