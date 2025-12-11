@@ -1,4 +1,5 @@
 import secrets
+import json
 from datetime import datetime
 from fastapi import APIRouter, Request, Depends, Form, status
 from fastapi.responses import JSONResponse
@@ -75,7 +76,9 @@ async def get_schedule_events(
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(manager_required)
 ):
-    """Возвращает JSON с событиями для FullCalendar, включая суммарные TEU."""
+    """Возвращает JSON с событиями для FullCalendar, включая суммарные TEU.
+       Теперь поле stock_info содержит JSON-строку с привязкой стоков к направлениям.
+    """
     try:
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
         end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
@@ -88,7 +91,6 @@ async def get_schedule_events(
         trains = result.scalars().all()
         
         # 2. Получаем статистику по стокам (кэш для расчета TEU)
-        # Нам нужно знать TEU каждого стока по имени, чтобы просуммировать их для поезда
         stock_stmt = (
             select(
                 TerminalContainer.stock,
@@ -100,8 +102,7 @@ async def get_schedule_events(
         )
         stock_res = await db.execute(stock_stmt)
         
-        # Карта: StockName -> TEU. 
-        # (Игнорируем направление здесь, так как в stock_info у поезда хранятся именно имена стоков)
+        # Карта: StockName -> TEU
         stock_teu_map = {}
         for row in stock_res:
             s_name = (row.stock or "Основной").strip()
@@ -112,27 +113,58 @@ async def get_schedule_events(
         
         events = []
         for t in trains:
-            title = f"{t.service_name} -> {t.destination}"
+            # --- НОВАЯ ЛОГИКА РАСЧЕТА ТЕКУЩЕГО TEU И ЗАГОЛОВКА ---
+            linked_teu = 0
+            all_directions = []
+            
+            try:
+                # Попытка разобрать JSON-строку из stock_info
+                directional_stocks = json.loads(t.stock_info) if t.stock_info else []
+                is_complex_structure = isinstance(directional_stocks, list)
+            except (json.JSONDecodeError, TypeError):
+                # Если это не JSON, то это старая простая строка стоков (через запятую)
+                directional_stocks = []
+                is_complex_structure = False
+            
+            if is_complex_structure and directional_stocks:
+                # 1. Сбор всех направлений и подсчет TEU по новому формату
+                all_linked_stocks = set()
+                for item in directional_stocks:
+                    direction = item.get("direction")
+                    stocks = item.get("stocks", [])
+                    
+                    if direction:
+                        all_directions.append(direction)
+                    
+                    for name in stocks:
+                        name = name.strip()
+                        if name:
+                            all_linked_stocks.add(name)
+                            linked_teu += stock_teu_map.get(name, 0)
+                
+                # Заголовок теперь формируется из всех направлений
+                title = f"{t.service_name} -> {', '.join(all_directions)}"
+                
+                # ExtendedProps: храним JSON как строку для передачи на фронтенд
+                stock_info_display = t.stock_info
+                final_teu = linked_teu
+            else:
+                # 2. Обработка старого или простого формата (если directional_stocks не является массивом)
+                title = f"{t.service_name} -> {t.destination}"
+                stock_info_display = t.stock_info or ""
+                
+                # Если это старая строка, парсим её для TEU (как раньше)
+                if stock_info_display:
+                    stock_names = [s.strip() for s in stock_info_display.split(',') if s.strip()]
+                    for name in stock_names:
+                        linked_teu += stock_teu_map.get(name, 0)
+                
+                final_teu = linked_teu if stock_info_display else None
+
+
             bg_color = getattr(t, 'color', '#111111') or '#111111'
             overload = getattr(t, 'overload_station', "")
             owner = getattr(t, 'wagon_owner', "")
-            
-            # --- РАСЧЕТ СУММАРНОГО TEU ---
-            linked_teu = 0
-            has_stocks = False
-            
-            if t.stock_info:
-                # Разбиваем строку по запятой (формат: "Сток 1, Сток 2")
-                stock_names = [s.strip() for s in t.stock_info.split(',') if s.strip()]
-                if stock_names:
-                    has_stocks = True
-                    for name in stock_names:
-                        # Суммируем TEU по каждому найденному стоку
-                        # Ищем по точному совпадению имени
-                        linked_teu += stock_teu_map.get(name, 0)
-            
-            # Если стоков нет, передаем None, чтобы не показывать "0 TEU" зря
-            final_teu = linked_teu if has_stocks else None
 
             events.append({
                 "id": str(t.id), 
@@ -143,9 +175,11 @@ async def get_schedule_events(
                 "borderColor": bg_color,
                 "extendedProps": {
                     "service": t.service_name, 
+                    # destination сохраняем как есть (для совместимости)
                     "dest": t.destination, 
-                    "stock": t.stock_info or "",
-                    "current_teu": final_teu,  # <-- Сумма TEU всех привязанных стоков
+                    # stock теперь содержит JSON-строку для обработки на фронтенде
+                    "stock": stock_info_display, 
+                    "current_teu": final_teu,  
                     "owner": owner or "", 
                     "overload": overload or "", 
                     "comment": t.comment or ""
@@ -163,13 +197,22 @@ async def get_schedule_events(
 @router.post("/api/schedule/{event_id}/update_details")
 async def update_schedule_details(
     event_id: int,
-    stock: str = Form(None), # Придет строка вида "Сток 1, Сток 2"
+    stock: str = Form(None), # Ожидается JSON-строка: [{"direction": "...", "stocks": ["...", "..."]}, ...]
     comment: str = Form(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(manager_required)
 ):
+    # Проверяем, что пришедшая строка stock является валидным JSON, если она не пуста
+    if stock:
+        try:
+            # Просто проверяем на валидность, сохраняем как строку
+            json.loads(stock)
+        except json.JSONDecodeError:
+            # Если не валидный JSON, сохраняем как есть (возможно, это старый формат или комментарий)
+            pass 
+    
     stmt = update(ScheduledTrain).where(ScheduledTrain.id == event_id).values(
-        stock_info=stock,
+        stock_info=stock, # Сохраняем JSON-строку с направлениями/стоками
         comment=comment
     )
     await db.execute(stmt)
@@ -184,7 +227,7 @@ async def create_schedule_event(
     date_str: str = Form(...), 
     service: str = Form(...), 
     destination: str = Form(...), 
-    stock: str = Form(None), 
+    stock: str = Form(None), # Ожидается JSON-строка: [{"direction": "...", "stocks": ["...", "..."]}, ...]
     owner: str = Form(None), 
     overload_station: str = Form(None), 
     color: str = Form("#111111"),
@@ -193,11 +236,25 @@ async def create_schedule_event(
 ):
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
+        
+        # Проверяем, что пришедшая строка stock является валидным JSON, если она не пуста
+        # и приводим основной destination, если он не указан, к первому направлению из JSON
+        if stock:
+            try:
+                directional_stocks = json.loads(stock)
+                if isinstance(directional_stocks, list) and directional_stocks and 'direction' in directional_stocks[0]:
+                    # Если destination не указан, берем его из первого направления
+                    if not destination:
+                        destination = directional_stocks[0]['direction']
+            except json.JSONDecodeError:
+                # Если не валидный JSON, оставляем как есть (возможно, это старый формат)
+                pass 
+
         new_train = ScheduledTrain(
             schedule_date=dt, 
             service_name=service, 
             destination=destination, 
-            stock_info=stock, 
+            stock_info=stock, # Сохраняем JSON-строку с направлениями/стоками
             wagon_owner=owner, 
             overload_station=overload_station, 
             color=color
