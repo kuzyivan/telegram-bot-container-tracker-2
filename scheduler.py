@@ -9,7 +9,6 @@ import config
 from utils.notify import notify_admin
 from logger import get_logger
 from services.notification_service import NotificationService
-# Обновляем импорт: check_and_process_dislocation теперь требует bot
 from services.dislocation_importer import check_and_process_dislocation 
 from services.terminal_importer import check_and_process_terminal_report
 from populate_stations_cache import job_populate_stations_cache
@@ -60,7 +59,6 @@ async def job_dislocation_check_on_start(bot: Bot):
     """Задача на ПЕРВОНАЧАЛЬНУЮ проверку дислокации (при старте)."""
     logger.info("⚡️ Scheduler: Запуск ПЕРВОНАЧАЛЬНОЙ проверки дислокации (при старте)...")
     try:
-        # Передаем bot для рассылки событий
         await check_and_process_dislocation(bot) 
         logger.info("✅ Scheduler: Первоначальная проверка дислокации завершена.")
     except Exception as e:
@@ -72,10 +70,7 @@ async def job_periodic_dislocation_check(bot: Bot):
     logger.info("🕒 Scheduler: Запуск периодической проверки дислокации...")
     try:
         logger.info("[Dislocation Import] Запуск проверки почты и обработки...")
-        
-        # Передаем bot для рассылки событий
         await check_and_process_dislocation(bot) 
-        
         logger.info("✅ Scheduler: Периодическая проверка дислокации завершена.")
     except Exception as e:
         logger.error(f"❌ Scheduler: Ошибка в задаче проверки дислокации: {e}", exc_info=True)
@@ -101,25 +96,25 @@ async def job_daily_terminal_import():
         error_message = (f"❌ <b>Ошибка обновления базы терминала</b>\n<b>Время:</b> {started.strftime('%d.%m %H:%M')}\n<code>{e}</code>")
         await notify_admin(error_message, silent=False, parse_mode="HTML")
 
-def start_scheduler(bot: Bot): # <<< ПРИНИМАЕТ Bot
+def start_scheduler(bot: Bot):
     """Регистрирует и запускает все задачи планировщика."""
     
     # 1. Плановые уведомления
     scheduler.add_job(job_send_notifications, 'cron', hour=9, minute=0, args=[bot, time(9, 0)], id="notify_for_09", replace_existing=True, jitter=600)
     scheduler.add_job(job_send_notifications, 'cron', hour=16, minute=0, args=[bot, time(16, 0)], id="notify_for_16", replace_existing=True, jitter=600)
     
-    # 2. ПЕРИОДИЧЕСКАЯ ПРОВЕРКА ДИСЛОКАЦИИ (передаем bot)
-    # Запуск каждые 20 минут (*/20)
+    # 2. ПЕРИОДИЧЕСКАЯ ПРОВЕРКА ДИСЛОКАЦИИ (каждые 20 мин)
     scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', args=[bot], id="dislocation_check_20min", replace_existing=True, jitter=10) 
     
-    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА (РАСПИСАНИЕ)
-    # Запуск в 08:30 (уже было)
+    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
-    # Запуск в 11:30 (уже было)
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=11, minute=30, id="terminal_import_1130", replace_existing=True, jitter=10)
     
-    # 🔥 НОВАЯ ЗАДАЧА: Запуск в 16:05 по Владивостоку
-    scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=05, id="terminal_import_1506", replace_existing=True, jitter=10)
+    # 🔥 НОВЫЕ ЗАДАЧИ (БЕЗ ВЕДУЩЕГО НУЛЯ В МИНУТАХ!)
+    scheduler.add_job(job_daily_terminal_import, 'cron', hour=15, minute=55, id="terminal_import_1555", replace_existing=True, jitter=10)
+    
+    # Ваша попытка на 16:15 (исправлено с 05 на 15)
+    scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=15, id="terminal_import_1615", replace_existing=True, jitter=10)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:
@@ -135,7 +130,5 @@ def start_scheduler(bot: Bot): # <<< ПРИНИМАЕТ Bot
     logger.info("🟢 Планировщик запущен со всеми задачами.")
     local_time = datetime.now(TZ)
     logger.info(f"🕒 Локальное время Владивостока: {local_time}")
-    logger.info(f"🕒 Время по UTC: {datetime.utcnow()}")
     
-    # Возвращаем функцию немедленного запуска для bot.py
     return job_dislocation_check_on_start
