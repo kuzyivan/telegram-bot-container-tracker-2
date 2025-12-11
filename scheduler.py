@@ -111,10 +111,10 @@ def start_scheduler(bot: Bot):
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=11, minute=30, id="terminal_import_1130", replace_existing=True, jitter=10)
     
     # 🔥 НОВЫЕ ЗАДАЧИ (БЕЗ ВЕДУЩЕГО НУЛЯ В МИНУТАХ!)
-    scheduler.add_job(job_daily_terminal_import, 'cron', hour=15, minute=55, id="terminal_import_1555", replace_existing=True, jitter=10)
+    #scheduler.add_job(job_daily_terminal_import, 'cron', hour=15, minute=55, id="terminal_import_1555", replace_existing=True, jitter=10)
     
     # Ваша попытка на 16:35 (исправлено с 05 на 35)
-    scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=35, id="terminal_import_1635", replace_existing=True, jitter=10)
+    #scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=35, id="terminal_import_1635", replace_existing=True, jitter=10)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:
