@@ -2,8 +2,7 @@ import json
 from datetime import datetime, timedelta, date
 from typing import Optional
 from fastapi import APIRouter, Request, Depends, Query
-from sqlalchemy import select, func, desc, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, desc, and_, case
 
 from models import User, UserRequest, Train, Tracking
 from model.terminal_container import TerminalContainer
@@ -119,6 +118,33 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         req_values.append(req_dict.get(current_req, 0))
         current_req += timedelta(days=1)
 
+    # === 🔥 НОВОЕ: Диаграмма стоков (TEU) ===
+    # Считаем TEU: если в size есть '40', то 2 TEU, иначе 1
+    teu_calculation = case(
+        (TerminalContainer.size.ilike('%40%'), 2),
+        else_=1
+    )
+
+    stock_stmt = (
+        select(
+            TerminalContainer.direction,
+            TerminalContainer.stock,
+            func.sum(teu_calculation).label('total_teu')
+        )
+        .where(TerminalContainer.dispatch_date.is_(None))  # Исключаем уехавшие
+        .group_by(TerminalContainer.direction, TerminalContainer.stock)
+        .having(func.sum(teu_calculation) > 0) # Скрываем пустые
+        .order_by(desc('total_teu'))
+    )
+    
+    stock_res = await session.execute(stock_stmt)
+    stock_rows = stock_res.all()
+
+    # Формируем метки "Направление - Сток"
+    stock_labels = [f"{r.direction or 'Нет напр.'} - {r.stock or 'Нет стока'}" for r in stock_rows]
+    stock_values = [r.total_teu for r in stock_rows]
+
+
     return {
         "new_users": new_users,
         "active_trains": active_trains,
@@ -134,6 +160,10 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "clients_values": json.dumps(clients_values),
         "req_labels": json.dumps(req_labels),
         "req_values": json.dumps(req_values),
+
+        # Новые данные для стоков
+        "stock_labels": json.dumps(stock_labels),
+        "stock_values": json.dumps(stock_values),
     }
 
 @router.get("/dashboard")

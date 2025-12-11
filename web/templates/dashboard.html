@@ -72,18 +72,30 @@
     </div>
 
     <!-- Остальные графики -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        <!-- Топ клиентов -->
-        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col">
+        <!-- Топ клиентов (теперь занимает 1/3) -->
+        <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col">
             <h3 class="text-base font-bold text-mono-black mb-4">Топ клиентов</h3>
             <div class="relative h-64 w-full flex-grow flex items-center justify-center">
                 <canvas id="clientsPieChart"></canvas>
             </div>
         </div>
 
-        <!-- Нагрузка (Запросы) -->
-        <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
+        <!-- 🔥 НОВЫЙ БЛОК: Текущий сток (TEU) (теперь занимает 1/3) -->
+        <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-card border border-transparent">
+            <h3 class="text-base font-bold text-mono-black mb-4">Текущий сток (TEU)</h3>
+            <div class="relative h-64">
+                <canvas id="stockChart"></canvas>
+            </div>
+            <div class="mt-4 text-center">
+                <p class="text-xs text-mono-gray">Всего TEU на терминале</p>
+                <p class="text-2xl font-bold text-mono-black" id="totalTeuDisplay">0</p>
+            </div>
+        </div>
+
+        <!-- Нагрузка (Запросы) (теперь занимает 1/3) -->
+        <div class="lg:col-span-1 bg-white p-6 rounded-2xl shadow-card border border-transparent">
             <h3 class="text-base font-bold text-mono-black mb-6">Нагрузка (Запросы)</h3>
             <div class="relative h-64 w-full">
                 <canvas id="requestsChart"></canvas>
@@ -264,6 +276,60 @@
                 scales: { 
                     y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, 
                     x: { grid: { display: false }, border: { display: false } } 
+                }
+            }
+        });
+
+        // --- 4. Doughnut: Stock (TEU) ---
+        const stockLabels = JSON.parse('{{ stock_labels | safe }}');
+        const stockValues = JSON.parse('{{ stock_values | safe }}');
+        const totalTeu = stockValues.reduce((a, b) => a + b, 0);
+        if(document.getElementById('totalTeuDisplay')) {
+            document.getElementById('totalTeuDisplay').innerText = totalTeu;
+        }
+
+        createChart('stockChart', {
+            type: 'doughnut',
+            data: {
+                labels: stockLabels,
+                datasets: [{
+                    data: stockValues,
+                    backgroundColor: [
+                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
+                        '#8B5CF6', '#EC4899', '#6366F1', '#14B8A6'
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        align: 'start',
+                        labels: {
+                            boxWidth: 8,
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 10,
+                            font: { size: 10 }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                label += context.raw + ' TEU';
+                                return label;
+                            }
+                        }
+                    }
                 }
             }
         });
