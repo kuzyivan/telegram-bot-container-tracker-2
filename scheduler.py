@@ -16,7 +16,7 @@ from populate_stations_cache import job_populate_stations_cache
 from telegram import Bot
 
 logger = get_logger(__name__)
-# Устанавливаем часовой пояс Владивостока (или другой, указанный в вашей конфигурации)
+# Устанавливаем часовой пояс Владивостока
 TZ = timezone("Asia/Vladivostok") 
 
 JOB_DEFAULTS = {"coalesce": True, "max_instances": 1, "misfire_grace_time": 300}
@@ -112,9 +112,14 @@ def start_scheduler(bot: Bot): # <<< ПРИНИМАЕТ Bot
     # Запуск каждые 20 минут (*/20)
     scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', args=[bot], id="dislocation_check_20min", replace_existing=True, jitter=10) 
     
-    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА (ДВА ЗАПУСКА: 08:30 и 11:30)
+    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА (РАСПИСАНИЕ)
+    # Запуск в 08:30 (уже было)
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
+    # Запуск в 11:30 (уже было)
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=11, minute=30, id="terminal_import_1130", replace_existing=True, jitter=10)
+    
+    # 🔥 НОВАЯ ЗАДАЧА: Запуск в 15:55 по Владивостоку
+    scheduler.add_job(job_daily_terminal_import, 'cron', hour=15, minute=55, id="terminal_import_1555", replace_existing=True, jitter=10)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:
