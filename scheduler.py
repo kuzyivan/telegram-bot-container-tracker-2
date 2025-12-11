@@ -118,8 +118,8 @@ def start_scheduler(bot: Bot): # <<< ПРИНИМАЕТ Bot
     # Запуск в 11:30 (уже было)
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=11, minute=30, id="terminal_import_1130", replace_existing=True, jitter=10)
     
-    # 🔥 НОВАЯ ЗАДАЧА: Запуск в 15:55 по Владивостоку
-    scheduler.add_job(job_daily_terminal_import, 'cron', hour=15, minute=55, id="terminal_import_1555", replace_existing=True, jitter=10)
+    # 🔥 НОВАЯ ЗАДАЧА: Запуск в 16:05 по Владивостоку
+    scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=05, id="terminal_import_1506", replace_existing=True, jitter=10)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:
