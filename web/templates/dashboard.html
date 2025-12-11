@@ -68,62 +68,73 @@
         </div>
     </div>
 
-    <!-- 🔥 НОВЫЙ БЛОК: Сетка стоков (Направление + Сток) -->
+    <!-- 🔥 НОВЫЙ БЛОК: Сгруппированные стоки -->
     <div class="mb-8">
         <h3 class="text-xl font-bold text-mono-black mb-6 flex items-center gap-2">
             Текущее накопление на стоках (TEU)
         </h3>
 
-        {% if stock_charts_data %}
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {% for stock in stock_charts_data %}
-            <div class="bg-white p-5 rounded-2xl shadow-card border border-transparent flex flex-col items-center relative hover:shadow-lg transition-shadow duration-200">
-                
-                <!-- Заголовок карточки -->
-                <div class="text-center mb-3 w-full border-b border-mono-border pb-2">
-                    <h3 class="font-bold text-mono-black truncate text-lg" title="{{ stock.title }}">
-                        {{ stock.title }}
-                    </h3>
-                    <p class="text-[10px] text-mono-gray font-bold uppercase tracking-widest mt-0.5">
-                        {{ stock.subtitle }}
-                    </p>
+        {% if grouped_stocks %}
+            
+            {% for direction, stocks in grouped_stocks.items() %}
+            <div class="mb-8 last:mb-0 animate-fade-in" style="animation-delay: {{ loop.index0 * 100 }}ms">
+                <!-- Заголовок Направления -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="h-px bg-mono-border flex-grow"></div>
+                    <h4 class="text-sm font-bold text-mono-gray uppercase tracking-widest bg-mono-bg px-3 py-1 rounded-full">
+                        {{ direction }}
+                    </h4>
+                    <div class="h-px bg-mono-border flex-grow"></div>
                 </div>
 
-                <!-- Контейнер графика -->
-                <div class="relative w-40 h-40">
-                    <!-- Уникальный ID для каждого графика -->
-                    <canvas id="stockChart{{ loop.index }}"></canvas>
-                    
-                    <!-- Центральный текст (Всего TEU) -->
-                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span class="text-3xl font-extrabold text-mono-black leading-none">
-                            {{ stock.teu }}
-                        </span>
-                        <span class="text-[10px] text-mono-gray mt-1 font-bold">TEU</span>
-                    </div>
-                </div>
+                <!-- Сетка стоков этого направления -->
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {% for stock in stocks %}
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-transparent flex flex-col items-center relative hover:shadow-md transition-shadow duration-200">
+                        
+                        <!-- Название стока -->
+                        <div class="text-center mb-2 w-full border-b border-mono-border pb-2">
+                            <h3 class="font-bold text-mono-black text-xs truncate" title="{{ stock.stock_name }}">
+                                {{ stock.stock_name }}
+                            </h3>
+                        </div>
 
-                <!-- Легенда под графиком -->
-                <div class="w-full mt-4 flex justify-between px-2 text-xs text-mono-gray pt-2">
-                    <div class="flex flex-col items-center">
-                        <span class="flex items-center gap-1.5 mb-1">
-                            <!-- 🔥 ОБНОВЛЕНО: Черный кружок для 20' -->
-                            <span class="w-2 h-2 rounded-full" style="background-color: #111111;"></span> 20'
-                        </span>
-                        <span class="font-bold text-mono-black text-sm">{{ stock.c20 }}</span>
-                    </div>
-                    <div class="flex flex-col items-center">
-                        <span class="flex items-center gap-1.5 mb-1">
-                            <!-- 🔥 ОБНОВЛЕНО: Оранжевый кружок для 40' -->
-                            <span class="w-2 h-2 rounded-full" style="background-color: #FF7300;"></span> 40'
-                        </span>
-                        <span class="font-bold text-mono-black text-sm">{{ stock.c40 }}</span>
-                    </div>
-                </div>
+                        <!-- Контейнер графика (УМЕНЬШЕННЫЙ РАЗМЕР w-24 h-24) -->
+                        <div class="relative w-24 h-24">
+                            <!-- Уникальный ID на основе хэша -->
+                            <canvas id="stockChart_{{ stock.id_suffix }}"></canvas>
+                            
+                            <!-- Центральный текст (Всего TEU) - уменьшенный шрифт -->
+                            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span class="text-xl font-extrabold text-mono-black leading-none">
+                                    {{ stock.teu }}
+                                </span>
+                                <span class="text-[9px] text-mono-gray mt-0.5 font-bold">TEU</span>
+                            </div>
+                        </div>
 
+                        <!-- Легенда под графиком (компактная) -->
+                        <div class="w-full mt-2 flex justify-between px-1 text-[10px] text-mono-gray">
+                            <div class="flex flex-col items-center">
+                                <span class="flex items-center gap-1 mb-0.5">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-[#111111]"></span> 20'
+                                </span>
+                                <span class="font-bold text-mono-black">{{ stock.c20 }}</span>
+                            </div>
+                            <div class="flex flex-col items-center">
+                                <span class="flex items-center gap-1 mb-0.5">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-[#FF7300]"></span> 40'
+                                </span>
+                                <span class="font-bold text-mono-black">{{ stock.c40 }}</span>
+                            </div>
+                        </div>
+
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
             {% endfor %}
-        </div>
+
         {% else %}
         <div class="bg-white rounded-xl p-12 text-center border border-dashed border-mono-border">
             <p class="text-mono-gray">Нет данных о контейнерах на терминале</p>
@@ -131,9 +142,8 @@
         {% endif %}
     </div>
 
-    <!-- Остальные графики (Клиенты и Запросы) -->
+    <!-- Остальные графики -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
         <!-- Топ клиентов -->
         <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col">
             <h3 class="text-base font-bold text-mono-black mb-4">Топ клиентов</h3>
@@ -183,19 +193,10 @@
     window.dashboardCharts = window.dashboardCharts || {};
 
     function initDashboard() {
-        // 1. Инициализация Datepicker
         if (typeof flatpickr !== 'undefined') {
-            flatpickr(".datepicker", {
-                locale: "ru",
-                dateFormat: "Y-m-d",
-                altInput: true,
-                altFormat: "d.m.Y",
-                allowInput: true,
-                disableMobile: "true"
-            });
+            flatpickr(".datepicker", { locale: "ru", dateFormat: "Y-m-d", altInput: true, altFormat: "d.m.Y", allowInput: true, disableMobile: "true" });
         }
 
-        // 2. Настройки Chart.js
         if (!document.getElementById('turnoverChart')) return;
 
         Chart.defaults.font.family = "'Inter', sans-serif";
@@ -215,39 +216,14 @@
             data: {
                 labels: {{ turnover_labels|safe }},
                 datasets: [
-                    {
-                        label: 'Принято',
-                        data: {{ accepted_values|safe }},
-                        borderColor: '#FF7300',
-                        backgroundColor: 'rgba(255, 115, 0, 0.1)',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        fill: true,
-                        pointRadius: 2,
-                        pointHoverRadius: 5
-                    },
-                    {
-                        label: 'Отгружено',
-                        data: {{ dispatched_values|safe }},
-                        borderColor: '#111111',
-                        backgroundColor: 'rgba(17, 17, 17, 0.05)',
-                        borderWidth: 2,
-                        tension: 0.3,
-                        fill: true,
-                        pointRadius: 2,
-                        pointHoverRadius: 5
-                    }
+                    { label: 'Принято', data: {{ accepted_values|safe }}, borderColor: '#FF7300', backgroundColor: 'rgba(255, 115, 0, 0.1)', borderWidth: 2, tension: 0.3, fill: true, pointRadius: 2 },
+                    { label: 'Отгружено', data: {{ dispatched_values|safe }}, borderColor: '#111111', backgroundColor: 'rgba(17, 17, 17, 0.05)', borderWidth: 2, tension: 0.3, fill: true, pointRadius: 2 }
                 ]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
+                responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
                 plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111111', padding: 10, cornerRadius: 8 } },
-                scales: { 
-                    y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, 
-                    x: { grid: { display: false }, border: { display: false } } 
-                }
+                scales: { y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, x: { grid: { display: false }, border: { display: false } } }
             }
         });
 
@@ -258,20 +234,11 @@
                 labels: {{ clients_labels|safe }},
                 datasets: [{
                     data: {{ clients_values|safe }},
-                    backgroundColor: [
-                        '#111111', '#333333', '#555555', '#777777', '#999999', '#BBBBBB', '#DDDDDD', '#EEEEEE'
-                    ],
-                    borderWidth: 0,
-                    hoverOffset: 4
+                    backgroundColor: ['#111111', '#333333', '#555555', '#777777', '#999999', '#BBBBBB', '#DDDDDD', '#EEEEEE'],
+                    borderWidth: 0, hoverOffset: 4
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '75%',
-                plugins: { legend: { position: 'right', labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle', font: {size: 11} } } },
-                layout: { padding: 0 }
-            }
+            options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, usePointStyle: true, pointStyle: 'circle', font: {size: 11} } } }, layout: { padding: 0 } }
         });
 
         // === ГРАФИК 3: Запросы ===
@@ -279,68 +246,60 @@
             type: 'bar',
             data: {
                 labels: {{ req_labels|safe }},
-                datasets: [{
-                    label: 'Запросы',
-                    data: {{ req_values|safe }},
-                    backgroundColor: '#2B2B2B',
-                    hoverBackgroundColor: '#111111',
-                    borderRadius: 4,
-                    maxBarThickness: 30
-                }]
+                datasets: [{ label: 'Запросы', data: {{ req_values|safe }}, backgroundColor: '#2B2B2B', hoverBackgroundColor: '#111111', borderRadius: 4, maxBarThickness: 30 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { 
-                    y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, 
-                    x: { grid: { display: false }, border: { display: false } } 
-                }
-            }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: gridColor }, border: { display: false } }, x: { grid: { display: false }, border: { display: false } } } }
         });
 
-        // === 🔥 НОВЫЕ ГРАФИКИ: Стоки (Множественные) ===
-        // Генерируем JS для каждого стока, который пришел с сервера
-        {% for stock in stock_charts_data %}
-        (function() {
-            const ctxId = 'stockChart{{ loop.index }}';
-            const ctx = document.getElementById(ctxId);
-            if (ctx) {
-                // Если график уже существует, уничтожаем его перед созданием (на случай SPA переходов)
-                if (window.dashboardCharts[ctxId]) window.dashboardCharts[ctxId].destroy();
-                
-                window.dashboardCharts[ctxId] = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ["20'", "40'"],
-                        datasets: [{
-                            data: [{{ stock.c20 }}, {{ stock.c40 }}],
-                            // 🔥 ОБНОВЛЕНО: Цвета (Черный #111111, Оранжевый #FF7300)
-                            backgroundColor: ['#111111', '#FF7300'], 
-                            hoverBackgroundColor: ['#333333', '#FF8C33'],
-                            borderWidth: 0,
-                            hoverOffset: 4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        cutout: '75%',
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) { return ' ' + context.label + ': ' + context.raw + ' шт'; }
-                                },
-                                backgroundColor: '#111111',
-                                padding: 10,
-                                cornerRadius: 8
+        // === 🔥 ГЕНЕРАЦИЯ ГРАФИКОВ СТОКОВ (Сгруппированных) ===
+        // Проходим по всем группам и всем стокам внутри них
+        {% for direction, stocks in grouped_stocks.items() %}
+            {% for stock in stocks %}
+            (function() {
+                const ctxId = 'stockChart_{{ stock.id_suffix }}';
+                const ctx = document.getElementById(ctxId);
+                if (ctx) {
+                    if (window.dashboardCharts[ctxId]) window.dashboardCharts[ctxId].destroy();
+                    
+                    window.dashboardCharts[ctxId] = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ["20'", "40'"],
+                            datasets: [{
+                                data: [{{ stock.c20 }}, {{ stock.c40 }}],
+                                // 🔥 ПРОЗРАЧНЫЕ ЦВЕТА (как в Dynamics)
+                                // Черный (20') и Оранжевый (40') с прозрачностью ~0.7-0.8
+                                backgroundColor: [
+                                    'rgba(17, 17, 17, 0.75)',  // Черный прозрачный
+                                    'rgba(255, 115, 0, 0.75)' // Оранжевый прозрачный
+                                ],
+                                hoverBackgroundColor: [
+                                    '#111111', 
+                                    '#FF7300'
+                                ],
+                                borderWidth: 0,
+                                hoverOffset: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            cutout: '70%', // Чуть толще бублик для маленького размера
+                            plugins: {
+                                legend: { display: false },
+                                tooltip: {
+                                    callbacks: { label: function(context) { return ' ' + context.label + ': ' + context.raw + ' шт'; } },
+                                    backgroundColor: '#111111',
+                                    padding: 8,
+                                    cornerRadius: 6,
+                                    bodyFont: { size: 10 }
+                                }
                             }
                         }
-                    }
-                });
-            }
-        })();
+                    });
+                }
+            })();
+            {% endfor %}
         {% endfor %}
     }
 

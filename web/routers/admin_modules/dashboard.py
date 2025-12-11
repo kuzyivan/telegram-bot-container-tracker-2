@@ -28,7 +28,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         .where(and_(Train.last_operation.not_ilike('%выгрузка%'), Train.last_operation.isnot(None)))
     ) or 0
 
-    # 3. Всего отправлено (по dispatch_date для точности факта)
+    # 3. Всего отправлено
     total_sent_stmt = select(func.count(TerminalContainer.id))
     total_sent = await session.scalar(filter_date(total_sent_stmt, TerminalContainer.dispatch_date)) or 0
 
@@ -43,7 +43,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
     # 5. Динамика грузооборота (Accepted vs Dispatched)
-    # Принятые (Accepted)
     accepted_stmt = (
         select(TerminalContainer.accept_date, func.count(TerminalContainer.id))
         .where(TerminalContainer.accept_date.isnot(None))
@@ -55,7 +54,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     accepted_res = await session.execute(accepted_stmt)
     accepted_dict = {r[0]: r[1] for r in accepted_res.all() if r[0]}
 
-    # Отгруженные (Dispatched)
     dispatched_stmt = (
         select(TerminalContainer.dispatch_date, func.count(TerminalContainer.id))
         .where(TerminalContainer.dispatch_date.isnot(None))
@@ -67,7 +65,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     dispatched_res = await session.execute(dispatched_stmt)
     dispatched_dict = {r[0]: r[1] for r in dispatched_res.all() if r[0]}
 
-    # Выравнивание по датам
     turnover_labels = []
     accepted_values = []
     dispatched_values = []
@@ -115,8 +112,8 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         req_values.append(req_dict.get(current_req, 0))
         current_req += timedelta(days=1)
 
-    # === 🔥 НОВОЕ: Диаграммы стоков (Разбивка по направлениям) ===
-    # Группируем по Направлению, Стоку и Размеру, чтобы посчитать TEU и состав
+    # === 🔥 НОВОЕ: Группировка стоков по Направлению ===
+    # Выбираем направление, сток и размер для каждого контейнера, который на терминале
     stock_stmt = (
         select(
             TerminalContainer.direction,
@@ -124,44 +121,66 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
             TerminalContainer.size,
             func.count(TerminalContainer.id)
         )
-        .where(TerminalContainer.dispatch_date.is_(None)) # Только те, что сейчас на терминале
+        .where(TerminalContainer.dispatch_date.is_(None)) # Только те, что сейчас на терминале (не уехали)
         .group_by(TerminalContainer.direction, TerminalContainer.stock, TerminalContainer.size)
     )
     
     stock_res = await session.execute(stock_stmt)
     
-    # Обработка данных в Python для удобной структуры
-    # Structure: Key=(Direction, Stock) -> {c20: int, c40: int, teu: int}
-    stocks_map = {}
+    # Сначала собираем плоский словарь для аггрегации размеров 20/40 в единый сток
+    # Key=(Direction, Stock) -> Data Object
+    stocks_agg = {}
     
     for row in stock_res:
-        direction = row.direction or "Без направления"
-        stock = row.stock or "Основной"
+        raw_direction = row.direction
+        # Очистка названия направления от лишних пробелов или None
+        direction = raw_direction.strip() if raw_direction else "Без направления"
+        stock_name = row.stock or "Основной"
         size_val = str(row.size or "")
         count = row[3]
         
-        key = (direction, stock)
-        if key not in stocks_map:
-            stocks_map[key] = {
-                "title": f"{direction}",
-                "subtitle": stock,
+        # Ключ для уникальности стока
+        key = (direction, stock_name)
+        
+        if key not in stocks_agg:
+            # Генерируем простой ID суффикс для JS, чтобы canvas id были уникальными
+            # abs(hash()) дает int, превращаем в строку
+            id_suffix = f"{abs(hash(direction))}{abs(hash(stock_name))}"
+            
+            stocks_agg[key] = {
+                "id_suffix": id_suffix,
+                "direction": direction,
+                "stock_name": stock_name,
                 "c20": 0,
                 "c40": 0,
                 "teu": 0
             }
         
-        # Расчет TEU и типов
-        # Если в размере есть '40', считаем как 2 TEU, иначе как 1
+        # Логика подсчета TEU
         if '40' in size_val:
-            stocks_map[key]["c40"] += count
-            stocks_map[key]["teu"] += count * 2
+            stocks_agg[key]["c40"] += count
+            stocks_agg[key]["teu"] += count * 2
         else:
-            stocks_map[key]["c20"] += count
-            stocks_map[key]["teu"] += count * 1
+            stocks_agg[key]["c20"] += count
+            stocks_agg[key]["teu"] += count * 1
             
-    # Превращаем в список и сортируем по заполнению (TEU)
-    stock_charts_data = list(stocks_map.values())
-    stock_charts_data.sort(key=lambda x: x['teu'], reverse=True)
+    # Теперь группируем по направлению для передачи в шаблон
+    # Structure: { "Moscow": [ {stock_data}, {stock_data} ], ... }
+    grouped_stocks = {}
+    
+    for item in stocks_agg.values():
+        d_name = item['direction']
+        if d_name not in grouped_stocks:
+            grouped_stocks[d_name] = []
+        grouped_stocks[d_name].append(item)
+        
+    # Сортировка данных
+    # 1. Внутри направления сортируем стоки по убыванию TEU (самые полные первыми)
+    for d_name in grouped_stocks:
+        grouped_stocks[d_name].sort(key=lambda x: x['teu'], reverse=True)
+        
+    # 2. Сортируем сами ключи направлений по алфавиту
+    sorted_grouped_stocks = dict(sorted(grouped_stocks.items()))
 
     return {
         "new_users": new_users,
@@ -178,8 +197,8 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "req_labels": json.dumps(req_labels),
         "req_values": json.dumps(req_values),
         
-        # Передаем готовый список объектов для рендера
-        "stock_charts_data": stock_charts_data
+        # Передаем сгруппированные и отсортированные стоки
+        "grouped_stocks": sorted_grouped_stocks
     }
 
 @router.get("/dashboard")
@@ -191,6 +210,7 @@ async def dashboard(
     current_user: User = Depends(admin_required)
 ):
     today = datetime.now().date()
+    # По умолчанию берем последние 30 дней
     d_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else today - timedelta(days=30)
     d_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else today
     
