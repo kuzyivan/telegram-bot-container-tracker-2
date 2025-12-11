@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import User, UserRequest, Train, Tracking
 from model.terminal_container import TerminalContainer
-from web.auth import admin_required
+# 🔥 ИСПРАВЛЕНИЕ 1: Импортируем manager_required
+from web.auth import admin_required, manager_required
 from .common import templates, get_db
 
 router = APIRouter()
@@ -112,8 +113,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         req_values.append(req_dict.get(current_req, 0))
         current_req += timedelta(days=1)
 
-    # === 🔥 НОВОЕ: Группировка стоков по Направлению ===
-    # Выбираем направление, сток и размер для каждого контейнера, который на терминале
+    # 8. Группировка стоков по Направлению
     stock_stmt = (
         select(
             TerminalContainer.direction,
@@ -121,32 +121,25 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
             TerminalContainer.size,
             func.count(TerminalContainer.id)
         )
-        .where(TerminalContainer.dispatch_date.is_(None)) # Только те, что сейчас на терминале (не уехали)
+        .where(TerminalContainer.dispatch_date.is_(None)) 
         .group_by(TerminalContainer.direction, TerminalContainer.stock, TerminalContainer.size)
     )
     
     stock_res = await session.execute(stock_stmt)
     
-    # Сначала собираем плоский словарь для аггрегации размеров 20/40 в единый сток
-    # Key=(Direction, Stock) -> Data Object
     stocks_agg = {}
     
     for row in stock_res:
         raw_direction = row.direction
-        # Очистка названия направления от лишних пробелов или None
         direction = raw_direction.strip() if raw_direction else "Без направления"
         stock_name = row.stock or "Основной"
         size_val = str(row.size or "")
         count = row[3]
         
-        # Ключ для уникальности стока
         key = (direction, stock_name)
         
         if key not in stocks_agg:
-            # Генерируем простой ID суффикс для JS, чтобы canvas id были уникальными
-            # abs(hash()) дает int, превращаем в строку
             id_suffix = f"{abs(hash(direction))}{abs(hash(stock_name))}"
-            
             stocks_agg[key] = {
                 "id_suffix": id_suffix,
                 "direction": direction,
@@ -156,7 +149,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
                 "teu": 0
             }
         
-        # Логика подсчета TEU
         if '40' in size_val:
             stocks_agg[key]["c40"] += count
             stocks_agg[key]["teu"] += count * 2
@@ -164,8 +156,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
             stocks_agg[key]["c20"] += count
             stocks_agg[key]["teu"] += count * 1
             
-    # Теперь группируем по направлению для передачи в шаблон
-    # Structure: { "Moscow": [ {stock_data}, {stock_data} ], ... }
     grouped_stocks = {}
     
     for item in stocks_agg.values():
@@ -174,12 +164,9 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
             grouped_stocks[d_name] = []
         grouped_stocks[d_name].append(item)
         
-    # Сортировка данных
-    # 1. Внутри направления сортируем стоки по убыванию TEU (самые полные первыми)
     for d_name in grouped_stocks:
         grouped_stocks[d_name].sort(key=lambda x: x['teu'], reverse=True)
         
-    # 2. Сортируем сами ключи направлений по алфавиту
     sorted_grouped_stocks = dict(sorted(grouped_stocks.items()))
 
     return {
@@ -187,17 +174,13 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "active_trains": active_trains,
         "total_sent": total_sent,
         "avg_delivery_days": round(avg_delivery_days, 1),
-        
         "turnover_labels": json.dumps(turnover_labels),
         "accepted_values": json.dumps(accepted_values),
         "dispatched_values": json.dumps(dispatched_values),
-        
         "clients_labels": json.dumps(clients_labels),
         "clients_values": json.dumps(clients_values),
         "req_labels": json.dumps(req_labels),
         "req_values": json.dumps(req_values),
-        
-        # Передаем сгруппированные и отсортированные стоки
         "grouped_stocks": sorted_grouped_stocks
     }
 
@@ -207,7 +190,8 @@ async def dashboard(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_required)
+    # 🔥 ИСПРАВЛЕНИЕ 2: Был admin_required, стал manager_required
+    current_user: User = Depends(manager_required)
 ):
     today = datetime.now().date()
     # По умолчанию берем последние 30 дней
