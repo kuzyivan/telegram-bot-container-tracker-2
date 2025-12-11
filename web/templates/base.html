@@ -119,13 +119,9 @@
                     </a>
                     
                     {% if user %}
-                        <!-- ССЫЛКИ ДЛЯ АДМИНА -->
+                        <!-- ССЫЛКИ ДЛЯ АДМИНА (Удален Дашборд отсюда, перенесен в общий блок) -->
                         {% if user.role == 'admin' %}
-                            <a href="/admin/dashboard" 
-                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/admin/dashboard' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
-                                Дашборд
-                            </a>
-                            <!-- 👇 НОВАЯ ССЫЛКА НА ПОЕЗДА 👇 -->
+                            
                             <a href="/admin/trains" 
                             class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if '/admin/trains' in request.url.path else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
                                 Поезда
@@ -145,13 +141,19 @@
                         {% endif %}
 
                         <!-- 🔥 ССЫЛКИ ДЛЯ МЕНЕДЖЕРА ТЕРМИНАЛА (ИЛИ АДМИНА) 🔥 -->
+                        <!-- Теперь Дашборд доступен и здесь -->
                         {% if user.role == 'admin' or (user.role == 'manager' and user.company_id == 3) or (user.role == 'owner' and user.company_id == 3) %}
+                            <a href="/admin/dashboard" 
+                               class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if request.url.path == '/admin/dashboard' else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
+                                Дашборд
+                            </a>
+
                             <a href="/admin/costs" 
                                class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if '/admin/costs' in request.url.path else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
                                 Себестоимость
                             </a>
                             
-                            <!-- ГРАФИК (Только для менеджера, у админа она уже есть выше) -->
+                            <!-- ГРАФИК (Только для менеджера, чтобы не дублировать у админа, у которого он выше) -->
                             {% if user.role != 'admin' %}
                             <a href="/admin/schedule_planner" 
                                class="px-4 py-2 rounded-lg text-sm font-medium transition {{ 'bg-mono-black text-white shadow-sm' if '/admin/schedule_planner' in request.url.path else 'text-mono-gray hover:text-mono-black hover:bg-mono-bg' }}">
