@@ -23,7 +23,7 @@ async def schedule_planner_page(
     """Отдает HTML-страницу планировщика."""
     return templates.TemplateResponse("schedule_planner.html", {"request": request, "user": user})
 
-# --- НОВЫЙ ЭНДПОИНТ: Получение списка активных стоков для Select ---
+# --- Получение списка активных стоков для Select ---
 @router.get("/api/schedule/stocks_list")
 async def get_active_stocks(
     db: AsyncSession = Depends(get_db), 
@@ -43,16 +43,16 @@ async def get_active_stocks(
     )
     result = await db.execute(stmt)
     
-    # Агрегация данных
+    # Агрегация данных по композитному ключу "Направление|ИмяСтока"
     stocks_map = {}
     for row in result:
-        # Нормализуем данные, так как в базе могут быть None или пробелы
+        # Нормализуем данные
         direction = (row.direction or "Без направления").strip()
         stock_name = (row.stock or "Основной").strip()
         size_val = str(row.size or "")
         count = row[3]
         
-        # Уникальный ключ для стока (чтобы схлопнуть разные размеры контейнеров в одну запись стока)
+        # Композитный ключ для уникальной агрегации
         key = f"{direction}|{stock_name}"
         
         if key not in stocks_map:
@@ -76,9 +76,7 @@ async def get_schedule_events(
     db: AsyncSession = Depends(get_db), 
     user: User = Depends(manager_required)
 ):
-    """Возвращает JSON с событиями для FullCalendar, включая суммарные TEU.
-       Теперь поле stock_info содержит JSON-строку с привязкой стоков к направлениям.
-    """
+    """Возвращает JSON с событиями для FullCalendar, включая суммарные TEU."""
     try:
         start_date = datetime.strptime(start.split('T')[0], "%Y-%m-%d").date()
         end_date = datetime.strptime(end.split('T')[0], "%Y-%m-%d").date()
@@ -91,75 +89,77 @@ async def get_schedule_events(
         trains = result.scalars().all()
         
         # 2. Получаем статистику по стокам (кэш для расчета TEU)
+        # Включаем Direction в выборку, это критично для корректного подсчета
         stock_stmt = (
             select(
+                TerminalContainer.direction, # NEW: Выбираем Направление
                 TerminalContainer.stock,
                 TerminalContainer.size,
                 func.count(TerminalContainer.id)
             )
             .where(TerminalContainer.dispatch_date.is_(None)) 
-            .group_by(TerminalContainer.stock, TerminalContainer.size)
+            .group_by(TerminalContainer.direction, TerminalContainer.stock, TerminalContainer.size)
         )
         stock_res = await db.execute(stock_stmt)
         
-        # Карта: StockName -> TEU
+        # 🔥 FIX: Карта: CompositeKey (Direction|StockName) -> TEU
         stock_teu_map = {}
         for row in stock_res:
-            s_name = (row.stock or "Основной").strip()
-            count = row[2] # count(id)
-            teu = count * 2 if '40' in str(row.size or "") else count
+            s_direction = (row[0] or "Без направления").strip()
+            s_name = (row[1] or "Основной").strip()
+            size_val = str(row[2] or "")
+            count = row[3] 
             
-            stock_teu_map[s_name] = stock_teu_map.get(s_name, 0) + teu
+            teu = count * 2 if '40' in size_val else count
+            
+            # 🔥 FIX: Ключ должен быть составным для уникальности
+            composite_key = f"{s_direction}|{s_name}"
+            stock_teu_map[composite_key] = stock_teu_map.get(composite_key, 0) + teu
         
         events = []
         for t in trains:
             # --- НОВАЯ ЛОГИКА РАСЧЕТА ТЕКУЩЕГО TEU И ЗАГОЛОВКА ---
             linked_teu = 0
             all_directions = []
+            stock_info_display = t.stock_info # По умолчанию сырая строка
             
             try:
                 # Попытка разобрать JSON-строку из stock_info
                 directional_stocks = json.loads(t.stock_info) if t.stock_info else []
                 is_complex_structure = isinstance(directional_stocks, list)
             except (json.JSONDecodeError, TypeError):
-                # Если это не JSON, то это старая простая строка стоков (через запятую)
+                # Если это не JSON, то это старая простая строка стоков
                 directional_stocks = []
                 is_complex_structure = False
             
             if is_complex_structure and directional_stocks:
                 # 1. Сбор всех направлений и подсчет TEU по новому формату
-                all_linked_stocks = set()
+                
                 for item in directional_stocks:
-                    direction = item.get("direction")
+                    direction = (item.get("direction") or "").strip()
                     stocks = item.get("stocks", [])
                     
-                    if direction:
+                    if direction and direction not in all_directions:
                         all_directions.append(direction)
                     
                     for name in stocks:
                         name = name.strip()
-                        if name:
-                            all_linked_stocks.add(name)
-                            linked_teu += stock_teu_map.get(name, 0)
+                        if direction and name:
+                            # 🔥 FIX: Ищем TEU по составному ключу "Направление|ИмяСтока"
+                            composite_key = f"{direction}|{name}"
+                            linked_teu += stock_teu_map.get(composite_key, 0) # TEU только для выбранного стока и направления
                 
                 # Заголовок теперь формируется из всех направлений
                 title = f"{t.service_name} -> {', '.join(all_directions)}"
                 
-                # ExtendedProps: храним JSON как строку для передачи на фронтенд
-                stock_info_display = t.stock_info
                 final_teu = linked_teu
             else:
-                # 2. Обработка старого или простого формата (если directional_stocks не является массивом)
+                # 2. Обработка старого или простого формата
                 title = f"{t.service_name} -> {t.destination}"
-                stock_info_display = t.stock_info or ""
                 
-                # Если это старая строка, парсим её для TEU (как раньше)
-                if stock_info_display:
-                    stock_names = [s.strip() for s in stock_info_display.split(',') if s.strip()]
-                    for name in stock_names:
-                        linked_teu += stock_teu_map.get(name, 0)
-                
-                final_teu = linked_teu if stock_info_display else None
+                # В старом формате TEU не может быть рассчитан точно по стокам, 
+                # поэтому оставим его null, если не удается разобрать JSON.
+                final_teu = None
 
 
             bg_color = getattr(t, 'color', '#111111') or '#111111'
@@ -175,11 +175,10 @@ async def get_schedule_events(
                 "borderColor": bg_color,
                 "extendedProps": {
                     "service": t.service_name, 
-                    # destination сохраняем как есть (для совместимости)
                     "dest": t.destination, 
-                    # stock теперь содержит JSON-строку для обработки на фронтенде
+                    # stock теперь содержит JSON-строку с направлениями/стоками
                     "stock": stock_info_display, 
-                    "current_teu": final_teu,  
+                    "current_teu": final_teu,  # <-- Сумма TEU только выбранных стоков по выбранным направлениям
                     "owner": owner or "", 
                     "overload": overload or "", 
                     "comment": t.comment or ""
@@ -208,7 +207,6 @@ async def update_schedule_details(
             # Просто проверяем на валидность, сохраняем как строку
             json.loads(stock)
         except json.JSONDecodeError:
-            # Если не валидный JSON, сохраняем как есть (возможно, это старый формат или комментарий)
             pass 
     
     stmt = update(ScheduledTrain).where(ScheduledTrain.id == event_id).values(
@@ -237,17 +235,14 @@ async def create_schedule_event(
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
         
-        # Проверяем, что пришедшая строка stock является валидным JSON, если она не пуста
-        # и приводим основной destination, если он не указан, к первому направлению из JSON
+        # Проверяем JSON для настройки основного Destination
         if stock:
             try:
                 directional_stocks = json.loads(stock)
-                if isinstance(directional_stocks, list) and directional_stocks and 'direction' in directional_stocks[0]:
-                    # Если destination не указан, берем его из первого направления
-                    if not destination:
-                        destination = directional_stocks[0]['direction']
+                # Если destination не указан, берем его из первого направления в JSON
+                if not destination and isinstance(directional_stocks, list) and directional_stocks and 'direction' in directional_stocks[0]:
+                    destination = directional_stocks[0]['direction']
             except json.JSONDecodeError:
-                # Если не валидный JSON, оставляем как есть (возможно, это старый формат)
                 pass 
 
         new_train = ScheduledTrain(
