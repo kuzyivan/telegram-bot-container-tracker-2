@@ -14,12 +14,13 @@ router = APIRouter()
 
 async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: date):
     """Собирает статистику для дашборда."""
+    
     def filter_date(query, column):
         return query.where(column >= date_from).where(column <= date_to)
 
     # 1. Новые пользователи
     new_users = await session.scalar(filter_date(select(func.count(User.id)), User.created_at)) or 0
-    
+
     # 2. Активные поезда (за последние 45 дней, не выгруженные)
     active_trains = await session.scalar(
         select(func.count(Train.id))
@@ -27,11 +28,9 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         .where(and_(Train.last_operation.not_ilike('%выгрузка%'), Train.last_operation.isnot(None)))
     ) or 0
 
-    # 3. Всего отправлено (по дате создания в системе или dispatch_date - берем dispatch_date для точности факта)
-    # Если нужно "Сколько добавлено в систему", то created_at. Если "Сколько уехало", то dispatch_date.
-    # Оставим created_at для метрики "Обработано заявок/импортов", а ритмичность сделаем по dispatch_date.
+    # 3. Всего отправлено (по dispatch_date для точности факта)
     total_sent_stmt = select(func.count(TerminalContainer.id))
-    total_sent = await session.scalar(filter_date(total_sent_stmt, TerminalContainer.created_at)) or 0
+    total_sent = await session.scalar(filter_date(total_sent_stmt, TerminalContainer.dispatch_date)) or 0
 
     # 4. Средний срок доставки
     avg_delivery_stmt = (
@@ -43,37 +42,47 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     )
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
-    # --- 🔥 ГРАФИК: Ритмичность погрузки (по dispatch_date) ---
-    # Считаем количество контейнеров, отправленных в каждый конкретный день
-    rhythm_stmt = (
+    # --- 🔥 НОВЫЙ ГРАФИК: Динамика грузооборота (Accepted vs Dispatched) ---
+    # Принятые (Accepted)
+    accepted_stmt = (
+        select(TerminalContainer.accept_date, func.count(TerminalContainer.id))
+        .where(TerminalContainer.accept_date.isnot(None))
+        .where(TerminalContainer.accept_date >= date_from)
+        .where(TerminalContainer.accept_date <= date_to)
+        .group_by(TerminalContainer.accept_date)
+        .order_by(TerminalContainer.accept_date)
+    )
+    accepted_res = await session.execute(accepted_stmt)
+    accepted_dict = {r[0]: r[1] for r in accepted_res.all() if r[0]}
+
+    # Отгруженные (Dispatched)
+    dispatched_stmt = (
         select(TerminalContainer.dispatch_date, func.count(TerminalContainer.id))
-        .where(TerminalContainer.dispatch_date.isnot(None))  # Только отправленные
+        .where(TerminalContainer.dispatch_date.isnot(None))
         .where(TerminalContainer.dispatch_date >= date_from)
         .where(TerminalContainer.dispatch_date <= date_to)
         .group_by(TerminalContainer.dispatch_date)
         .order_by(TerminalContainer.dispatch_date)
     )
-    rhythm_res = await session.execute(rhythm_stmt)
-    rhythm_rows = rhythm_res.all()
+    dispatched_res = await session.execute(dispatched_stmt)
+    dispatched_dict = {r[0]: r[1] for r in dispatched_res.all() if r[0]}
+
+    # Выравнивание по датам
+    turnover_labels = []
+    accepted_values = []
+    dispatched_values = []
+
+    # Для существующего графика Ритмичности (оставим его как есть или используем те же данные)
+    # Здесь мы используем dispatched_values и для старого графика
     
-    # Преобразуем в словарь {дата: кол-во}
-    rhythm_dict = {r[0]: r[1] for r in rhythm_rows if r[0]}
-    
-    rhythm_labels = []
-    rhythm_values = []
-    
-    # Проходим по всем дням диапазона, чтобы заполнить пробелы нулями
     current = date_from
     while current <= date_to:
-        rhythm_labels.append(current.strftime('%d.%m')) # Формат для графика
-        val = rhythm_dict.get(current, 0)
-        rhythm_values.append(val)
+        turnover_labels.append(current.strftime('%d.%m'))
+        accepted_values.append(accepted_dict.get(current, 0))
+        dispatched_values.append(dispatched_dict.get(current, 0))
         current += timedelta(days=1)
 
-    # Для линии тренда можно использовать те же данные или сгладить их
-    trend_values = rhythm_values 
-
-    # 5. Топ Клиенты (по количеству контейнеров)
+    # 5. Топ Клиенты
     clients_stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label('cnt'))
         .where(func.date(TerminalContainer.created_at) >= date_from)
@@ -88,7 +97,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     clients_labels = [r.client for r in clients_rows]
     clients_values = [r.cnt for r in clients_rows]
 
-    # 6. Статистика запросов (UserRequest)
+    # 6. Статистика запросов
     req_stmt = (
         select(func.date(UserRequest.timestamp).label("date"), func.count(UserRequest.id))
         .where(func.date(UserRequest.timestamp) >= date_from)
@@ -98,11 +107,12 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     )
     req_res = await session.execute(req_stmt)
     req_rows = req_res.all()
-    
-    # Также заполняем пропуски для графика запросов, чтобы даты совпадали
     req_dict = {r.date: r[1] for r in req_rows if r.date}
+    
     req_labels = []
     req_values = []
+    
+    # Повторный проход для запросов, чтобы шкала времени совпадала
     current_req = date_from
     while current_req <= date_to:
         req_labels.append(current_req.strftime('%d.%m'))
@@ -114,9 +124,12 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "active_trains": active_trains,
         "total_sent": total_sent,
         "avg_delivery_days": round(avg_delivery_days, 1),
-        "rhythm_labels": json.dumps(rhythm_labels),
-        "rhythm_values": json.dumps(rhythm_values),
-        "trend_values": json.dumps(trend_values),
+        
+        # Данные для графиков
+        "turnover_labels": json.dumps(turnover_labels),
+        "accepted_values": json.dumps(accepted_values),
+        "dispatched_values": json.dumps(dispatched_values),
+        
         "clients_labels": json.dumps(clients_labels),
         "clients_values": json.dumps(clients_values),
         "req_labels": json.dumps(req_labels),
@@ -125,7 +138,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
 
 @router.get("/dashboard")
 async def dashboard(
-    request: Request, 
+    request: Request,
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -135,7 +148,7 @@ async def dashboard(
     # По умолчанию берем последние 30 дней
     d_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else today - timedelta(days=30)
     d_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else today
-
+    
     stats = await get_dashboard_stats(db, d_from, d_to)
     
     # Лента последних действий
@@ -147,6 +160,10 @@ async def dashboard(
         feed_data.append({"username": username, "query": req.query_text, "time": req.timestamp.strftime("%H:%M %d.%m")})
 
     return templates.TemplateResponse("dashboard.html", {
-        "request": request, "user": current_user, "feed_data": feed_data,
-        "current_date_from": d_from, "current_date_to": d_to, **stats
+        "request": request,
+        "user": current_user,
+        "feed_data": feed_data,
+        "current_date_from": d_from,
+        "current_date_to": d_to,
+        **stats
     })
