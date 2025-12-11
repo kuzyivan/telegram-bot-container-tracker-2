@@ -21,6 +21,7 @@
         </form>
     </div>
 
+    <!-- Карточки KPI -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
         <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
@@ -49,12 +50,14 @@
         </div>
     </div>
 
+    <!-- 🔥 НОВЫЙ БЛОК: Динамика грузооборота (Вход/Выход) -->
     <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
         <div class="flex justify-between items-center mb-6">
             <h3 class="text-base font-bold text-mono-black">Динамика грузооборота терминала</h3>
             <div class="flex items-center gap-4 text-xs font-medium">
                 <div class="flex items-center gap-2">
-                    <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+                    <!-- Обновлен цвет легенды на FF7300 -->
+                    <span class="w-3 h-3 rounded-full" style="background-color: #FF7300;"></span>
                     <span class="text-mono-gray">Принято</span>
                 </div>
                 <div class="flex items-center gap-2">
@@ -68,8 +71,10 @@
         </div>
     </div>
 
+    <!-- Остальные графики -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
+        <!-- Топ клиентов -->
         <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent flex flex-col">
             <h3 class="text-base font-bold text-mono-black mb-4">Топ клиентов</h3>
             <div class="relative h-64 w-full flex-grow flex items-center justify-center">
@@ -77,6 +82,7 @@
             </div>
         </div>
 
+        <!-- Нагрузка (Запросы) -->
         <div class="bg-white p-6 rounded-2xl shadow-card border border-transparent">
             <h3 class="text-base font-bold text-mono-black mb-6">Нагрузка (Запросы)</h3>
             <div class="relative h-64 w-full">
@@ -85,6 +91,7 @@
         </div>
     </div>
 
+    <!-- Лента действий -->
     <div class="bg-white rounded-2xl shadow-card border border-transparent flex flex-col overflow-hidden">
         <div class="p-6 border-b border-mono-border">
             <h3 class="text-base font-bold text-mono-black">Последние действия</h3>
@@ -157,8 +164,8 @@
                     {
                         label: 'Принято',
                         data: {{ accepted_values|safe }},
-                        borderColor: '#3b82f6', // Синий
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderColor: '#FF7300', // Оранжевый (было синий)
+                        backgroundColor: 'rgba(255, 115, 0, 0.1)', // Оранжевая заливка
                         borderWidth: 2,
                         tension: 0.3,
                         fill: true,
