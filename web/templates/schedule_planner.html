@@ -1,636 +1,778 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Планировщик Расписания Поездов</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                }
-            }
-        }
-    </script>
-    <style>
-        /* Custom styles for the calendar */
-        body { font-family: 'Inter', sans-serif; background-color: #f4f7f9; }
-        .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 600 !important; color: #1f2937; }
-        .fc-daygrid-event {
-            border-radius: 0.5rem;
-            padding: 4px 8px;
-            margin-bottom: 2px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            white-space: normal;
-            line-height: 1.3;
-        }
-        .fc-daygrid-day-number {
-            font-weight: 600;
-        }
-        .modal {
-            transition: opacity 0.2s ease-in-out;
-        }
-        .modal-active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-        .modal-inactive {
-            opacity: 0;
-            pointer-events: none;
-        }
-        .stock-tag {
-            display: inline-block;
-            background-color: #e0f2f1; /* Light teal */
-            color: #0d9488; /* Dark teal */
-            padding: 2px 8px;
-            border-radius: 0.5rem;
-            margin: 2px;
-            font-size: 0.75rem;
-        }
-        .direction-block {
-            border: 1px solid #d1d5db;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            background-color: #ffffff;
-        }
-        .teu-label {
-             font-weight: 700;
-             color: #059669; /* Green */
-        }
-    </style>
-    <!-- FullCalendar JS & CSS -->
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.10/locales-all.global.min.js'></script>
-</head>
-<body class="p-4 sm:p-8">
+{% extends "base.html" %}
 
-    <div id='calendar' class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg"></div>
+{% block title %}График поездов — Logistrail{% endblock %}
 
-    <!-- Модальное окно создания/редактирования поезда -->
-    <div id="trainModal" class="modal modal-inactive fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onclick="closeModal(event)">
-        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-2xl transform transition-all duration-300" onclick="event.stopPropagation()">
-            <h2 id="modalTitle" class="text-2xl font-bold mb-6 text-gray-800">Создать Новый Поезд</h2>
-            
-            <form id="trainForm" method="POST">
-                <input type="hidden" id="eventDate" name="date_str">
-                <input type="hidden" id="eventId" name="event_id">
+{% block content %}
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div class="col-span-1">
-                        <label for="service" class="block text-sm font-medium text-gray-700">Номер/Имя Сервиса (Обязательно)</label>
-                        <input type="text" id="service" name="service" required class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                    </div>
-                    <div class="col-span-1">
-                        <label for="color" class="block text-sm font-medium text-gray-700">Цвет на графике</label>
-                        <input type="color" id="color" name="color" value="#111111" class="mt-1 block w-full h-10 rounded-lg border-gray-300 shadow-sm">
-                    </div>
-                    
-                    <!-- Destination (для совместимости, может быть скрыт, если используется многонаправленный ввод) -->
-                    <div class="col-span-2 hidden">
-                        <label for="destination" class="block text-sm font-medium text-gray-700">Основное Направление (для старого формата)</label>
-                        <input type="text" id="destination" name="destination" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                    </div>
-                </div>
+<style>
+    /* --- FullCalendar Variables --- */
+    :root {
+        --fc-border-color: #E5E5EA;
+        --fc-button-text-color: #111111;
+        --fc-button-bg-color: #FFFFFF;
+        --fc-button-border-color: #E5E5EA;
+        --fc-button-hover-bg-color: #F5F5F7;
+        --fc-button-hover-border-color: #E5E5EA;
+        --fc-button-active-bg-color: #111111;
+        --fc-button-active-border-color: #111111;
+        --fc-button-active-text-color: #FFFFFF;
+        --fc-today-bg-color: #FAFAFA;
+        --fc-event-bg-color: transparent;
+        --fc-event-border-color: transparent;
+    }
 
-                <!-- Блок динамического управления направлениями и стоками -->
-                <div class="mb-4 bg-gray-50 p-4 rounded-lg">
-                    <h3 class="text-lg font-semibold mb-3 text-gray-800">Привязка Стоков по Направлениям</h3>
-                    <div id="directionStockContainer">
-                        <!-- Динамические блоки будут здесь -->
-                    </div>
-                    <button type="button" onclick="addDirectionBlock()" class="text-indigo-600 hover:text-indigo-800 font-medium mt-2 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-                        </svg>
-                        Добавить Направление
-                    </button>
-                </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label for="owner" class="block text-sm font-medium text-gray-700">Собственник вагонов</label>
-                        <input type="text" id="owner" name="owner" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                    </div>
-                    <div>
-                        <label for="overload_station" class="block text-sm font-medium text-gray-700">Станция перегруза</label>
-                        <input type="text" id="overload_station" name="overload_station" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
-                    </div>
-                    <div class="md:col-span-2">
-                        <label for="comment" class="block text-sm font-medium text-gray-700">Комментарий</label>
-                        <textarea id="comment" name="comment" rows="2" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"></textarea>
-                    </div>
-                </div>
-                
-                <!-- Скрытое поле для JSON-строки стоков -->
-                <input type="hidden" id="stockDataJson" name="stock">
+    /* --- Кнопки --- */
+    .fc .fc-button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        text-transform: capitalize !important;
+        padding: 0.5rem 1rem !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+        transition: all 0.2s ease !important;
+        outline: none !important;
+    }
+    .fc .fc-button-primary { background-color: #FFFFFF !important; border-color: #E5E5EA !important; color: #111111 !important; }
+    .fc .fc-button-primary:hover { background-color: #F5F5F7 !important; border-color: #d1d5db !important; }
+    .fc .fc-button-active { background-color: #111111 !important; border-color: #111111 !important; color: #FFFFFF !important; box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important; }
+    .fc .fc-button:focus { box-shadow: 0 0 0 2px rgba(17, 17, 17, 0.2) !important; }
 
-                <div class="flex justify-end space-x-3 pt-4 border-t">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium">Отмена</button>
-                    <button type="submit" id="submitButton" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition duration-150">Сохранить</button>
-                </div>
-            </form>
+    /* --- Сетка и Текст --- */
+    .fc-toolbar-title { font-size: 1.5rem !important; font-weight: 800 !important; color: #111111 !important; letter-spacing: -0.02em !important; }
+    .fc-col-header-cell-cushion { color: #8E8E93 !important; text-transform: uppercase !important; font-size: 0.75rem !important; font-weight: 700 !important; padding: 10px 0 !important; text-decoration: none !important; }
+    .fc-daygrid-day-number { color: #111111 !important; font-weight: 600 !important; font-size: 0.9rem !important; padding: 8px !important; text-decoration: none !important; }
+    .fc-daygrid-event-dot { display: none; }
+
+    /* --- События (Общее) --- */
+    .fc-event {
+        cursor: pointer;
+        border: none !important;
+        background: transparent !important;
+        margin: 1px 0 !important;
+    }
+
+    /* --- БЛОКИРОВКА СКРОЛЛА FONА --- */
+    body.modal-open {
+        overflow: hidden !important;
+        touch-action: none;
+    }
+    
+    .custom-scrollbar {
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* --- АНИМАЦИЯ МОДАЛЬНОГО ОКНА --- */
+    .modal-state-closed { pointer-events: none; opacity: 0; }
+    .modal-state-closed #modalBackdrop { opacity: 0; }
+    .modal-state-closed #modalPanel { opacity: 0; transform: scale(0.95); }
+
+    .modal-state-open { pointer-events: auto; opacity: 1; }
+    .modal-state-open #modalBackdrop { opacity: 1; }
+    .modal-state-open #modalPanel { opacity: 1; transform: scale(1.0); }
+
+    #eventModal { transition: opacity 0.2s ease-out; }
+    #modalBackdrop { transition: opacity 0.3s ease-out; }
+    #modalPanel { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    @media (max-width: 768px) {
+        .fc-toolbar-title { font-size: 1.1rem !important; }
+        .fc .fc-button { padding: 0.4rem 0.6rem !important; font-size: 0.75rem !important; }
+        .fc-daygrid-day-frame { min-height: 60px !important; }
+        .fc-col-header-cell-cushion { overflow: hidden; max-width: 20px; text-overflow: clip; white-space: nowrap; }
+    }
+    
+    /* Стили для чекбоксов стоков */
+    .stock-checkbox:checked + div {
+        background-color: #F5F5F7;
+        border-color: #111111;
+        color: #111111;
+    }
+    .stock-chip-tag {
+        font-weight: 500;
+        font-size: 10px;
+        line-height: 1;
+        padding: 4px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+        background-color: rgba(17, 17, 17, 0.05); /* mono-light analog */
+        color: #111111;
+        border: 1px solid rgba(17, 17, 17, 0.1);
+    }
+</style>
+
+<div class="max-w-7xl mx-auto space-y-4 md:space-y-6 pb-20 md:pb-12 animate-fade-in">
+    <!-- Шапка страницы -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 px-4 md:px-0 pt-4 md:pt-0">
+        <div>
+            <h1 class="text-2xl md:text-3xl font-bold text-mono-black tracking-tight">График отправки</h1>
+            <p class="text-xs md:text-sm text-mono-gray mt-1">Планирование сервисов</p>
+        </div>
+        <div class="flex items-center gap-3 w-full md:w-auto">
+            <div class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border border-mono-border rounded-lg shadow-sm">
+                <span class="w-2 h-2 rounded-full bg-mono-black"></span>
+                <span class="text-xs font-bold text-mono-black uppercase tracking-wider">План</span>
+            </div>
+            {% if user.role == 'admin' %}
+            <button onclick="openShareModal()" class="flex-1 md:flex-none justify-center flex items-center gap-2 bg-mono-black text-white hover:bg-gray-800 px-4 py-2.5 rounded-xl text-sm font-bold transition shadow-md active:scale-95">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                Поделиться
+            </button>
+            {% endif %}
         </div>
     </div>
+    <!-- Календарь -->
+    <div class="bg-white p-2 md:p-6 rounded-2xl shadow-card border border-transparent md:border-mono-border">
+        <div id='calendar' class="min-h-[600px] md:min-h-[750px] font-sans"></div>
+    </div>
+</div>
 
-    <!-- Модальное окно деталей/редактирования -->
-    <div id="detailModal" class="modal modal-inactive fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onclick="closeModal(event, 'detailModal')">
-        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg transform transition-all duration-300" onclick="event.stopPropagation()">
-            <h2 class="text-2xl font-bold mb-4 text-gray-800" id="detailModalTitle">Детали Поезда</h2>
+<!-- МОДАЛКА РЕЙСА -->
+<div id="eventModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div id="modalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm" onclick="closeModal()"></div>
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div id="modalPanel" class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full border border-mono-border">
             
-            <div id="detailDisplay" class="mb-4 space-y-3">
-                <!-- Детали будут здесь -->
-            </div>
-
-            <div id="detailEditFormContainer" class="hidden">
-                <form id="detailEditForm" class="space-y-4 mb-4" method="POST">
-                    <input type="hidden" id="detailEventId" name="event_id">
-                    
-                    <h3 class="text-lg font-semibold mb-3 text-gray-800">Редактирование Стоков и Комментариев</h3>
-                    
-                    <!-- Блок динамического управления направлениями и стоками для редактирования -->
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <h4 class="text-base font-medium mb-3 text-gray-700">Привязка Стоков по Направлениям</h4>
-                        <div id="editDirectionStockContainer">
-                            <!-- Динамические блоки будут здесь -->
-                        </div>
-                        <button type="button" onclick="addDirectionBlock('edit')" class="text-indigo-600 hover:text-indigo-800 font-medium mt-2 flex items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-                            </svg>
-                            Добавить Направление
+            <!-- Хедер -->
+            <div id="modalHeader" class="px-6 py-4 border-b border-mono-bg flex justify-between items-center shrink-0 bg-white z-10" style="border-left: 6px solid transparent;">
+                <h3 class="text-lg font-bold text-mono-black" id="modal-title">Рейс</h3>
+                <div class="flex items-center gap-2">
+                    {% if user.role == 'admin' %}
+                    <div id="viewModeButtons" class="flex gap-2">
+                        <button onclick="switchToEditMode()" class="p-2 bg-mono-bg rounded-lg text-mono-gray hover:text-mono-black hover:bg-mono-border transition" title="Редактировать">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+                        <button onclick="deleteEvent()" class="p-2 bg-red-50 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-100 transition" title="Удалить">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                     </div>
-
-                    <div class="w-full">
-                        <label for="editComment" class="block text-sm font-medium text-gray-700">Комментарий</label>
-                        <textarea id="editComment" name="comment" rows="2" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border"></textarea>
-                    </div>
-
-                    <input type="hidden" id="editStockDataJson" name="stock">
-                </form>
+                    {% endif %}
+                    <button onclick="closeModal()" class="p-2 bg-mono-bg rounded-full text-mono-gray hover:text-mono-black transition ml-2 hover:bg-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
             </div>
             
-            <div class="flex justify-between items-center pt-4 border-t">
-                <button type="button" id="deleteButton" class="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition duration-150 text-sm hidden">Удалить</button>
-                <div class="flex space-x-3">
-                    <button type="button" onclick="closeModal(null, 'detailModal')" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium">Закрыть</button>
-                    <button type="button" id="toggleEditButton" onclick="toggleEditMode()" class="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium transition duration-150">Редактировать</button>
-                    <button type="button" id="saveEditButton" onclick="submitEditForm()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition duration-150 hidden">Сохранить</button>
+            <!-- Контент -->
+            <div class="p-6 overflow-y-auto custom-scrollbar bg-white max-h-[70vh]">
+                
+                <!-- VIEW MODE -->
+                <div id="viewModeContent" class="space-y-6 pb-2">
+                    <div>
+                        <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Назначение</p>
+                        <p class="text-2xl font-bold text-mono-black tracking-tight leading-none" id="viewDest">Dest</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div>
+                            <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Сервис</p>
+                            <p class="text-sm font-medium text-mono-black" id="viewService">Service</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Дата</p>
+                            <p class="text-sm font-medium text-mono-black" id="viewDate">Date</p>
+                        </div>
+                    </div>
+                    <div id="viewBlockOwner">
+                        <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Собственник</p>
+                        <div class="inline-flex items-center gap-1.5 bg-mono-light px-3 py-1.5 rounded-lg text-sm font-medium text-mono-black border border-mono-border">
+                            <span id="viewOwner">Owner</span>
+                        </div>
+                    </div>
+                    <div id="viewBlockOverload" class="hidden">
+                        <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-1">Перегруз</p>
+                        <div class="inline-flex items-center gap-2 bg-mono-black text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow-sm">
+                            <span id="viewOverload">Station</span>
+                        </div>
+                    </div>
+
+                    <!-- 🔥 БЛОК СТОК (МУЛЬТИСЕЛЕКТ) -->
+                    <div class="pt-4 border-t border-mono-bg">
+                        <p class="text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-2">Сток контейнеров (Направление + Сток)</p>
+                        
+                        {% if user.role in ['admin', 'manager', 'owner'] %}
+                            <div class="space-y-3">
+                                <!-- Контейнер для выбранных стоков (чипсы) -->
+                                <div id="viewSelectedStocks" class="space-y-3 min-h-[32px]">
+                                    <!-- Сюда JS добавит сгруппированные данные -->
+                                    <span class="text-xs text-mono-gray italic py-1">Нет привязанных стоков</span>
+                                </div>
+
+                                <!-- Интерфейс добавления / модификации -->
+                                <div class="bg-mono-bg rounded-xl p-3 border border-mono-border space-y-3">
+                                    <!-- 1. Фильтр направления -->
+                                    <div>
+                                        <label class="text-[10px] text-mono-gray font-bold uppercase block mb-1">1. Изменить стоки для направления:</label>
+                                        <select id="stockDirectionFilter" onchange="renderStocksByDirection()" class="w-full bg-white border border-mono-border rounded-lg px-2 py-1.5 text-xs text-mono-black focus:outline-none">
+                                            <option value="">-- Выберите направление --</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- 2. Список чекбоксов -->
+                                    <div id="stockCheckboxesContainer" class="hidden">
+                                        <label class="text-[10px] text-mono-gray font-bold uppercase block mb-1">2. Выберите/снимите стоки</label>
+                                        <div id="stockList" class="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+                                            <!-- JS заполнит -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Кнопка сохранения -->
+                                <button onclick="saveStockDetails()" class="w-full bg-mono-black text-white py-2 rounded-lg text-xs font-bold hover:bg-gray-800 transition">
+                                    Сохранить привязку стоков
+                                </button>
+                            </div>
+                        {% else %}
+                            <!-- Только просмотр для других ролей, здесь отобразим сгруппированные данные -->
+                            <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="viewStockStatic">
+                                —
+                            </div>
+                        {% endif %}
+                    </div>
                 </div>
+
+                <!-- EDIT MODE (ТОЛЬКО ЕСЛИ АДМИН) -->
+                {% if user.role == 'admin' %}
+                <form id="createEventForm" class="space-y-5 hidden pb-2">
+                    <input type="hidden" id="eventDate" name="date_str">
+                    <input type="hidden" name="color" id="inpColor" value="#111111">
+                    <input type="hidden" name="stock" id="inpStockHidden"> <!-- Сюда пишем JSON строку стоков -->
+                    
+                    <div>
+                        <label class="block text-[10px] font-bold text-mono-gray uppercase tracking-wider mb-3">Маркировка цветом</label>
+                        <div class="flex items-center justify-between px-2">
+                            <button type="button" onclick="selectColor('#111111', this)" class="w-8 h-8 rounded-full bg-[#111111] ring-2 ring-offset-2 ring-mono-black transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#3b82f6', this)" class="w-8 h-8 rounded-full bg-[#3b82f6] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#10b981', this)" class="w-8 h-8 rounded-full bg-[#10b981] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#ef4444', this)" class="w-8 h-8 rounded-full bg-[#ef4444] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                            <button type="button" onclick="selectColor('#f97316', this)" class="w-8 h-8 rounded-full bg-[#f97316] ring-2 ring-offset-2 ring-transparent transition color-btn"></button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Сервис / Линия</label>
+                                <input type="text" name="service" id="inpService" required class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Назначение</label>
+                                <input type="text" name="destination" id="inpDest" required class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Собственник</label>
+                                <input type="text" name="owner" id="inpOwner" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-mono-black mb-1.5">Перегруз</label>
+                                <input type="text" name="overload_station" id="inpOverload" class="w-full px-4 py-3 bg-mono-bg border-transparent rounded-xl text-mono-black text-sm focus:bg-white focus:ring-2 focus:ring-mono-black transition outline-none">
+                            </div>
+                        </div>
+
+                        <!-- МУЛЬТИСЕЛЕКТ ПРИ СОЗДАНИИ -->
+                        <div>
+                            <label class="block text-xs font-bold text-mono-black mb-1.5">Сток (Привязка Направление + Сток)</label>
+                            
+                            <!-- Контейнер для выбранных (Create Mode) -->
+                            <div id="createSelectedStocks" class="space-y-3 min-h-[32px] mb-2"></div>
+
+                            <div class="bg-mono-bg rounded-xl p-3 border border-mono-border space-y-3">
+                                <div>
+                                    <label class="text-[10px] text-mono-gray font-bold uppercase block mb-1">1. Выбрать/изменить стоки для направления:</label>
+                                    <select id="createStockDirectionFilter" onchange="renderStocksByDirection('create')" class="w-full bg-white border border-mono-border rounded-lg px-2 py-1.5 text-xs text-mono-black focus:outline-none">
+                                        <option value="">-- Выберите направление --</option>
+                                    </select>
+                                </div>
+                                <div id="createStockListContainer" class="hidden">
+                                    <label class="text-[10px] text-mono-gray font-bold uppercase block mb-1">2. Стоки</label>
+                                    <div id="createStockList" class="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto custom-scrollbar pr-1"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+
+            <!-- ФУТЕР -->
+            {% if user.role == 'admin' %}
+            <div id="modalFooter" class="px-6 py-4 border-t border-mono-bg shrink-0 hidden bg-white"> 
+                <div class="flex flex-col gap-3">
+                    <button type="button" onclick="submitCreate()" class="w-full bg-mono-black text-white py-3.5 rounded-xl font-bold text-sm hover:bg-gray-800 transition shadow-lg active:scale-95">
+                        Сохранить
+                    </button>
+                    <button type="button" onclick="cancelEditMode()" class="w-full bg-white border border-mono-border text-mono-black py-3.5 rounded-xl font-bold text-sm hover:bg-gray-50 transition">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Share Modal (без изменений) -->
+{% if user.role == 'admin' %}
+<div id="shareModal" class="fixed inset-0 z-[60] hidden modal-state-closed" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div id="shareModalBackdrop" class="absolute inset-0 bg-mono-black/40 backdrop-blur-sm transition-opacity" onclick="closeShareModal()"></div>
+    <div class="flex items-start justify-center min-h-screen px-4 pt-4 md:pt-20 pb-4 pointer-events-none">
+        <div id="shareModalPanel" class="pointer-events-auto w-full max-w-lg inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all border border-mono-border flex flex-col max-h-[85vh]">
+            <div class="bg-white px-6 pt-6 pb-6 shrink-0">
+                <h3 class="text-lg font-bold text-mono-black mb-4">Публичные ссылки</h3>
+                <div class="flex gap-2 mb-6">
+                    <input type="text" id="newLinkName" placeholder="Название" class="flex-1 bg-mono-bg border-transparent rounded-xl px-4 py-2.5 text-sm text-mono-black focus:bg-white focus:ring-2 focus:ring-mono-black outline-none transition">
+                    <button onclick="createLink()" class="bg-mono-black text-white px-5 py-2.5 rounded-xl hover:bg-gray-800 font-bold text-sm shadow-md transition">Создать</button>
+                </div>
+                <div class="space-y-2 overflow-y-auto pr-1 custom-scrollbar max-h-60" id="linksList"></div>
+            </div>
+            <div class="bg-mono-bg px-6 py-3 flex justify-end border-t border-mono-border shrink-0">
+                <button onclick="closeShareModal()" class="rounded-xl border border-mono-border shadow-sm px-4 py-2 bg-white text-sm font-bold text-mono-black hover:bg-gray-50 transition">Закрыть</button>
             </div>
         </div>
     </div>
+</div>
+{% endif %}
 
-    <script>
-        document.addEventListener('DOMContentLoaded', async function() {
-            const calendarEl = document.getElementById('calendar');
-            const stocksList = await fetchStocksList();
-            const directions = [...new Set(stocksList.map(s => s.direction))]; // Уникальные направления
+<script>
+    var calendar;
+    var selectedEventId = null;
+    var currentEventData = {}; 
+    var availableStocks = []; 
+    
+    // 🔥 НОВАЯ СТРУКТУРА: Map<string, Set<string>> для хранения {Направление: [Сток1, Сток2]}
+    var currentTrainStocks = new Map(); 
 
-            const calendar = new FullCalendar.Calendar(calendarEl, {
-                locale: 'ru',
-                initialView: 'dayGridMonth',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
-                },
-                editable: true,
-                selectable: true,
-                dayMaxEvents: true,
-                events: {
-                    // *** ИСПРАВЛЕНИЕ ОШИБКИ 404: добавлен префикс /admin ***
-                    url: '/admin/api/schedule/events',
-                    failure: function() {
-                        console.error('Не удалось загрузить события. Проверьте путь: /admin/api/schedule/events');
-                    }
-                },
-                
-                // Обработчик нажатия на ячейку (для создания)
-                select: function(info) {
-                    openCreateModal(info.startStr);
-                },
+    var IS_ADMIN = {{ 'true' if user.role == 'admin' else 'false' }};
+    var CAN_EDIT_STOCK = {{ 'true' if user.role in ['admin', 'manager', 'owner'] else 'false' }};
 
-                // Обработчик нажатия на событие (для деталей/редактирования)
-                eventClick: function(info) {
-                    openDetailModal(info.event);
-                },
+    if (typeof htmx !== 'undefined') {
+        htmx.onLoad(function(content) {
+            initCalendar();
+            loadStocks();
+        });
+    } else {
+        document.addEventListener('DOMContentLoaded', function() {
+            initCalendar();
+            loadStocks();
+        });
+    }
 
-                // Обработчик перетаскивания (только для админа)
-                eventDrop: async function(info) {
-                    const newDate = info.event.startStr.split('T')[0];
-                    const eventId = info.event.id;
-                    
-                    const formData = new FormData();
-                    formData.append('new_date', newDate);
+    // --- 1. ЗАГРУЗКА И ИНИЦИАЛИЗАЦИЯ ---
 
-                    try {
-                        const response = await fetch(`/admin/api/schedule/${eventId}/move`, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const result = await response.json();
-                        if (result.status !== 'ok') {
-                            alert('Ошибка при перемещении поезда: ' + (result.detail || 'Неизвестная ошибка'));
-                            info.revert(); // Откатить изменение на календаре
-                        }
-                    } catch (error) {
-                        console.error('Move error:', error);
-                        alert('Ошибка сети при перемещении.');
-                        info.revert();
-                    }
-                }
-            });
+    // 1.1. Загрузка стоков
+    async function loadStocks() {
+        if (!CAN_EDIT_STOCK) return;
+        try {
+            // Используем правильный путь с /admin
+            let res = await fetch('/admin/api/schedule/stocks_list');
+            if(res.ok) {
+                availableStocks = await res.json();
+                populateDirectionFilters();
+            }
+        } catch(e) { console.error("Err loading stocks", e); }
+    }
 
-            calendar.render();
+    // 1.2. Заполнение селектов направлений (уникальные значения)
+    function populateDirectionFilters() {
+        if (availableStocks.length === 0) return;
+        
+        const directions = [...new Set(availableStocks.map(s => s.direction))].sort();
+        const optionsHtml = '<option value="">-- Выберите направление --</option>' + 
+                            directions.map(d => `<option value="${d}">${d}</option>`).join('');
 
-            // Привязка формы создания поезда
-            document.getElementById('trainForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                handleSubmit(e.target, calendar, 'create');
-            });
+        const viewFilter = document.getElementById('stockDirectionFilter');
+        const createFilter = document.getElementById('createStockDirectionFilter');
+        
+        if (viewFilter) viewFilter.innerHTML = optionsHtml;
+        if (createFilter) createFilter.innerHTML = optionsHtml;
+    }
+
+    // --- 2. УПРАВЛЕНИЕ СТОКАМИ (ЛОГИКА) ---
+
+    // 2.1. Рендер чекбоксов по выбранному направлению
+    function renderStocksByDirection(mode = 'view') {
+        const filterId = mode === 'view' ? 'stockDirectionFilter' : 'createStockDirectionFilter';
+        const listId = mode === 'view' ? 'stockList' : 'createStockList';
+        const containerId = mode === 'view' ? 'stockCheckboxesContainer' : 'createStockListContainer';
+        
+        const direction = document.getElementById(filterId).value;
+        const listEl = document.getElementById(listId);
+        const containerEl = document.getElementById(containerId);
+        
+        if (!direction) {
+            containerEl.classList.add('hidden');
+            return;
+        }
+
+        const filtered = availableStocks.filter(s => s.direction === direction);
+        
+        // Получаем набор выбранных стоков для этого направления
+        const selectedForDirection = currentTrainStocks.get(direction) || new Set();
+
+        let html = '';
+        filtered.forEach(s => {
+            const isChecked = selectedForDirection.has(s.name);
+            html += `
+                <label class="flex items-center gap-2 cursor-pointer group">
+                    <input type="checkbox" class="stock-checkbox hidden" value="${s.name}" 
+                           ${isChecked ? 'checked' : ''} 
+                           onchange="toggleStock('${direction}', '${s.name}', '${mode}')">
+                    <div class="flex-1 px-3 py-2 border border-mono-border rounded-lg text-xs font-mono text-mono-gray bg-white transition group-hover:border-mono-black">
+                        <span class="font-bold">${s.name}</span> <span class="opacity-50">(${s.teu} TEU)</span>
+                    </div>
+                </label>
+            `;
+        });
+        
+        listEl.innerHTML = html;
+        containerEl.classList.remove('hidden');
+    }
+
+    // 2.2. Логика переключения стока (Добавить/Убрать)
+    window.toggleStock = function(direction, stockName, mode) {
+        if (!currentTrainStocks.has(direction)) {
+            currentTrainStocks.set(direction, new Set());
+        }
+        
+        const stocksSet = currentTrainStocks.get(direction);
+        
+        if (stocksSet.has(stockName)) {
+            stocksSet.delete(stockName);
+            // Если стоков в направлении не осталось, удаляем направление из Map
+            if (stocksSet.size === 0) {
+                currentTrainStocks.delete(direction);
+            }
+        } else {
+            stocksSet.add(stockName);
+        }
+        
+        renderFullStockStructure(mode);
+        // Перерисовываем чекбоксы, чтобы обновить их состояние
+        renderStocksByDirection(mode);
+    }
+    
+    // 2.3. Сбор и конвертация в JSON
+    function getStockJsonString() {
+        const data = [];
+        currentTrainStocks.forEach((stocksSet, direction) => {
+            // Преобразуем Set в массив
+            const stocksArray = Array.from(stocksSet);
+            if (stocksArray.length > 0) {
+                data.push({
+                    direction: direction,
+                    stocks: stocksArray
+                });
+            }
+        });
+        return data.length > 0 ? JSON.stringify(data) : '';
+    }
+
+    // 2.4. Рендер полного списка сгруппированных стоков (Чипсы)
+    function renderFullStockStructure(mode) {
+        const containerId = mode === 'view' ? 'viewSelectedStocks' : 'createSelectedStocks';
+        const container = document.getElementById(containerId);
+        
+        if (currentTrainStocks.size === 0) {
+            container.innerHTML = '<span class="text-xs text-mono-gray italic py-1">Нет привязанных стоков</span>';
+            // Обновляем скрытое поле
+            if (mode === 'create') document.getElementById('inpStockHidden').value = '';
+            return;
+        }
+
+        let html = '';
+        currentTrainStocks.forEach((stocksSet, direction) => {
+            const stockChips = Array.from(stocksSet).map(name => {
+                return `<span class="stock-chip-tag">${name}</span>`;
+            }).join('');
             
-            window.calendarInstance = calendar; // Сохраняем экземпляр для доступа из функций
-            window.stocksList = stocksList;
-            window.uniqueDirections = directions;
-            
-            // Инициализация первого блока при открытии
-            addDirectionBlock('create', true); 
+            html += `
+                <div class="p-2 bg-white border border-mono-border rounded-lg">
+                    <p class="text-[10px] font-bold text-mono-black uppercase tracking-wider">${direction}:</p>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                        ${stockChips}
+                    </div>
+                </div>
+            `;
         });
 
-        // --- ГЛОБАЛЬНЫЕ ФУНКЦИИ МОДАЛЬНЫХ ОКОН ---
-
-        function openModal(modalId) {
-            document.getElementById(modalId).classList.remove('modal-inactive');
-            document.getElementById(modalId).classList.add('modal-active');
+        container.innerHTML = html;
+        
+        // Обновляем скрытое поле в режиме создания
+        if (mode === 'create') {
+            document.getElementById('inpStockHidden').value = getStockJsonString();
         }
+    }
 
-        function closeModal(event = null, modalId = 'trainModal') {
-            if (event && event.target.id === modalId) {
-                document.getElementById(modalId).classList.remove('modal-active');
-                document.getElementById(modalId).classList.add('modal-inactive');
-            } else if (!event) {
-                document.getElementById(modalId).classList.remove('modal-active');
-                document.getElementById(modalId).classList.add('modal-inactive');
-            }
-        }
 
-        function openCreateModal(dateStr) {
-            const modal = document.getElementById('trainModal');
-            document.getElementById('modalTitle').textContent = 'Создать Поезд на ' + dateStr;
-            document.getElementById('eventDate').value = dateStr;
-            document.getElementById('eventId').value = '';
-            document.getElementById('trainForm').reset();
-            document.getElementById('submitButton').textContent = 'Сохранить';
+    // --- 3. ФУНКЦИИ МОДАЛЬНЫХ ОКОН ---
 
-            // Очистка и инициализация блока стоков/направлений
-            const container = document.getElementById('directionStockContainer');
-            container.innerHTML = '';
-            addDirectionBlock('create', true); 
+    // 3.1. Инициализация модалки для создания
+    window.openModalForCreate = function(dateStr) {
+        selectedEventId = null;
+        document.getElementById('modal-title').innerText = 'Новый рейс';
+        document.getElementById('eventDate').value = dateStr;
+        document.getElementById('createEventForm').reset();
+        
+        // Сброс выбора стоков и внутренней структуры
+        currentTrainStocks.clear();
+        renderFullStockStructure('create');
+        // Сброс фильтра
+        const filter = document.getElementById('createStockDirectionFilter');
+        if(filter) { filter.value = ""; renderStocksByDirection('create'); }
 
-            openModal('trainModal');
-        }
+        selectColor('#111111', document.querySelector('.color-btn')); 
+        showEditUI(true); 
+        openModal('eventModal');
+    }
 
-        async function openDetailModal(event) {
-            const detailModal = document.getElementById('detailModal');
-            const display = document.getElementById('detailDisplay');
-            const editContainer = document.getElementById('detailEditFormContainer');
-            const editForm = document.getElementById('detailEditForm');
-            const eventProps = event.extendedProps;
-            const eventId = event.id;
+    // 3.2. Инициализация модалки для просмотра
+    window.openModalForView = function(event) {
+        selectedEventId = event.id;
+        let props = event.extendedProps;
+        let startStr = event.startStr; 
+        
+        currentEventData = {
+            id: event.id, startStr: startStr, service: props.service, dest: props.dest, stock: props.stock, owner: props.owner, overload: props.overload, color: event.backgroundColor || '#111111', comment: props.comment
+        };
 
-            // Сброс режима редактирования
-            editContainer.classList.add('hidden');
-            display.classList.remove('hidden');
-            document.getElementById('toggleEditButton').textContent = 'Редактировать';
-            document.getElementById('saveEditButton').classList.add('hidden');
-            document.getElementById('deleteButton').classList.remove('hidden');
-            
-            document.getElementById('detailModalTitle').textContent = event.title;
-            document.getElementById('detailEventId').value = eventId;
-            document.getElementById('deleteButton').onclick = () => deleteEvent(eventId);
-
-            // Рендеринг деталей для просмотра
-            let detailsHtml = `
-                <p><span class="font-semibold">Дата:</span> ${event.startStr.split('T')[0]}</p>
-                <p><span class="font-semibold">Сервис:</span> ${eventProps.service}</p>
-                <p><span class="font-semibold">Собственник:</span> ${eventProps.owner || 'Не указан'}</p>
-                <p><span class="font-semibold">Перегруз:</span> ${eventProps.overload || 'Нет'}</p>
-                <p><span class="font-semibold">Комментарий:</span> ${eventProps.comment || 'Нет'}</p>
-            `;
-
-            let stockDisplayHtml = '<h4 class="font-semibold mt-3">Привязанные стоки:</h4>';
-            let totalTeuHtml = '';
-
+        document.getElementById('viewDest').innerText = props.dest || '—';
+        document.getElementById('viewService').innerText = props.service || '—';
+        document.getElementById('viewDate').innerText = new Date(startStr).toLocaleDateString('ru-RU');
+        document.getElementById('viewOwner').innerText = props.owner || '—';
+        document.getElementById('viewBlockOwner').style.display = props.owner ? 'block' : 'none';
+        document.getElementById('viewOverload').innerText = props.overload || '—';
+        document.getElementById('viewBlockOverload').classList.toggle('hidden', !props.overload);
+        
+        // --- ЗАГРУЗКА И ПАРСИНГ СТОКОВ (JSON) ---
+        currentTrainStocks.clear();
+        if (CAN_EDIT_STOCK) {
             try {
-                const directionalStocks = eventProps.stock ? JSON.parse(eventProps.stock) : [];
-
-                if (Array.isArray(directionalStocks) && directionalStocks.length > 0) {
+                // Пытаемся распарсить JSON
+                const directionalStocks = JSON.parse(props.stock);
+                if (Array.isArray(directionalStocks)) {
                     directionalStocks.forEach(item => {
-                        const direction = item.direction || 'Неизвестное направление';
-                        const stocks = item.stocks || [];
-                        
-                        stockDisplayHtml += `<div class="p-2 border rounded-lg bg-gray-50 mt-2">
-                            <p class="font-medium text-indigo-700">${direction}:</p>
-                            <div class="flex flex-wrap pt-1">
-                                ${stocks.map(s => `<span class="stock-tag">${s}</span>`).join('') || '— Стоки не привязаны'}
-                            </div>
-                        </div>`;
+                        if (item.direction && Array.isArray(item.stocks)) {
+                            currentTrainStocks.set(item.direction, new Set(item.stocks));
+                        }
                     });
-                } else if (eventProps.stock) {
-                    // Старый формат
-                    stockDisplayHtml += `<p class="italic text-sm text-gray-500">Старый формат: ${eventProps.stock}</p>`;
-                } else {
-                    stockDisplayHtml += '<p>Стоки не привязаны.</p>';
                 }
-
-                if (eventProps.current_teu !== null && eventProps.current_teu !== undefined) {
-                    totalTeuHtml = `<p class="teu-label text-xl mt-3">Итого TEU (Свободные контейнеры): ${eventProps.current_teu}</p>`;
-                }
-
-
             } catch (e) {
-                console.warn("Ошибка парсинга JSON stock_info, используя старый формат или сырую строку.", e);
-                stockDisplayHtml += `<p class="italic text-sm text-gray-500">Сырые данные: ${eventProps.stock || 'Нет'}</p>`;
-            }
-
-            display.innerHTML = detailsHtml + stockDisplayHtml + totalTeuHtml;
-            
-            // Предзаполнение формы редактирования
-            document.getElementById('editComment').value = eventProps.comment || '';
-            
-            // Очистка и предзаполнение блока стоков/направлений для редактирования
-            const editContainerEl = document.getElementById('editDirectionStockContainer');
-            editContainerEl.innerHTML = '';
-            try {
-                 const currentStocks = eventProps.stock ? JSON.parse(eventProps.stock) : [];
-                 if (Array.isArray(currentStocks) && currentStocks.length > 0) {
-                    currentStocks.forEach(data => addDirectionBlock('edit', false, data.direction, data.stocks));
-                 } else {
-                    // Инициализация пустым блоком для начала редактирования
-                    addDirectionBlock('edit', true);
-                 }
-            } catch (e) {
-                // Если парсинг не удался (старый формат), начинаем с пустого блока
-                addDirectionBlock('edit', true);
-            }
-
-            openModal('detailModal');
-        }
-
-        // --- УПРАВЛЕНИЕ РЕЖИМОМ РЕДАКТИРОВАНИЯ ---
-
-        function toggleEditMode() {
-            const detailDisplay = document.getElementById('detailDisplay');
-            const editContainer = document.getElementById('detailEditFormContainer');
-            const toggleButton = document.getElementById('toggleEditButton');
-            const saveButton = document.getElementById('saveEditButton');
-            const deleteButton = document.getElementById('deleteButton');
-            
-            const isEditing = editContainer.classList.contains('hidden');
-
-            if (isEditing) {
-                // Включаем режим редактирования
-                detailDisplay.classList.add('hidden');
-                editContainer.classList.remove('hidden');
-                toggleButton.textContent = 'Отменить';
-                saveButton.classList.remove('hidden');
-                deleteButton.classList.add('hidden');
-            } else {
-                // Выключаем режим редактирования
-                detailDisplay.classList.remove('hidden');
-                editContainer.classList.add('hidden');
-                toggleButton.textContent = 'Редактировать';
-                saveButton.classList.add('hidden');
-                deleteButton.classList.remove('hidden');
-            }
-        }
-
-        async function submitEditForm() {
-            const eventId = document.getElementById('detailEventId').value;
-            const editForm = document.getElementById('detailEditForm');
-
-            // 1. Сбор и конвертация данных стоков/направлений в JSON
-            const jsonString = collectDirectionStockData('edit');
-            document.getElementById('editStockDataJson').value = jsonString;
-
-            const formData = new FormData(editForm);
-            
-            // Удаляем ненужный event_id из Form, так как он в URL
-            formData.delete('event_id');
-
-            try {
-                const response = await fetch(`/admin/api/schedule/${eventId}/update_details`, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-                
-                if (result.status === 'ok') {
-                    closeModal(null, 'detailModal');
-                    window.calendarInstance.refetchEvents(); // Обновляем календарь
-                } else {
-                    alert('Ошибка при сохранении изменений: ' + (result.detail || 'Неизвестная ошибка'));
+                // Если не JSON (старый формат), просто показываем сырую строку
+                if (props.stock) {
+                    const stockEl = document.getElementById('viewStockStatic');
+                    if(stockEl) stockEl.innerText = props.stock;
+                    document.getElementById('viewSelectedStocks').classList.add('hidden');
+                    return;
                 }
-            } catch (error) {
-                console.error('Update error:', error);
-                alert('Ошибка сети при сохранении изменений.');
             }
+            document.getElementById('viewSelectedStocks').classList.remove('hidden');
+            renderFullStockStructure('view');
+            
+            // Сбрасываем фильтр просмотра
+            const filter = document.getElementById('stockDirectionFilter');
+            if(filter) { filter.value = ""; renderStocksByDirection('view'); }
         }
+        
+        const header = document.getElementById('modalHeader');
+        if(header) header.style.borderLeft = `6px solid ${currentEventData.color}`;
 
-        // --- УПРАВЛЕНИЕ СТОКАМИ И НАПРАВЛЕНИЯМИ ---
+        showViewUI();
+        document.getElementById('modal-title').innerText = 'Информация о рейсе';
+        openModal('eventModal');
+    }
 
-        /**
-         * Добавляет блок для выбора направления и стоков.
-         * @param {string} mode - 'create' или 'edit'.
-         * @param {boolean} forceAdd - Добавить, даже если контейнер не пуст.
-         * @param {string} initialDirection - Начальное направление (для редактирования).
-         * @param {Array<string>} initialStocks - Начальные стоки (для редактирования).
-         */
-        function addDirectionBlock(mode = 'create', forceAdd = false, initialDirection = '', initialStocks = []) {
-            const containerId = mode === 'create' ? 'directionStockContainer' : 'editDirectionStockContainer';
-            const container = document.getElementById(containerId);
-
-            if (!forceAdd && container.children.length > 0 && mode === 'create') {
-                // Если в режиме создания уже есть блок, не добавляем
-                return;
-            }
+    // 3.3. Сохранение только стоков (Менеджеры)
+    window.saveStockDetails = async function() {
+        if (!selectedEventId) return;
+        
+        // 1. Конвертируем текущую структуру в JSON-строку
+        const newStockJson = getStockJsonString();
+        
+        const formData = new FormData();
+        formData.append('stock', newStockJson);
+        
+        try {
+            const btn = document.querySelector("button[onclick='saveStockDetails()']");
+            const originalText = btn.innerHTML;
+            btn.innerHTML = 'Сохранение...'; 
             
-            const blockIndex = container.children.length;
+            let res = await fetch(`/admin/api/schedule/${selectedEventId}/update_details`, {
+                method: 'POST',
+                body: formData
+            });
             
-            const block = document.createElement('div');
-            block.className = 'direction-block relative';
-            block.dataset.index = blockIndex;
-            block.innerHTML = `
-                <button type="button" onclick="removeDirectionBlock(this)" 
-                        class="absolute top-2 right-2 text-red-500 hover:text-red-700 ${blockIndex === 0 && !initialDirection ? 'hidden' : ''}">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>
-                </button>
-                
-                <div class="mb-3">
-                    <label class="block text-sm font-medium text-gray-700">Направление</label>
-                    <select onchange="updateStockDropdown(this, '${mode}')" data-type="direction" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border" required>
-                        <option value="">-- Выберите направление --</option>
-                        ${window.uniqueDirections.map(d => `<option value="${d}">${d}</option>`).join('')}
-                    </select>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">Привязанные стоки (можно выбрать несколько)</label>
-                    <select multiple data-type="stocks" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border h-20">
-                        <!-- Стоки будут загружены после выбора направления -->
-                    </select>
-                </div>
-            `;
-            container.appendChild(block);
+            if (res.ok) {
+                btn.classList.remove('bg-mono-black');
+                btn.classList.add('bg-green-600');
+                btn.innerHTML = 'Сохранено';
+                setTimeout(() => {
+                     btn.innerHTML = originalText;
+                     btn.classList.remove('bg-green-600');
+                     btn.classList.add('bg-mono-black');
+                     if(calendar) calendar.refetchEvents();
+                }, 1000);
+            } else { alert("Ошибка сохранения"); btn.innerHTML = originalText; }
+        } catch (e) { console.error(e); alert("Ошибка сети"); }
+    }
 
-            // Предзаполнение для режима редактирования
-            if (initialDirection) {
-                const directionSelect = block.querySelector('select[data-type="direction"]');
-                directionSelect.value = initialDirection;
-                updateStockDropdown(directionSelect, mode, initialStocks);
-                block.querySelector('button').classList.remove('hidden');
-            }
+
+    // 3.4. Инициализация формы редактирования для Админа
+    window.switchToEditMode = function() {
+        document.getElementById('eventDate').value = currentEventData.startStr;
+        document.getElementById('inpService').value = currentEventData.service;
+        document.getElementById('inpDest').value = currentEventData.dest;
+        
+        if (IS_ADMIN) { // Используем текущую структуру, заполненную в openModalForView
+            renderFullStockStructure('create');
+            
+            // Сбрасываем фильтр create
+            const filter = document.getElementById('createStockDirectionFilter');
+            if(filter) { filter.value = ""; renderStocksByDirection('create'); }
         }
+        
+        document.getElementById('inpOwner').value = currentEventData.owner;
+        document.getElementById('inpOverload').value = currentEventData.overload;
+        
+        let colorBtns = Array.from(document.querySelectorAll('.color-btn'));
+        let activeBtn = colorBtns.find(b => b.getAttribute('onclick').includes(currentEventData.color));
+        if (activeBtn) selectColor(currentEventData.color, activeBtn); 
+        else selectColor(currentEventData.color, colorBtns[0]);
 
-        function removeDirectionBlock(button) {
-            const block = button.closest('.direction-block');
-            block.remove();
-        }
+        document.getElementById('modal-title').innerText = 'Редактирование';
+        showEditUI(false); 
+    }
+    
+    // 3.5. Отправка формы (Создание / Редактирование админом)
+    window.submitCreate = async function() {
+        if (!IS_ADMIN) return;
+        
+        // Запись JSON-строки в скрытое поле
+        document.getElementById('inpStockHidden').value = getStockJsonString();
+        
+        if (selectedEventId) { await deleteEvent(true); } 
+        const form = document.getElementById('createEventForm');
+        const formData = new FormData(form);
+        try { let response = await fetch('/admin/api/schedule/create', { method: 'POST', body: formData }); if (response.ok) { closeModal('eventModal'); if(calendar) calendar.refetchEvents(); } else { alert("Ошибка сохранения"); } } catch (e) { console.error(e); }
+    }
 
-        /**
-         * Обновляет список стоков во втором select в зависимости от выбранного направления.
-         * @param {HTMLSelectElement} directionSelect - Элемент select с направлением.
-         * @param {string} mode - 'create' или 'edit'.
-         * @param {Array<string>} initialStocks - Начальные стоки для предвыбора.
-         */
-        function updateStockDropdown(directionSelect, mode, initialStocks = []) {
-            const block = directionSelect.closest('.direction-block');
-            const stocksSelect = block.querySelector('select[data-type="stocks"]');
-            const selectedDirection = directionSelect.value;
-            
-            stocksSelect.innerHTML = '';
-            
-            if (selectedDirection) {
-                // Фильтруем стоки по выбранному направлению
-                const filteredStocks = window.stocksList.filter(s => s.direction === selectedDirection);
 
-                // Добавляем опции
-                filteredStocks.forEach(stock => {
-                    const option = document.createElement('option');
-                    const isSelected = initialStocks.includes(stock.name);
+    // --- 4. ОСТАЛЬНЫЕ ФУНКЦИИ (без изменений) ---
+
+    window.initCalendar = function() {
+        var calendarEl = document.getElementById('calendar');
+        if (!calendarEl) return;
+        if (calendarEl.classList.contains('fc')) return;
+
+        setTimeout(() => {
+            const isMobile = window.innerWidth < 768;
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'ru',
+                firstDay: 1,
+                headerToolbar: {
+                    left: isMobile ? 'prev,next' : 'prev,next today',
+                    center: 'title',
+                    right: isMobile ? '' : 'dayGridMonth,dayGridWeek'
+                },
+                titleFormat: isMobile ? { month: 'short', year: 'numeric' } : { month: 'long', year: 'numeric' },
+                buttonText: { today: 'Сегодня', month: 'Месяц', week: 'Неделя' },
+                dayMaxEvents: false,
+                height: 'auto',      
+                contentHeight: 'auto',
+                events: '/admin/api/schedule/events', 
+                editable: IS_ADMIN,
+                eventStartEditable: IS_ADMIN,
+                droppable: IS_ADMIN,
+                dateClick: function(info) { if (IS_ADMIN) openModalForCreate(info.dateStr); },
+                eventClick: function(info) { info.jsEvent.preventDefault(); openModalForView(info.event); },
+                eventDrop: function(info) { if (IS_ADMIN) updateEventDate(info.event.id, info.event.startStr); },
+                eventContent: function(arg) {
+                    let props = arg.event.extendedProps || {};
+                    let bgColor = arg.event.backgroundColor || '#111111'; 
+                    let dest = props.dest || arg.event.title;
+                    let service = props.service || 'Сервис';
+                    let owner = props.owner || '';
+                    let overload = props.overload || '';
+                    let currentTeu = props.current_teu; 
                     
-                    option.value = stock.name;
-                    option.textContent = `${stock.name} (${stock.teu} TEU)`;
-                    if (isSelected) {
-                        option.selected = true;
-                    }
-                    stocksSelect.appendChild(option);
-                });
-            } else {
-                stocksSelect.innerHTML = '<option value="">-- Сначала выберите направление --</option>';
-            }
-        }
-
-        /**
-         * Собирает данные из всех динамических блоков и конвертирует их в JSON строку.
-         * @param {string} mode - 'create' или 'edit'.
-         * @returns {string} JSON-строка.
-         */
-        function collectDirectionStockData(mode = 'create') {
-            const containerId = mode === 'create' ? 'directionStockContainer' : 'editDirectionStockContainer';
-            const container = document.getElementById(containerId);
-            const data = [];
-
-            Array.from(container.children).forEach(block => {
-                const directionSelect = block.querySelector('select[data-type="direction"]');
-                const stocksSelect = block.querySelector('select[data-type="stocks"]');
-                
-                const selectedStocks = Array.from(stocksSelect.selectedOptions).map(option => option.value);
-
-                if (directionSelect.value) {
-                    data.push({
-                        direction: directionSelect.value,
-                        stocks: selectedStocks
-                    });
+                    let desktopHtml = `
+                        <div class="hidden md:flex flex-col py-1.5 px-2 bg-white h-full border border-mono-border/60 rounded-r-md gap-0.5 select-none overflow-hidden hover:shadow-md transition-shadow relative" 
+                             style="border-left: 4px solid ${bgColor};">
+                            <div class="flex justify-between items-start gap-1">
+                                <div class="text-[11px] font-bold text-mono-black truncate leading-tight pointer-events-none">${dest}</div>
+                                ${currentTeu !== null && currentTeu !== undefined ? 
+                                  `<div class="px-1.5 py-0.5 rounded bg-mono-light border border-mono-border flex items-center shrink-0">
+                                     <span class="text-[9px] font-bold text-mono-black leading-none">${currentTeu} TEU</span>
+                                   </div>` : ''}
+                            </div>
+                            <div class="text-[10px] text-mono-gray truncate leading-tight pointer-events-none mt-0.5">${service}</div>
+                            ${owner ? `<div class="flex items-center gap-1 text-[9px] text-mono-gray/70 pt-1 pointer-events-none truncate border-t border-mono-light/50 mt-0.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0"><path d="M10 8a3 3 0 100-6 3 3 0 000 6zM3.465 14.493a1.23 1.23 0 00.41 1.412A9.957 9.957 0 0010 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 00-13.074.003z" /></svg>
+                                <span class="truncate">${owner}</span></div>` : ''}
+                            ${overload ? `<div class="flex items-center gap-1 text-[9px] text-mono-black/80 font-medium pointer-events-none truncate mt-0.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 shrink-0"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0v2.433l-.312-.312a7 7 0 00-11.712 3.139.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.312h-2.433a.75.75 0 000 1.5h4.242z" clip-rule="evenodd" /></svg>
+                                <span class="truncate">${overload}</span></div>` : ''}
+                        </div>`;
+                    let mobileHtml = `<div class="md:hidden flex justify-center items-center w-full py-0.5"><div class="w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-white/50" style="background-color: ${bgColor};"></div></div>`;
+                    return { html: desktopHtml + mobileHtml }
                 }
             });
-
-            // Возвращаем JSON-строку только если есть данные, иначе пустую строку
-            return data.length > 0 ? JSON.stringify(data) : '';
-        }
-        
-        // --- ОБЩАЯ ФУНКЦИЯ ОТПРАВКИ ---
-
-        async function handleSubmit(form, calendar, mode) {
-            // 1. Сбор и конвертация данных стоков/направлений в JSON
-            const jsonString = collectDirectionStockData('create');
-            document.getElementById('stockDataJson').value = jsonString;
-
-            const formData = new FormData(form);
-            const url = '/admin/api/schedule/create';
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
-
-                if (result.status === 'ok') {
-                    closeModal();
-                    calendar.refetchEvents(); // Обновляем календарь
-                } else {
-                    alert('Ошибка при создании поезда: ' + (result.detail || 'Неизвестная ошибка'));
-                }
-            } catch (error) {
-                console.error('Submit error:', error);
-                alert('Ошибка сети при отправке данных.');
-            }
-        }
-        
-        async function deleteEvent(eventId) {
-            if (!confirm('Вы уверены, что хотите удалить этот поезд?')) return;
-            
-            try {
-                const response = await fetch(`/admin/api/schedule/${eventId}`, {
-                    method: 'DELETE'
-                });
-                const result = await response.json();
-
-                if (result.status === 'ok') {
-                    closeModal(null, 'detailModal');
-                    window.calendarInstance.refetchEvents(); // Обновляем календарь
-                } else {
-                    alert('Ошибка при удалении поезда: ' + (result.detail || 'Неизвестная ошибка'));
-                }
-            } catch (error) {
-                console.error('Delete error:', error);
-                alert('Ошибка сети при удалении.');
-            }
-        }
-
-        // --- ФУНКЦИЯ ЗАГРУЗКИ СТОКОВ ---
-
-        async function fetchStocksList() {
-            try {
-                // Используем правильный путь с /admin
-                const response = await fetch('/admin/api/schedule/stocks_list');
-                if (!response.ok) throw new Error('Network response was not ok');
-                return await response.json();
-            } catch (error) {
-                console.error("Error fetching stocks list:", error);
-                return [];
-            }
-        }
-
-    </script>
-</body>
-</html>
+            calendar.render();
+        }, 100);
+    }
+    window.cancelEditMode = function() {
+        if (!selectedEventId) { closeModal('eventModal'); } else { document.getElementById('modal-title').innerText = 'Информация о рейсе'; showViewUI(); }
+    }
+    window.showViewUI = function() {
+        document.getElementById('viewModeContent').classList.remove('hidden');
+        if (IS_ADMIN) document.getElementById('viewModeButtons').classList.remove('hidden'); 
+        if (IS_ADMIN) document.getElementById('createEventForm').classList.add('hidden');
+        if (IS_ADMIN) document.getElementById('modalFooter').classList.add('hidden'); 
+    }
+    window.showEditUI = function(isCreatingNew) {
+        document.getElementById('viewModeContent').classList.add('hidden');
+        document.getElementById('viewModeButtons').classList.add('hidden'); 
+        document.getElementById('createEventForm').classList.remove('hidden');
+        document.getElementById('modalFooter').classList.remove('hidden'); 
+    }
+    window.selectColor = function(color, btn) {
+        document.querySelectorAll('.color-btn').forEach(b => { b.classList.remove('ring-mono-black'); b.classList.add('ring-transparent'); });
+        document.getElementById('inpColor').value = color;
+        const header = document.getElementById('modalHeader');
+        if(header) header.style.borderLeft = `6px solid ${color}`;
+        btn.classList.remove('ring-transparent'); btn.classList.add('ring-mono-black');
+    }
+    window.openModal = function(modalId) {
+        const modal = document.getElementById(modalId || 'eventModal');
+        document.body.classList.add('modal-open');
+        modal.classList.remove('hidden');
+        void modal.offsetWidth; 
+        modal.classList.remove('modal-state-closed');
+        modal.classList.add('modal-state-open');
+    }
+    window.closeModal = function(modalId) {
+        const modal = document.getElementById(modalId || 'eventModal');
+        modal.classList.remove('modal-state-open');
+        modal.classList.add('modal-state-closed');
+        setTimeout(() => { modal.classList.add('hidden'); document.body.classList.remove('modal-open'); }, 300);
+    }
+    window.updateEventDate = async function(id, dateStr) {
+        if (!IS_ADMIN) return;
+        const formData = new FormData(); formData.append('new_date', dateStr);
+        try { let response = await fetch(`/admin/api/schedule/${id}/move`, { method: 'POST', body: formData }); if (!response.ok) { alert("Ошибка"); if(calendar) calendar.refetchEvents(); } } catch (e) { console.error(e); if(calendar) calendar.refetchEvents(); }
+    }
+    window.deleteEvent = async function(silent = false) {
+        if (!IS_ADMIN) return;
+        if (!selectedEventId) return;
+        if (!silent && !confirm("Удалить рейс?")) return;
+        try { let res = await fetch(`/admin/api/schedule/${selectedEventId}`, { method: 'DELETE' }); if (res.ok) { if(!silent) { closeModal('eventModal'); if(calendar) calendar.refetchEvents(); } } } catch (e) { console.error(e); }
+    }
+    window.openShareModal = function() { if(IS_ADMIN) { openModal('shareModal'); loadLinks(); } }
+    window.closeShareModal = function() { closeModal('shareModal'); }
+    window.loadLinks = async function() { const list = document.getElementById('linksList'); list.innerHTML = '<p class="text-sm text-mono-gray text-center py-4">Загрузка...</p>'; try { let res = await fetch('/admin/api/schedule/links'); let links = await res.json(); if (links.length === 0) { list.innerHTML = '<div class="text-center py-6"><p class="text-sm text-mono-gray">Нет активных ссылок</p></div>'; return; } let html = ''; links.forEach(link => { const fullUrl = window.location.origin + `/schedule/share/${link.token}`; html += `<div class="flex items-center justify-between bg-mono-bg p-3 rounded-xl border border-transparent hover:border-mono-border transition group"><div class="overflow-hidden mr-3 w-full"><p class="text-sm font-bold text-mono-black">${link.name}</p><div class="flex items-center gap-2 mt-1"><input type="text" readonly value="${fullUrl}" class="text-[10px] text-mono-gray bg-white border border-mono-border rounded px-2 py-1 w-full focus:outline-none cursor-pointer hover:text-mono-black transition font-mono" onclick="this.select()"><a href="${fullUrl}" target="_blank" class="text-mono-gray hover:text-mono-black transition p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg></a></div></div><button onclick="deleteLink(${link.id})" class="text-mono-gray hover:text-red-600 p-2 rounded-lg hover:bg-white transition opacity-0 group-hover:opacity-100"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button></div>`; }); list.innerHTML = html; } catch (e) { console.error(e); } }
+    window.createLink = async function() { const nameInput = document.getElementById('newLinkName'); const name = nameInput.value.trim(); if (!name) return alert("Введите название"); const formData = new FormData(); formData.append('name', name); try { let res = await fetch('/admin/api/schedule/links/create', { method: 'POST', body: formData }); if (res.ok) { nameInput.value = ''; loadLinks(); } } catch (e) { console.error(e); } }
+    window.deleteLink = async function(id) { if (!confirm("Удалить?")) return; try { let res = await fetch(`/admin/api/schedule/links/${id}`, { method: 'DELETE' }); if (res.ok) loadLinks(); } catch (e) { console.error(e); } }
+</script>
+{% endblock %}
