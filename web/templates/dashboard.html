@@ -107,13 +107,15 @@
                 <div class="w-full mt-4 flex justify-between px-2 text-xs text-mono-gray pt-2">
                     <div class="flex flex-col items-center">
                         <span class="flex items-center gap-1.5 mb-1">
-                            <span class="w-2 h-2 rounded-full bg-blue-500"></span> 20'
+                            <!-- 🔥 ОБНОВЛЕНО: Черный кружок для 20' -->
+                            <span class="w-2 h-2 rounded-full" style="background-color: #111111;"></span> 20'
                         </span>
                         <span class="font-bold text-mono-black text-sm">{{ stock.c20 }}</span>
                     </div>
                     <div class="flex flex-col items-center">
                         <span class="flex items-center gap-1.5 mb-1">
-                            <span class="w-2 h-2 rounded-full bg-orange-400"></span> 40'
+                            <!-- 🔥 ОБНОВЛЕНО: Оранжевый кружок для 40' -->
+                            <span class="w-2 h-2 rounded-full" style="background-color: #FF7300;"></span> 40'
                         </span>
                         <span class="font-bold text-mono-black text-sm">{{ stock.c40 }}</span>
                     </div>
@@ -313,8 +315,9 @@
                         labels: ["20'", "40'"],
                         datasets: [{
                             data: [{{ stock.c20 }}, {{ stock.c40 }}],
-                            backgroundColor: ['#3B82F6', '#FB923C'], // Синий и Оранжевый
-                            hoverBackgroundColor: ['#2563EB', '#F97316'],
+                            // 🔥 ОБНОВЛЕНО: Цвета (Черный #111111, Оранжевый #FF7300)
+                            backgroundColor: ['#111111', '#FF7300'], 
+                            hoverBackgroundColor: ['#333333', '#FF8C33'],
                             borderWidth: 0,
                             hoverOffset: 4
                         }]
