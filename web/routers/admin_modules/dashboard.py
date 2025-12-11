@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, date
 from typing import Optional
 from fastapi import APIRouter, Request, Depends, Query
 from sqlalchemy import select, func, desc, and_, case
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import User, UserRequest, Train, Tracking
 from model.terminal_container import TerminalContainer
