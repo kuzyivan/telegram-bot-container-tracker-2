@@ -37,11 +37,11 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     )
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
-    # Ритмичность
+    # --- 🔥 ИЗМЕНЕНИЕ: Ритмичность теперь по dispatch_date ---
     rhythm_stmt = (
-        select(func.date(TerminalContainer.created_at).label('date'), func.count(TerminalContainer.id))
-        .where(func.date(TerminalContainer.created_at) >= date_from)
-        .where(func.date(TerminalContainer.created_at) <= date_to)
+        select(TerminalContainer.dispatch_date.label('date'), func.count(TerminalContainer.id))
+        .where(TerminalContainer.dispatch_date >= date_from)
+        .where(TerminalContainer.dispatch_date <= date_to)
         .group_by('date')
         .order_by('date')
     )
@@ -53,6 +53,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     current = date_from
     while current <= date_to:
         rhythm_labels.append(current.strftime('%d.%m'))
+        # Если даты нет в словаре, ставим 0
         rhythm_values.append(rhythm_dict.get(current, 0))
         current += timedelta(days=1)
 
