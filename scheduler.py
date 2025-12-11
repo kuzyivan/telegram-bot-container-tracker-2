@@ -112,8 +112,9 @@ def start_scheduler(bot: Bot): # <<< ПРИНИМАЕТ Bot
     # Запуск каждые 20 минут (*/20)
     scheduler.add_job(job_periodic_dislocation_check, 'cron', minute='*/20', args=[bot], id="dislocation_check_20min", replace_existing=True, jitter=10) 
     
-    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА
+    # 3. ЕЖЕДНЕВНЫЙ ИМПОРТ ТЕРМИНАЛА (ДВА ЗАПУСКА: 08:30 и 11:30)
     scheduler.add_job(job_daily_terminal_import, 'cron', hour=8, minute=30, id="terminal_import_0830", replace_existing=True, jitter=10)
+    scheduler.add_job(job_daily_terminal_import, 'cron', hour=11, minute=30, id="terminal_import_1130", replace_existing=True, jitter=10)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:

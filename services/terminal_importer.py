@@ -187,13 +187,15 @@ async def check_and_process_terminal_report() -> Optional[Dict[str, Any]]:
         
         async with SessionLocal() as session:
             # Вызываем функцию парсинга и сохранения (новая логика)
-            await process_terminal_report_file(session, filepath)
+            # ТЕПЕРЬ ОНА ВОЗВРАЩАЕТ СЛОВАРЬ СО СЧЕТЧИКАМИ
+            import_result = await process_terminal_report_file(session, filepath)
             
-            # TODO: Можно доработать process_terminal_report_file чтобы он возвращал счетчики
             stats = {
                 "file_name": os.path.basename(filepath),
                 "status": "success",
-                "total_added": "См. логи" 
+                # 🔥 ИСПРАВЛЕНО: Теперь здесь число (int), а не строка
+                "total_added": import_result.get('added', 0),
+                "total_updated": import_result.get('updated', 0)
             }
             
     except Exception as e:
@@ -212,12 +214,17 @@ async def check_and_process_terminal_report() -> Optional[Dict[str, Any]]:
 # 2. ЛОГИКА ОБРАБОТКИ ОТЧЕТА ТЕРМИНАЛА (НОВАЯ СТРУКТУРА БД)
 # =========================================================================
 
-async def process_terminal_report_file(session: AsyncSession, file_path: str):
+async def process_terminal_report_file(session: AsyncSession, file_path: str) -> dict:
     """
     Парсит Excel файл A-Terminal.
     Ожидает листы 'Arrival' (Прибытие) и 'Dispatch' (Отгрузка).
+    Возвращает словарь со статистикой {'added': int, 'updated': int}.
     """
     logger.info(f"[Import] Анализ Excel-файла: {file_path}")
+    
+    # Счетчики
+    added_count = 0
+    updated_count = 0
 
     try:
         xls = pd.ExcelFile(file_path)
@@ -231,7 +238,7 @@ async def process_terminal_report_file(session: AsyncSession, file_path: str):
         if arrival_sheet:
             logger.info(f"Обработка листа ПРИБЫТИЯ: {arrival_sheet}")
             df_arrival = pd.read_excel(xls, sheet_name=arrival_sheet, dtype=object)
-            await _process_arrival_data(session, df_arrival)
+            added_count += await _process_arrival_data(session, df_arrival)
             processed_any = True
         else:
             logger.warning("Лист 'Arrival' не найден.")
@@ -241,7 +248,7 @@ async def process_terminal_report_file(session: AsyncSession, file_path: str):
         if dispatch_sheet:
             logger.info(f"Обработка листа ОТГРУЗКИ: {dispatch_sheet}")
             df_dispatch = pd.read_excel(xls, sheet_name=dispatch_sheet, dtype=object)
-            await _process_dispatch_data(session, df_dispatch)
+            updated_count += await _process_dispatch_data(session, df_dispatch)
             processed_any = True
         else:
             logger.warning("Лист 'Dispatch' не найден.")
@@ -250,17 +257,19 @@ async def process_terminal_report_file(session: AsyncSession, file_path: str):
         if not processed_any:
             logger.warning("Специфичные листы не найдены. Обрабатываю первый лист как Arrival.")
             df_generic = pd.read_excel(xls, sheet_name=0, dtype=object)
-            await _process_arrival_data(session, df_generic)
+            added_count += await _process_arrival_data(session, df_generic)
 
-        logger.info("✅ Обработка файла завершена.")
+        logger.info(f"✅ Обработка файла завершена. Добавлено: {added_count}, Обновлено: {updated_count}")
+        return {"added": added_count, "updated": updated_count}
 
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при обработке Excel: {e}", exc_info=True)
         raise e
 
-async def _process_arrival_data(session: AsyncSession, df: pd.DataFrame):
+async def _process_arrival_data(session: AsyncSession, df: pd.DataFrame) -> int:
     """
     Обработка данных ARRIVAL. Выполняет UPSERT (Вставка или Обновление).
+    Возвращает количество обработанных строк.
     """
     df.columns = df.columns.str.strip()
     
@@ -327,17 +336,21 @@ async def _process_arrival_data(session: AsyncSession, df: pd.DataFrame):
 
     if processed_rows:
         await _bulk_upsert_arrival(session, processed_rows)
+        return len(processed_rows)
+    
+    return 0
 
-async def _process_dispatch_data(session: AsyncSession, df: pd.DataFrame):
+async def _process_dispatch_data(session: AsyncSession, df: pd.DataFrame) -> int:
     """
     Обработка данных DISPATCH. Только UPDATE существующих (проставляем дату убытия).
+    Возвращает количество обновленных строк.
     """
     df.columns = df.columns.str.strip()
 
     # Проверка наличия колонки даты убытия
     if 'Отправлен' not in df.columns:
         logger.warning("В листе Dispatch нет колонки 'Отправлен'. Пропуск.")
-        return
+        return 0
 
     processed_rows = []
 
@@ -369,6 +382,9 @@ async def _process_dispatch_data(session: AsyncSession, df: pd.DataFrame):
 
     if processed_rows:
         await _bulk_update_dispatch(session, processed_rows)
+        return len(processed_rows)
+    
+    return 0
 
 # --- SQL ЗАПРОСЫ (RAW) ---
 
