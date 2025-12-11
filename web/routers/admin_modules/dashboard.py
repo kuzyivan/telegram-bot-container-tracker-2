@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timedelta, date
 from typing import Optional
 from fastapi import APIRouter, Request, Depends, Query
-from sqlalchemy import select, func, desc, and_, case
+from sqlalchemy import select, func, desc, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import User, UserRequest, Train, Tracking
@@ -42,7 +42,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     )
     avg_delivery_days = await session.scalar(avg_delivery_stmt) or 0
 
-    # --- 🔥 НОВЫЙ ГРАФИК: Динамика грузооборота (Accepted vs Dispatched) ---
+    # 5. Динамика грузооборота (Accepted vs Dispatched)
     # Принятые (Accepted)
     accepted_stmt = (
         select(TerminalContainer.accept_date, func.count(TerminalContainer.id))
@@ -71,9 +71,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     turnover_labels = []
     accepted_values = []
     dispatched_values = []
-
-    # Для существующего графика Ритмичности (оставим его как есть или используем те же данные)
-    # Здесь мы используем dispatched_values и для старого графика
     
     current = date_from
     while current <= date_to:
@@ -82,7 +79,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         dispatched_values.append(dispatched_dict.get(current, 0))
         current += timedelta(days=1)
 
-    # 5. Топ Клиенты
+    # 6. Топ Клиенты
     clients_stmt = (
         select(TerminalContainer.client, func.count(TerminalContainer.id).label('cnt'))
         .where(func.date(TerminalContainer.created_at) >= date_from)
@@ -97,7 +94,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     clients_labels = [r.client for r in clients_rows]
     clients_values = [r.cnt for r in clients_rows]
 
-    # 6. Статистика запросов
+    # 7. Статистика запросов
     req_stmt = (
         select(func.date(UserRequest.timestamp).label("date"), func.count(UserRequest.id))
         .where(func.date(UserRequest.timestamp) >= date_from)
@@ -112,39 +109,59 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
     req_labels = []
     req_values = []
     
-    # Повторный проход для запросов, чтобы шкала времени совпадала
     current_req = date_from
     while current_req <= date_to:
         req_labels.append(current_req.strftime('%d.%m'))
         req_values.append(req_dict.get(current_req, 0))
         current_req += timedelta(days=1)
 
-    # === 🔥 НОВОЕ: Диаграмма стоков (TEU) ===
-    # Считаем TEU: если в size есть '40', то 2 TEU, иначе 1
-    teu_calculation = case(
-        (TerminalContainer.size.ilike('%40%'), 2),
-        else_=1
-    )
-
+    # === 🔥 НОВОЕ: Диаграммы стоков (Разбивка по направлениям) ===
+    # Группируем по Направлению, Стоку и Размеру, чтобы посчитать TEU и состав
     stock_stmt = (
         select(
             TerminalContainer.direction,
             TerminalContainer.stock,
-            func.sum(teu_calculation).label('total_teu')
+            TerminalContainer.size,
+            func.count(TerminalContainer.id)
         )
-        .where(TerminalContainer.dispatch_date.is_(None))  # Исключаем уехавшие
-        .group_by(TerminalContainer.direction, TerminalContainer.stock)
-        .having(func.sum(teu_calculation) > 0) # Скрываем пустые
-        .order_by(desc('total_teu'))
+        .where(TerminalContainer.dispatch_date.is_(None)) # Только те, что сейчас на терминале
+        .group_by(TerminalContainer.direction, TerminalContainer.stock, TerminalContainer.size)
     )
     
     stock_res = await session.execute(stock_stmt)
-    stock_rows = stock_res.all()
-
-    # Формируем метки "Направление - Сток"
-    stock_labels = [f"{r.direction or 'Нет напр.'} - {r.stock or 'Нет стока'}" for r in stock_rows]
-    stock_values = [r.total_teu for r in stock_rows]
-
+    
+    # Обработка данных в Python для удобной структуры
+    # Structure: Key=(Direction, Stock) -> {c20: int, c40: int, teu: int}
+    stocks_map = {}
+    
+    for row in stock_res:
+        direction = row.direction or "Без направления"
+        stock = row.stock or "Основной"
+        size_val = str(row.size or "")
+        count = row[3]
+        
+        key = (direction, stock)
+        if key not in stocks_map:
+            stocks_map[key] = {
+                "title": f"{direction}",
+                "subtitle": stock,
+                "c20": 0,
+                "c40": 0,
+                "teu": 0
+            }
+        
+        # Расчет TEU и типов
+        # Если в размере есть '40', считаем как 2 TEU, иначе как 1
+        if '40' in size_val:
+            stocks_map[key]["c40"] += count
+            stocks_map[key]["teu"] += count * 2
+        else:
+            stocks_map[key]["c20"] += count
+            stocks_map[key]["teu"] += count * 1
+            
+    # Превращаем в список и сортируем по заполнению (TEU)
+    stock_charts_data = list(stocks_map.values())
+    stock_charts_data.sort(key=lambda x: x['teu'], reverse=True)
 
     return {
         "new_users": new_users,
@@ -152,7 +169,6 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "total_sent": total_sent,
         "avg_delivery_days": round(avg_delivery_days, 1),
         
-        # Данные для графиков
         "turnover_labels": json.dumps(turnover_labels),
         "accepted_values": json.dumps(accepted_values),
         "dispatched_values": json.dumps(dispatched_values),
@@ -161,10 +177,9 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "clients_values": json.dumps(clients_values),
         "req_labels": json.dumps(req_labels),
         "req_values": json.dumps(req_values),
-
-        # Новые данные для стоков
-        "stock_labels": json.dumps(stock_labels),
-        "stock_values": json.dumps(stock_values),
+        
+        # Передаем готовый список объектов для рендера
+        "stock_charts_data": stock_charts_data
     }
 
 @router.get("/dashboard")
@@ -176,7 +191,6 @@ async def dashboard(
     current_user: User = Depends(admin_required)
 ):
     today = datetime.now().date()
-    # По умолчанию берем последние 30 дней
     d_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else today - timedelta(days=30)
     d_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else today
     
