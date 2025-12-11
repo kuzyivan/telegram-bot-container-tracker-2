@@ -1,4 +1,3 @@
-# web/auth.py
 import os
 import hashlib
 import hmac
@@ -121,7 +120,7 @@ async def login_required(user: Optional[User] = Depends(get_current_user)):
         )
     return user
 
-# Защита: Только Админ
+# Защита: Только Админ (Строгая)
 async def admin_required(user: User = Depends(login_required)):
     if user.role != UserRole.ADMIN:
         raise HTTPException(
@@ -130,7 +129,7 @@ async def admin_required(user: User = Depends(login_required)):
         )
     return user
 
-# Защита: Менеджер ООО "Терминал" или Админ
+# 🔥 ИСПРАВЛЕНИЕ: Добавлена проверка ID компании
 async def manager_required(user: User = Depends(login_required)):
     """
     Разрешает доступ только:
@@ -155,6 +154,7 @@ async def manager_required(user: User = Depends(login_required)):
 
     # 3. ⛔️ ЖЕСТКАЯ ПРОВЕРКА КОМПАНИИ
     # Если пользователь не привязан к компании #3, доступ запрещен
+    # Это предотвращает доступ менеджеров других клиентов к админ-панели
     if user.company_id != TERMINAL_COMPANY_ID:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
