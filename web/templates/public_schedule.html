@@ -180,11 +180,12 @@
                             </div>
                         </div>
 
+                        <!-- 🔥 БЛОК СТОКОВ 🔥 -->
                         <div id="blockStock" class="pt-4 border-t border-mono-light hidden">
                             <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Сток контейнеров</p>
-                            <!-- 🔥 ОБНОВЛЕНО: Убран font-mono и стили контейнера, теперь это флекс-контейнер для бейджей -->
+                            <!-- Флекс-контейнер для бейджей -->
                             <div class="flex flex-wrap gap-2" id="modalStock">
-                                <!-- Сюда JS вставит красивые бейджи -->
+                                <!-- Сюда JS вставит чипсы -->
                             </div>
                         </div>
                         
@@ -271,39 +272,36 @@
         }, 100);
     }
 
-    // 🔥 ФУНКЦИЯ ДЛЯ КРАСИВОГО ОТОБРАЖЕНИЯ СТОКА
+    // 🔥 НОВАЯ ФУНКЦИЯ ОЧИСТКИ (ПЫЛЕСОС)
     function prettifyStock(text) {
         if (!text || text === '—') return '—';
         
-        // 1. Убираем скобки списка/словаря Python/JSON и кавычки
-        let clean = text.toString().trim();
-        // Убираем внешние скобки ['...'] или {'...'}
-        if ((clean.startsWith('[') && clean.endsWith(']')) || (clean.startsWith('{') && clean.endsWith('}'))) {
-            clean = clean.substring(1, clean.length - 1);
-        }
+        let s = text.toString();
 
-        // 2. Разбиваем по запятым или переносам строк
-        let items = [];
-        if (clean.includes('\n')) {
-            items = clean.split('\n');
-        } else if (clean.includes(',')) {
-            items = clean.split(',');
-        } else {
-            items = [clean];
-        }
+        // 1. Убираем переносы строк и лишние пробелы в начале/конце
+        s = s.trim().replace(/\n/g, ' ');
 
-        // 3. Рендерим красивые бейджи
+        // 2. Очистка от ключей Python/JSON и разделение слипшихся значений
+        // Пример: "direction:Селятиноstocks:[...]" -> "Селятино, [...]"
+        s = s.replace(/stocks\s*[:=]/gi, ',')
+             .replace(/direction\s*[:=]/gi, ''); 
+
+        // 3. Убираем скобки и кавычки
+        s = s.replace(/[\[\]\{\}"']/g, '');
+
+        // 4. Разбиваем по запятым
+        let items = s.split(',');
+
+        // 5. Рендерим чипсы
         return items
+            .map(item => item.trim())
+            .filter(item => item && item.toLowerCase() !== 'none' && item.toLowerCase() !== 'null')
             .map(item => {
-                // Чистим каждый элемент от кавычек и пробелов
-                let i = item.replace(/['"]/g, '').trim();
-                if (!i) return '';
-                // HTML для бейджа
-                return `<span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-mono-light border border-mono-border text-mono-black shadow-sm transition hover:bg-white">
-                            ${i}
+                return `<span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-mono-light border border-mono-border text-mono-black shadow-sm select-all">
+                            ${item}
                         </span>`;
             })
-            .join('');
+            .join(' ');
     }
 
     window.openModal = function(event) {
@@ -319,7 +317,7 @@
         document.getElementById('modalOverload').innerText = props.overload || '—';
         document.getElementById('blockOverload').classList.toggle('hidden', !props.overload);
         
-        // 🔥 ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ И innerHTML
+        // 🔥 Применяем новую функцию
         const stockHtml = prettifyStock(props.stock);
         document.getElementById('modalStock').innerHTML = stockHtml;
         document.getElementById('blockStock').classList.toggle('hidden', !props.stock);
