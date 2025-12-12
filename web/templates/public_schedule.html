@@ -278,36 +278,69 @@
         }, 100);
     }
 
-    // 🔥 ИСПРАВЛЕННАЯ ФУНКЦИЯ ОЧИСТКИ (ПЫЛЕСОС)
+    // 🔥 ПОЛНОСТЬЮ ОБНОВЛЕННАЯ ЛОГИКА ПАРСИНГА СТОКОВ
     function prettifyStock(text) {
         if (!text || text === '—') return '—';
-        
         let s = text.toString();
 
-        // 1. Убираем переносы строк
-        s = s.trim().replace(/\n/g, ' ');
+        // 1. Нормализация (убираем переносы)
+        s = s.replace(/\n/g, ' ').trim();
 
-        // 2. 🔥 НОВАЯ ЛОГИКА: Удаляем ключи, учитывая возможные кавычки
-        // Заменяем "direction": ... и "stocks": ... на разделители
-        s = s.replace(/['"]?direction['"]?\s*[:=]\s*/gi, '')
-             .replace(/['"]?stocks['"]?\s*[:=]\s*/gi, ',');
+        // 2. Ищем объекты {...}
+        let matches = s.match(/\{.*?\}/g);
+        let itemsToRender = [];
 
-        // 3. Убираем все виды скобок и кавычек, которые могли остаться от структуры
-        s = s.replace(/[\[\]\{\}"']/g, '');
+        if (matches) {
+            // Если есть структура объектов
+            matches.forEach(block => {
+                let dir = '';
+                let st = '';
 
-        // 4. Разбиваем по запятым
-        let items = s.split(',');
+                // Извлекаем direction (ключ и значение)
+                // Регулярка учитывает, что direction может быть "direction" или 'direction'
+                // Значение берется до начала stocks или до конца
+                let dirM = block.match(/direction['"]?\s*[:=]\s*['"]?([^,}'"]+)/i);
+                if (dirM) dir = dirM[1].trim();
 
-        // 5. Рендерим чипсы, фильтруя пустые
-        return items
-            .map(item => item.trim())
-            .filter(item => item && item.toLowerCase() !== 'none' && item.toLowerCase() !== 'null')
-            .map(item => {
-                return `<span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-mono-light border border-mono-border text-mono-black shadow-sm select-all">
-                            ${item}
-                        </span>`;
-            })
-            .join(' ');
+                // Извлекаем stocks (массив или значение)
+                let stockM = block.match(/stocks['"]?\s*[:=]\s*\[(.*?)\]/i);
+                if (!stockM) {
+                    stockM = block.match(/stocks['"]?\s*[:=]\s*['"]?([^,}'"\]]+)/i);
+                }
+                
+                if (stockM) st = stockM[1].trim();
+
+                // Чистим стоки
+                if (st) {
+                    st = st.split(',').map(x => x.replace(/['"]/g, '').trim()).filter(Boolean).join(', ');
+                }
+
+                if (dir || st) {
+                    // 🔥 КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Объединяем Направление и Стоки через двоеточие
+                    let label = dir && st ? `${dir}: ${st}` : (dir || st);
+                    itemsToRender.push(label);
+                }
+            });
+        } else {
+            // ФОЛЛБЭК: Если нет фигурных скобок (просто текст)
+            // Убираем внешние скобки и кавычки
+            let clean = s.replace(/[\[\]\{\}"']/g, '');
+            
+            // Если в тексте есть слова direction/stocks, пробуем их "схлопнуть"
+            if (clean.toLowerCase().includes('direction') || clean.toLowerCase().includes('stocks')) {
+                // Заменяем "direction: А, stocks: Б" на "А: Б"
+                // Удаляем ключи, оставляем значения
+                 clean = clean.replace(/direction\s*[:=]/i, '')
+                              .replace(/,?\s*stocks\s*[:=]/i, ': ');
+            }
+            itemsToRender.push(clean);
+        }
+
+        return itemsToRender.map(item => 
+            `<span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-mono-light border border-mono-border text-mono-black shadow-sm select-all whitespace-normal text-left mb-1 mr-1">
+                ${item}
+            </span>`
+        ).join('');
     }
 
     // --- АНИМАЦИЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ---
