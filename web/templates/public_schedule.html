@@ -35,7 +35,6 @@
             font-family: 'Inter', sans-serif; 
             background-color: #F5F5F7; 
             color: #111111;
-            /* Важно: никаких трансформаций на body */
             transform: none !important; 
         }
         
@@ -81,7 +80,6 @@
             margin: 1px 0 !important;
         }
 
-        /* Блокировка скролла фона */
         body.modal-open { overflow: hidden !important; touch-action: none; }
         .custom-scrollbar { overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 
@@ -123,22 +121,17 @@
         </div>
     </div>
 
-    <!-- 
-        🔥 МОДАЛЬНОЕ ОКНО
-        Анимация добавлена через классы Tailwind (transition, duration, opacity, scale).
-        Начальное состояние: opacity-0, scale-95.
-    -->
+    <!-- МОДАЛЬНОЕ ОКНО -->
     <div id="eventModal" class="fixed inset-0 z-[9999] hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         
-        <!-- Backdrop (Фон): Добавлена анимация прозрачности -->
+        <!-- Backdrop -->
         <div id="modalBackdrop" class="absolute inset-0 bg-black/60 transition-opacity duration-300 opacity-0" onclick="closeModal()"></div>
 
         <!-- Контейнер позиционирования -->
         <div class="fixed inset-0 z-10 overflow-y-auto">
             <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
                 
-                <!-- Панель: Добавлена анимация масштаба и прозрачности -->
-                <!-- transform-gpu включает аппаратное ускорение для плавности -->
+                <!-- Панель -->
                 <div id="modalPanel" class="relative transform transform-gpu transition-all duration-300 ease-out opacity-0 scale-95 overflow-hidden rounded-2xl bg-white text-left shadow-2xl sm:my-8 sm:w-full sm:max-w-md w-full border border-mono-light flex flex-col max-h-[85vh]">
                     
                     <!-- Хедер -->
@@ -189,8 +182,9 @@
 
                         <div id="blockStock" class="pt-4 border-t border-mono-light hidden">
                             <p class="text-xs font-bold text-mono-gray uppercase tracking-wider mb-2">Сток контейнеров</p>
-                            <div class="text-sm text-mono-black font-mono bg-mono-light p-3 rounded-lg border border-mono-border leading-relaxed" id="modalStock">
-                                Stock Info
+                            <!-- 🔥 ОБНОВЛЕНО: Убран font-mono и стили контейнера, теперь это флекс-контейнер для бейджей -->
+                            <div class="flex flex-wrap gap-2" id="modalStock">
+                                <!-- Сюда JS вставит красивые бейджи -->
                             </div>
                         </div>
                         
@@ -277,13 +271,45 @@
         }, 100);
     }
 
-    // --- АНИМАЦИЯ ОТКРЫТИЯ/ЗАКРЫТИЯ ---
+    // 🔥 ФУНКЦИЯ ДЛЯ КРАСИВОГО ОТОБРАЖЕНИЯ СТОКА
+    function prettifyStock(text) {
+        if (!text || text === '—') return '—';
+        
+        // 1. Убираем скобки списка/словаря Python/JSON и кавычки
+        let clean = text.toString().trim();
+        // Убираем внешние скобки ['...'] или {'...'}
+        if ((clean.startsWith('[') && clean.endsWith(']')) || (clean.startsWith('{') && clean.endsWith('}'))) {
+            clean = clean.substring(1, clean.length - 1);
+        }
+
+        // 2. Разбиваем по запятым или переносам строк
+        let items = [];
+        if (clean.includes('\n')) {
+            items = clean.split('\n');
+        } else if (clean.includes(',')) {
+            items = clean.split(',');
+        } else {
+            items = [clean];
+        }
+
+        // 3. Рендерим красивые бейджи
+        return items
+            .map(item => {
+                // Чистим каждый элемент от кавычек и пробелов
+                let i = item.replace(/['"]/g, '').trim();
+                if (!i) return '';
+                // HTML для бейджа
+                return `<span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-mono-light border border-mono-border text-mono-black shadow-sm transition hover:bg-white">
+                            ${i}
+                        </span>`;
+            })
+            .join('');
+    }
 
     window.openModal = function(event) {
         let props = event.extendedProps;
         let startStr = event.startStr || event.start.toISOString().split('T')[0];
         
-        // Заполнение данных (без изменений)
         document.getElementById('modalDest').innerText = props.dest || '—';
         document.getElementById('modalService').innerText = props.service || '—';
         let dateObj = new Date(startStr);
@@ -292,8 +318,12 @@
         document.getElementById('blockOwner').classList.toggle('hidden', !props.owner);
         document.getElementById('modalOverload').innerText = props.overload || '—';
         document.getElementById('blockOverload').classList.toggle('hidden', !props.overload);
-        document.getElementById('modalStock').innerText = props.stock || '—';
+        
+        // 🔥 ИСПОЛЬЗУЕМ НОВУЮ ФУНКЦИЮ И innerHTML
+        const stockHtml = prettifyStock(props.stock);
+        document.getElementById('modalStock').innerHTML = stockHtml;
         document.getElementById('blockStock').classList.toggle('hidden', !props.stock);
+
         if (document.getElementById('modalComment')) {
             document.getElementById('modalComment').innerText = props.comment || '';
             document.getElementById('blockComment').classList.toggle('hidden', !props.comment);
@@ -304,7 +334,6 @@
             header.style.borderLeft = `6px solid ${color}`;
         }
 
-        // 🔥 ЛОГИКА АНИМАЦИИ
         const modal = document.getElementById('eventModal');
         const backdrop = document.getElementById('modalBackdrop');
         const panel = document.getElementById('modalPanel');
@@ -312,8 +341,6 @@
         modal.classList.remove('hidden');
         document.body.classList.add('modal-open');
 
-        // Небольшая задержка перед запуском CSS-транзишнов
-        // Это гарантирует, что браузер "увидел" display: block перед изменением opacity
         setTimeout(() => {
             backdrop.classList.remove('opacity-0');
             panel.classList.remove('opacity-0', 'scale-95');
@@ -326,12 +353,10 @@
         const backdrop = document.getElementById('modalBackdrop');
         const panel = document.getElementById('modalPanel');
 
-        // Запуск обратной анимации
         backdrop.classList.add('opacity-0');
         panel.classList.remove('opacity-100', 'scale-100');
         panel.classList.add('opacity-0', 'scale-95');
 
-        // Ждем завершения анимации (300ms, совпадает с duration-300) перед скрытием
         setTimeout(() => {
             modal.classList.add('hidden');
             document.body.classList.remove('modal-open'); 
