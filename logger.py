@@ -1,8 +1,24 @@
 import logging
 from logging.handlers import RotatingFileHandler
 import os
-from pythonjsonlogger import jsonlogger # <-- Импортируем jsonlogger
+from pythonjsonlogger import jsonlogger
 from typing import Optional
+from datetime import datetime
+from pytz import timezone
+
+# --- Настройка часового пояса ---
+def vladivostok_time(*args):
+    """
+    Конвертер времени для logging.
+    Возвращает структуру времени (timetuple) в часовом поясе Asia/Vladivostok.
+    """
+    tz = timezone('Asia/Vladivostok')
+    # Получаем текущее время в нужной таймзоне
+    now_vladivostok = datetime.now(tz)
+    return now_vladivostok.timetuple()
+
+# Переопределяем глобальный конвертер времени для всей библиотеки logging
+logging.Formatter.converter = vladivostok_time
 
 LOG_DIR = "logs"
 LOG_FILE = "bot.log"
@@ -16,7 +32,7 @@ def get_logger(name: Optional[str] = None):
         formatter = jsonlogger.JsonFormatter(
             '%(asctime)s %(levelname)s %(module)s %(lineno)d %(message)s',
             rename_fields={"levelname": "level", "asctime": "timestamp"},
-            json_ensure_ascii=False  # <-- ДОБАВЬТЕ ЭТУ СТРОКУ
+            json_ensure_ascii=False
         )
         # -----------------------------------
 
