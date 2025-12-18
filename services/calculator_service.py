@@ -69,7 +69,7 @@ class PriceCalculator:
         default_margin = self._get_float_setting("default_margin_fix", 10000.0)
         
         # НДС (20%)
-        vat_percent = self._get_float_setting("vat_rate", 20.0)
+        vat_percent = self._get_float_setting("vat_rate", 22.0)
 
         # --- ФОРМУЛА РАСЧЕТА ---
         # 1. Себестоимость = Тариф ЖД
