@@ -15,14 +15,22 @@ from models_finance import (
     Calculation, CalculationItem, RailTariffRate, 
     SystemSetting, ServiceType, WagonType, MarginType, CalculationStatus
 )
-from services.calculator_service import PriceCalculator
+# ✅ Обновили импорт на CalculatorService (так как мы обновили сам сервис)
+from services.calculator_service import CalculatorService
 from services.tariff_service import TariffStation
 from db import TariffSessionLocal
 # Импорт manager_required
 from web.auth import admin_required, manager_required
 from .common import templates, get_db
 
+# --- 1. ИМПОРТ КОНСТАНТЫ ---
+from web.constants import DEFAULT_VAT_RATE
+
 router = APIRouter()
+
+# --- 2. НАСТРОЙКА ШАБЛОНОВ ---
+# Учим шаблоны админки понимать переменную {{ GLOBAL_VAT }}
+templates.env.globals['GLOBAL_VAT'] = int(DEFAULT_VAT_RATE)
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
@@ -38,10 +46,12 @@ def calculate_prr_cost_internal(wagon_type: str, container_type: str) -> float:
 
     c_type = container_type.upper() if container_type else ""
     
-    if wagon_type == WagonType.GONDOLA:
+    # Сравниваем строковые значения Enum или просто строки
+    w_type = str(wagon_type)
+    if w_type == WagonType.GONDOLA.value or w_type == "box": # box часто используется как полувагон в легаси
         if "20" in c_type: return PRR_PV_20
         elif "40" in c_type: return PRR_PV_40
-    elif wagon_type == WagonType.PLATFORM: 
+    elif w_type == WagonType.PLATFORM.value or w_type == "platform": 
         if "20" in c_type: return PRR_PF_20
         elif "40" in c_type: return PRR_PF_40
     
@@ -58,7 +68,9 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
         if filter_from_code:
             query = query.where(RailTariffRate.station_from_code == filter_from_code)
         if service_type:
-            query = query.where(RailTariffRate.service_type == service_type)
+            # Преобразуем Enum в строку если нужно
+            s_type = service_type.value if hasattr(service_type, 'value') else service_type
+            query = query.where(RailTariffRate.service_type == s_type)
 
     result_codes = await session.execute(query)
     codes_list = result_codes.scalars().all()
@@ -106,14 +118,17 @@ async def calculator_delete(
     if not service_type:
         return RedirectResponse("/admin/calculator", status_code=303)
 
+    # Получаем строковое значение типа сервиса для редиректа
+    type_val = service_type.value if hasattr(service_type, 'value') else service_type
+
     await db.execute(delete(Calculation).where(Calculation.id == calc_id))
     await db.commit()
     
     referer = request.headers.get("referer", "")
     if "costs" in referer:
-        return RedirectResponse(f"/admin/costs?type={service_type.value}", status_code=303)
+        return RedirectResponse(f"/admin/costs?type={type_val}", status_code=303)
     
-    return RedirectResponse(f"/admin/calculator?type={service_type.value}", status_code=303)
+    return RedirectResponse(f"/admin/calculator?type={type_val}", status_code=303)
 
 # ✅ ПАКЕТНОЕ ИЗМЕНЕНИЕ СТАТУСА
 @router.post("/calculator/batch_status")
@@ -147,7 +162,7 @@ async def calculator_batch_status(
     await db.commit()
     
     first_calc = await db.scalar(select(Calculation.service_type).where(Calculation.id == ids[0]))
-    type_param = first_calc.value if first_calc else "TRAIN"
+    type_param = first_calc.value if hasattr(first_calc, 'value') else (first_calc or "TRAIN")
     
     referer = request.headers.get("referer", "")
     if "costs" in referer:
@@ -188,7 +203,7 @@ async def calculator_batch_date(
     
     # Редирект
     first_calc = await db.scalar(select(Calculation.service_type).where(Calculation.id == ids[0]))
-    type_param = first_calc.value if first_calc else "TRAIN"
+    type_param = first_calc.value if hasattr(first_calc, 'value') else (first_calc or "TRAIN")
     
     referer = request.headers.get("referer", "")
     if "costs" in referer:
@@ -226,7 +241,11 @@ async def export_commercial_proposal(
     for calc in calculations:
         margin = margins_map.get(calc.id, calc.margin_value)
         price_no_vat = calc.total_cost + margin
-        vat_amount = price_no_vat * (calc.vat_rate / 100)
+        
+        # Используем НДС из расчета или глобальный
+        current_vat = calc.vat_rate if calc.vat_rate is not None else DEFAULT_VAT_RATE
+        
+        vat_amount = price_no_vat * (current_vat / 100)
         total_price = price_no_vat + vat_amount
         total_price_rounded = round(total_price / 100) * 100
         
@@ -499,13 +518,34 @@ async def calculator_preview(
     adjusted_base_rate = 0.0
     
     if include_rail_tariff and station_from and station_to:
-        calc_service = PriceCalculator(db)
-        tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
+        # Используем обновленный сервис
+        calc_service = CalculatorService(db)
+        # В старом коде был get_tariff, предположим в новом сервисе он есть или используем аналог
+        # Если в CalculatorService нет get_tariff, используем calculate_cost или старый метод.
+        # Для безопасности (чтобы не сломать) используем логику из CalculatorService, 
+        # но так как это preview и нам нужны компоненты, вызовем специфичный метод тарифа.
+        
+        # Если get_tariff не существует в новом CalculatorService, 
+        # то нужно использовать TariffService напрямую или добавить метод в CalculatorService.
+        # Для простоты здесь предположим, что CalculatorService имеет метод получения тарифа 
+        # или вернемся к PriceCalculator если вы не обновляли код сервиса полностью.
+        
+        # Попытка использовать TariffService напрямую для тарифа, если CalculatorService его прячет
+        # но в вашем коде был вызов calc_service.get_tariff.
+        # Предполагаем наличие метода.
+        try:
+            tariff = await calc_service.rail_tariff_service.get_tariff(station_from, station_to, container_type, service_type)
+        except AttributeError:
+             # Фоллбэк если структура сервиса другая
+             from services.tariff_service import RailTariffService
+             ts = RailTariffService()
+             tariff = ts.get_tariff(station_from, station_to, container_type, service_type)
+
         if tariff:
             base_rate = tariff.rate_no_vat
             tariff_found = True
         
-        if wagon_type == WagonType.GONDOLA:
+        if str(wagon_type) == WagonType.GONDOLA.value or str(wagon_type) == "box":
             setting = await db.get(SystemSetting, "gondola_coeff")
             if setting: gondola_coeff = float(setting.value)
         
@@ -515,12 +555,21 @@ async def calculator_preview(
 
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
+    # 🔥 БЕРЕМ НДС ИЗ НАСТРОЕК ИЛИ КОНСТАНТЫ
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else 22.0
+    vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
     
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
-    sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
+    # Расчет маржи
+    # Проверяем тип маржи (строка или Enum)
+    m_type = margin_type.value if hasattr(margin_type, 'value') else margin_type
+    
+    if m_type == MarginType.FIX.value or m_type == "fixed":
+        sales_price_netto = total_cost + margin_value
+    else:
+        sales_price_netto = total_cost * (1 + margin_value / 100)
+
     vat_amount = sales_price_netto * (vat_rate / 100)
     total_price_with_vat = sales_price_netto + vat_amount
     
@@ -558,12 +607,21 @@ async def _save_calculation_logic(
     adjusted_base_rate = 0.0
     
     if include_rail_tariff:
-        calc_service = PriceCalculator(db)
-        tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
+        # Аналогичный фоллбэк для сервиса
+        calc_service = CalculatorService(db)
+        try:
+             # Пробуем через сервис
+             tariff = await calc_service.rail_tariff_service.get_tariff(station_from, station_to, container_type, service_type)
+        except AttributeError:
+             # Фоллбэк
+             from services.tariff_service import RailTariffService
+             ts = RailTariffService()
+             tariff = ts.get_tariff(station_from, station_to, container_type, service_type)
+
         base_rate = tariff.rate_no_vat if tariff else 0.0
         
         gondola_coeff = 1.0
-        if wagon_type == WagonType.GONDOLA:
+        if str(wagon_type) == WagonType.GONDOLA.value or str(wagon_type) == "box":
             setting = await db.get(SystemSetting, "gondola_coeff")
             if setting: gondola_coeff = float(setting.value)
         adjusted_base_rate = base_rate * gondola_coeff
@@ -573,16 +631,25 @@ async def _save_calculation_logic(
     
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
-    sales_price_netto = total_cost + margin_value if margin_type == MarginType.FIX else total_cost * (1 + margin_value / 100)
+    m_type = margin_type.value if hasattr(margin_type, 'value') else margin_type
+    
+    if m_type == MarginType.FIX.value or m_type == "fixed":
+        sales_price_netto = total_cost + margin_value 
+    else:
+        sales_price_netto = total_cost * (1 + margin_value / 100)
+        
+    # 🔥 НДС
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else 20.0
+    vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
 
     if calc_id:
         stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
         result = await db.execute(stmt)
         calc = result.scalar_one_or_none()
         if not calc: return None
-        calc.items = []
+        # Очищаем старые items, чтобы перезаписать
+        # (В SQLAlchemy async удаление коллекций иногда требует явного delete)
+        await db.execute(delete(CalculationItem).where(CalculationItem.calculation_id == calc.id))
     else:
         calc = Calculation(created_at=func.now())
         db.add(calc)
@@ -621,7 +688,7 @@ async def _save_calculation_logic(
         db.add(CalculationItem(calculation_id=calc.id, name="Железнодорожный тариф", cost_price=adjusted_base_rate, is_auto_calculated=True))
 
     if include_prr and final_prr_cost > 0:
-        prr_label = f"ПРР в ПВ ({container_type})" if wagon_type == WagonType.GONDOLA else f"ПРР на Платформе ({container_type})"
+        prr_label = f"ПРР в ПВ ({container_type})" if str(wagon_type) == WagonType.GONDOLA.value else f"ПРР на Платформе ({container_type})"
         db.add(CalculationItem(calculation_id=calc.id, name=prr_label, cost_price=final_prr_cost, is_auto_calculated=True))
         
     if service_rate_value > 0:

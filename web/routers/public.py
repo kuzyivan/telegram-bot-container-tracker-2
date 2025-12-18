@@ -22,14 +22,20 @@ from model.terminal_container import TerminalContainer
 from utils.send_tracking import create_excel_file_from_strings, get_vladivostok_filename
 from web.auth import get_current_user
 from utils.notify import notify_admin  # Импортируем функцию уведомления админа
-# ✅ ИСПРАВЛЕНИЕ: Убран импорт несуществующего класса TariffService
 from services.tariff_service import get_tariff_distance
+
+# --- 1. ИМПОРТ КОНСТАНТЫ НДС ---
+from web.constants import DEFAULT_VAT_RATE
 
 router = APIRouter()
 
 current_file = Path(__file__).resolve()
 templates_dir = current_file.parent.parent / "templates"
 templates = Jinja2Templates(directory=str(templates_dir))
+
+# --- 2. ВНЕДРЕНИЕ ГЛОБАЛЬНОЙ ПЕРЕМЕННОЙ ---
+# Теперь {{ GLOBAL_VAT }} доступна во всех HTML-шаблонах (index.html, distance.html и т.д.)
+templates.env.globals['GLOBAL_VAT'] = int(DEFAULT_VAT_RATE)
 
 async def get_db():
     async with SessionLocal() as session:
@@ -41,44 +47,66 @@ def normalize_search_input(text: str) -> list[str]:
     if not text:
         return []
     text = text.upper().strip()
+    # Разделяем по запятым, пробелам, точкам с запятой и переносам строк
     items = re.split(r'[,\s;\n]+', text)
     valid_items = []
     for item in items:
+        # Фильтруем мусор, оставляем только похожее на контейнеры или вагоны
         if re.fullmatch(r'[A-Z]{3}U\d{7}', item) or re.fullmatch(r'\d{8}', item):
             valid_items.append(item)
     return list(set(valid_items))
 
 async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking]):
+    """
+    Обогащает данные трекинга дополнительной информацией:
+    - Процент выполнения пути
+    - Информация о поезде (TerminalContainer -> Train)
+    - Прогноз прибытия
+    """
     enriched_data = []
     for item in tracking_items:
         progress_percent = 0
         total_dist = item.total_distance or 0
         km_left = item.km_left or 0
+        
+        # Расчет прогресс-бара
         if total_dist > 0:
             traveled = total_dist - km_left
             progress_percent = int((traveled / total_dist) * 100)
         progress_percent = max(0, min(100, progress_percent))
 
+        # Поиск информации о поезде через TerminalContainer
         terminal_train_info = {"number": None, "overload_station": None}
-        tc_res = await db.execute(select(TerminalContainer.train).where(TerminalContainer.container_number == item.container_number).order_by(TerminalContainer.created_at.desc()).limit(1))
+        tc_res = await db.execute(
+            select(TerminalContainer.train)
+            .where(TerminalContainer.container_number == item.container_number)
+            .order_by(TerminalContainer.created_at.desc())
+            .limit(1)
+        )
         train_code = tc_res.scalar_one_or_none()
         
         if train_code:
             terminal_train_info["number"] = train_code
-            t_res = await db.execute(select(Train.overload_station_name).where(Train.terminal_train_number == train_code))
+            t_res = await db.execute(
+                select(Train.overload_station_name)
+                .where(Train.terminal_train_number == train_code)
+            )
             terminal_train_info["overload_station"] = t_res.scalar_one_or_none()
 
+        # Статус прибытия
         is_arrived = False
         if item.km_left == 0:
             is_arrived = True
         elif item.current_station and item.to_station and item.current_station.upper() == item.to_station.upper():
             is_arrived = True
 
+        # Прогноз дней
         forecast_display = "—"
         if item.forecast_days:
             forecast_display = f"{item.forecast_days:.1f}"
         elif km_left > 0:
             try:
+                # Грубая оценка: 600 км/сутки + 1 день на операции
                 calc_days = (km_left / 600) + 1
                 forecast_display = f"{calc_days:.1f}"
             except:
@@ -95,12 +123,12 @@ async def enrich_tracking_data(db: AsyncSession, tracking_items: list[Tracking])
 
 # --- Роуты ---
 
-# --- 1. ГЛАВНАЯ СТРАНИЦА (ТЕПЕРЬ ЭТО ПОИСК) ---
+# --- 1. ГЛАВНАЯ СТРАНИЦА (ПОИСК) ---
 @router.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, user: Optional[User] = Depends(get_current_user)):
     """
-    Главная страница теперь снова "Поиск контейнера".
-    Доступна всем (и гостям, и зарегистрированным).
+    Главная страница "Поиск контейнера".
+    Доступна всем.
     """
     return templates.TemplateResponse("index.html", {
         "request": request, 
@@ -112,7 +140,6 @@ async def read_root(request: Request, user: Optional[User] = Depends(get_current
 async def landing_page_hidden(request: Request, user: Optional[User] = Depends(get_current_user)):
     """
     Лендинг доступен только администраторам.
-    Остальных редиректим на главную.
     """
     if not user or user.role != UserRole.ADMIN:
         return RedirectResponse("/")
@@ -131,7 +158,6 @@ async def handle_contact_form(
 ):
     """
     Обработка формы обратной связи.
-    Отправляет данные администратору в Telegram.
     """
     text = (
         f"📧 **Новая заявка с сайта!**\n\n"
@@ -143,7 +169,6 @@ async def handle_contact_form(
     # Отправляем в Telegram админу
     await notify_admin(text, silent=False, parse_mode="Markdown")
     
-    # Возвращаем фрагмент HTML (HTMX заменит форму на это сообщение)
     return HTMLResponse(
         """
         <div class="bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 p-6 rounded-xl text-center animate-fade-in border border-green-200 dark:border-green-800">
@@ -160,6 +185,10 @@ async def search_handler(
     q: str = Form(""), 
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Основной обработчик поиска контейнеров/вагонов.
+    Возвращает HTML-фрагмент с результатами.
+    """
     search_terms = normalize_search_input(q)
     if not search_terms:
         return templates.TemplateResponse("partials/search_results.html", {"request": request, "groups": [], "error": "Введите корректные номера."})
@@ -175,6 +204,7 @@ async def search_handler(
     stmt = select(Tracking).where(or_(*conditions)).order_by(Tracking.operation_date.desc())
     results_raw = (await db.execute(stmt)).scalars().all()
     
+    # Убираем дубликаты (приоритет контейнеру, если нашли и по вагону и по контейнеру)
     unique_map = {}
     for r in results_raw:
         key = r.container_number
@@ -184,6 +214,7 @@ async def search_handler(
     
     enriched_results = await enrich_tracking_data(db, final_results)
 
+    # Группировка по поездам
     grouped_structure = []
     train_map = {} 
     for item in enriched_results:
@@ -198,10 +229,18 @@ async def search_handler(
         else:
             grouped_structure.append({"is_group": False, "item": item})
 
-    return templates.TemplateResponse("partials/search_results.html", {"request": request, "groups": grouped_structure, "query_string": q, "has_results": bool(grouped_structure)})
+    return templates.TemplateResponse("partials/search_results.html", {
+        "request": request, 
+        "groups": grouped_structure, 
+        "query_string": q, 
+        "has_results": bool(grouped_structure)
+    })
 
 @router.get("/active_trains")
 async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Получение списка активных поездов с расчетом оставшегося расстояния.
+    """
     five_days_ago = datetime.now() - timedelta(days=5)
     
     # 1. Получаем список поездов из БД
@@ -241,6 +280,9 @@ async def get_active_trains(request: Request, db: AsyncSession = Depends(get_db)
 
 @router.post("/search/export")
 async def export_search_results(q: str = Form(""), db: AsyncSession = Depends(get_db)):
+    """
+    Экспорт результатов поиска в Excel.
+    """
     search_terms = normalize_search_input(q)
     if not search_terms: return
     containers = [t for t in search_terms if len(t) == 11]
@@ -309,7 +351,7 @@ async def get_shared_schedule_events(
     end: str,
     db: AsyncSession = Depends(get_db)
 ):
-    """Отдает события по токену."""
+    """Отдает события календаря по токену."""
     stmt_link = select(ScheduleShareLink).where(ScheduleShareLink.token == token)
     res_link = await db.execute(stmt_link)
     if not res_link.scalar_one_or_none():
@@ -340,8 +382,8 @@ async def get_shared_schedule_events(
             "service": t.service_name,
             "dest": t.destination,
             "stock": t.stock_info or "",
-            "owner": owner or "",       # <--- Передаем
-            "overload": overload or "", # <--- Передаем
+            "owner": owner or "",       
+            "overload": overload or "", 
             "comment": t.comment or ""
         }
         
@@ -357,11 +399,11 @@ async def get_shared_schedule_events(
         
     return events
 
-# --- 🆕 НОВЫЕ РОУТЫ ДЛЯ РАСЧЕТА РАССТОЯНИЯ ---
+# --- 🆕 НОВЫЕ РОУТЫ ДЛЯ РАСЧЕТА РАССТОЯНИЯ (КАЛЬКУЛЯТОР) ---
 
 @router.get("/distance", response_class=HTMLResponse)
 async def distance_page(request: Request, user: Optional[User] = Depends(get_current_user)):
-    """Страница калькулятора."""
+    """Страница калькулятора расстояний."""
     return templates.TemplateResponse("distance.html", {
         "request": request, 
         "user": user 
@@ -374,7 +416,7 @@ async def distance_calculation(
     station_to: str = Form(...)
 ):
     """
-    Обработчик расчета (HTMX).
+    Обработчик расчета расстояния (HTMX).
     """
     if not station_from or not station_to:
         return templates.TemplateResponse("partials/distance_result.html", {
@@ -382,7 +424,7 @@ async def distance_calculation(
         })
 
     try:
-        # Вызываем твой сервис расчета
+        # Вызываем сервис расчета (граф)
         result = await get_tariff_distance(station_from, station_to)
         
         return templates.TemplateResponse("partials/distance_result.html", {
@@ -399,9 +441,8 @@ async def distance_calculation(
 @router.post("/tracking/recalc/{tracking_id}", response_class=HTMLResponse)
 async def recalculate_distance_for_row(tracking_id: int, request: Request):
     """
-    Пересчитывает расстояние и СОХРАНЯЕТ его в базу данных.
+    Пересчитывает расстояние для конкретной строки трекинга и СОХРАНЯЕТ его в базу данных.
     """
-    # Создаем сессию (используй свой способ получения сессии, если он отличается)
     async with SessionLocal() as session:
         # 1. Ищем запись
         stmt = select(Tracking).where(Tracking.id == tracking_id)
@@ -412,31 +453,27 @@ async def recalculate_distance_for_row(tracking_id: int, request: Request):
             return HTMLResponse('<span class="text-red-500">Ошибка ID</span>')
 
         # 2. Берем станции
-        # ВАЖНО: Проверь, что в БД поля называются именно current_station и dest_station
         st_from = track.current_station
         st_to = track.to_station
         
         if not st_from or not st_to:
             return HTMLResponse('<span class="text-red-500">Нет станций</span>')
 
-        # 3. Считаем (используем твой новый быстрый граф)
+        # 3. Считаем (используем новый быстрый граф)
         calc_result = await get_tariff_distance(st_from, st_to)
         
         if calc_result and calc_result.get('distance'):
             dist = calc_result['distance']
             
-            # 4. СОХРАНЯЕМ В БАЗУ (Перезаписываем старое кривое значение)
+            # 4. СОХРАНЯЕМ В БАЗУ
             track.km_left = dist 
-            # Если есть поле calc_distance_left, лучше писать туда:
-            # track.calc_distance_left = dist
-            
             await session.commit()
             
             # 5. Возвращаем красивую цифру
             return HTMLResponse(f"""
                 <div id="dist-{track.id}" class="flex flex-col items-center animate-pulse">
                     <span class="text-green-600 font-bold text-lg">{dist} км</span>
-                    <span class="text-[10px] text-slate-500">Обновлено (10-01)</span>
+                    <span class="text-[10px] text-slate-500">Обновлено ({datetime.now().strftime('%d-%m')})</span>
                 </div>
             """)
         else:

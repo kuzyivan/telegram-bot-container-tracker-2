@@ -2,7 +2,7 @@
 import sys
 import os
 import uvicorn
-import asyncio # <--- Добавили импорт asyncio
+import asyncio 
 from fastapi import FastAPI, Depends 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -15,34 +15,34 @@ from services.railway_graph import railway_graph
 from web.routers import public, admin, auth, client, profile 
 from db import init_db
 from web.auth import login_required
-
+from web.constants import DEFAULT_VAT_RATE # Импорт для логирования при старте
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- ЗАПУСК ---
     try:
+        print(f"🚀 Запуск системы. Базовая ставка НДС: {DEFAULT_VAT_RATE}%")
         await init_db()
         
         # 🔥 Строим граф дорог
-        # Оборачиваем в try/except, чтобы CancelledError при релоаде не пугал в логах
         try:
             await railway_graph.build_graph()
         except asyncio.CancelledError:
             print("⚠️ Построение графа прервано (сервер перезагружается)...")
-            raise # Пробрасываем отмену дальше, чтобы uvicorn корректно завершился
+            raise 
         except Exception as e:
             print(f"❌ Ошибка построения графа: {e}")
             
         yield
     except asyncio.CancelledError:
-        pass # Игнорируем ошибку отмены при выключении
+        pass 
     # --- ЗАВЕРШЕНИЕ ---
 
 app = FastAPI(title="Logistrail Tracker", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
-# 1. Публичные роуты (Логин, Главная - если она публичная)
+# 1. Публичные роуты (Логин, Главная)
 app.include_router(auth.router)
 app.include_router(public.router)
 
@@ -74,7 +74,6 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8002, 
         reload=True,
-        # 👇 ВАЖНО: Расширенный список исключений, чтобы не было циклической перезагрузки
         reload_excludes=[
             ".venv", 
             ".venv/*",
