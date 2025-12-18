@@ -15,10 +15,12 @@ from models_finance import (
     Calculation, CalculationItem, RailTariffRate, 
     SystemSetting, ServiceType, WagonType, MarginType, CalculationStatus
 )
-# ✅ Обновили импорт на CalculatorService (так как мы обновили сам сервис)
+
+# ✅ ИСПОЛЬЗУЕМ СЕРВИС РАСЧЕТОВ (теперь он содержит всю логику)
 from services.calculator_service import CalculatorService
-from services.tariff_service import TariffStation
+from services.tariff_service import TariffStation, get_tariff_distance
 from db import TariffSessionLocal
+
 # Импорт manager_required
 from web.auth import admin_required, manager_required
 from .common import templates, get_db
@@ -32,23 +34,20 @@ router = APIRouter()
 # Учим шаблоны админки понимать переменную {{ GLOBAL_VAT }}
 templates.env.globals['GLOBAL_VAT'] = int(DEFAULT_VAT_RATE)
 
+
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 def calculate_prr_cost_internal(wagon_type: str, container_type: str) -> float:
-    """
-    Внутренняя функция для получения константы ПРР.
-    """
-    # Константы (в будущем можно вынести в SystemSettings)
+    """Внутренняя функция для получения константы ПРР."""
     PRR_PV_20 = 15000.00
-    PRR_PV_40 = 21700.00 # 21 666,666 -> округлено
+    PRR_PV_40 = 21700.00 
     PRR_PF_20 = 6700.00
     PRR_PF_40 = 8350.00
 
     c_type = container_type.upper() if container_type else ""
-    
-    # Сравниваем строковые значения Enum или просто строки
     w_type = str(wagon_type)
-    if w_type == WagonType.GONDOLA.value or w_type == "box": # box часто используется как полувагон в легаси
+    
+    if w_type == WagonType.GONDOLA.value or w_type == "box": 
         if "20" in c_type: return PRR_PV_20
         elif "40" in c_type: return PRR_PV_40
     elif w_type == WagonType.PLATFORM.value or w_type == "platform": 
@@ -58,9 +57,6 @@ def calculate_prr_cost_internal(wagon_type: str, container_type: str) -> float:
     return 0.0
 
 async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_from_code: str = None, service_type: str = None):
-    """
-    Возвращает список уникальных станций (код, имя) из таблицы тарифов.
-    """
     target_col = RailTariffRate.station_from_code if is_departure else RailTariffRate.station_to_code
     query = select(target_col).distinct()
 
@@ -68,7 +64,6 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
         if filter_from_code:
             query = query.where(RailTariffRate.station_from_code == filter_from_code)
         if service_type:
-            # Преобразуем Enum в строку если нужно
             s_type = service_type.value if hasattr(service_type, 'value') else service_type
             query = query.where(RailTariffRate.service_type == s_type)
 
@@ -78,17 +73,12 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
     if not codes_list:
         return []
 
-    # Если базы тарифов нет, возвращаем коды
-    if not TariffSessionLocal:
-        return [{"code": c, "name": f"Станция {c}"} for c in codes_list]
-
     # Подгружаем имена из справочника станций
     async with TariffSessionLocal() as tariff_db:
         stmt = select(TariffStation.code, TariffStation.name).where(TariffStation.code.in_(codes_list))
         res = await tariff_db.execute(stmt)
         rows = res.all()
 
-    # Фильтруем дубликаты имен, выбирая самое короткое (без уточнений типа 'эксп')
     unique_stations = {}
     for code, name in rows:
         clean_name = name.strip()
@@ -102,7 +92,6 @@ async def get_tariff_stations(session: AsyncSession, is_departure: bool, filter_
 
 # --- РОУТЫ ---
 
-# ✅ УДАЛЕНИЕ РАСЧЕТА
 @router.post("/calculator/{calc_id}/delete")
 async def calculator_delete(
     request: Request,
@@ -110,7 +99,6 @@ async def calculator_delete(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(manager_required) 
 ):
-    """Удаляет расчет."""
     stmt = select(Calculation.service_type).where(Calculation.id == calc_id)
     result = await db.execute(stmt)
     service_type = result.scalar_one_or_none()
@@ -118,7 +106,6 @@ async def calculator_delete(
     if not service_type:
         return RedirectResponse("/admin/calculator", status_code=303)
 
-    # Получаем строковое значение типа сервиса для редиректа
     type_val = service_type.value if hasattr(service_type, 'value') else service_type
 
     await db.execute(delete(Calculation).where(Calculation.id == calc_id))
@@ -130,7 +117,6 @@ async def calculator_delete(
     
     return RedirectResponse(f"/admin/calculator?type={type_val}", status_code=303)
 
-# ✅ ПАКЕТНОЕ ИЗМЕНЕНИЕ СТАТУСА
 @router.post("/calculator/batch_status")
 async def calculator_batch_status(
     request: Request,
@@ -170,11 +156,10 @@ async def calculator_batch_status(
     
     return RedirectResponse(f"/admin/calculator?type={type_param}", status_code=303)
 
-# ✅ ПАКЕТНОЕ ИЗМЕНЕНИЕ ДАТЫ
 @router.post("/calculator/batch_date")
 async def calculator_batch_date(
     request: Request,
-    data_json: str = Form(...), # JSON: {"ids": [1, 2], "date": "2025-12-31"}
+    data_json: str = Form(...), 
     db: AsyncSession = Depends(get_db),
     user: User = Depends(manager_required)
 ):
@@ -188,7 +173,6 @@ async def calculator_batch_date(
     if not ids:
         return RedirectResponse("/admin/calculator", status_code=303)
 
-    # Если дата пустая - очищаем срок (делаем бессрочным), иначе парсим
     new_date = None
     if date_str:
         try:
@@ -196,12 +180,10 @@ async def calculator_batch_date(
         except ValueError:
             return RedirectResponse("/admin/calculator?error_msg=Неверный формат даты", status_code=303)
 
-    # Массовое обновление
     stmt = update(Calculation).where(Calculation.id.in_(ids)).values(valid_to=new_date)
     await db.execute(stmt)
     await db.commit()
     
-    # Редирект
     first_calc = await db.scalar(select(Calculation.service_type).where(Calculation.id == ids[0]))
     type_param = first_calc.value if hasattr(first_calc, 'value') else (first_calc or "TRAIN")
     
@@ -211,8 +193,6 @@ async def calculator_batch_date(
     
     return RedirectResponse(f"/admin/calculator?type={type_param}", status_code=303)
 
-
-# ✅ НОВЫЙ РОУТ: Генерация КП (Print View)
 @router.post("/export/kp", response_class=HTMLResponse)
 async def export_commercial_proposal(
     request: Request,
@@ -242,7 +222,6 @@ async def export_commercial_proposal(
         margin = margins_map.get(calc.id, calc.margin_value)
         price_no_vat = calc.total_cost + margin
         
-        # Используем НДС из расчета или глобальный
         current_vat = calc.vat_rate if calc.vat_rate is not None else DEFAULT_VAT_RATE
         
         vat_amount = price_no_vat * (current_vat / 100)
@@ -265,7 +244,6 @@ async def export_commercial_proposal(
         "date": today_date.strftime("%d.%m.%Y")
     })
 
-# Страница Себестоимости (доступ для Менеджеров)
 @router.get("/costs")
 async def cost_dashboard_page(
     request: Request,
@@ -491,6 +469,70 @@ async def get_available_destinations(
         
     return HTMLResponse(options_html)
 
+# ✅ НОВЫЙ ENDPOINT: calculate_cost (AJAX)
+@router.post("/calculator/calculate")
+async def calculate_cost_ajax(
+    request: Request,
+    station_from: str = Form(...),
+    station_to: str = Form(...),
+    container_type: str = Form(...), 
+    wagon_type: str = Form(...), 
+    service_type: str = Form(...), 
+    weight: float = Form(0),
+    markup_type: str = Form("percent"), 
+    markup_value: float = Form(0),
+    include_nds: bool = Form(False), 
+    
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(manager_required)
+):
+    """
+    AJAX расчет стоимости.
+    """
+    try:
+        # 1. Пытаемся найти расстояние (async)
+        distance = 0
+        tariff_data = await get_tariff_distance(station_from, station_to)
+        if tariff_data and tariff_data.get('distance'):
+            distance = float(tariff_data['distance'])
+
+        # 2. Создаем сервис и вызываем расчет (async!)
+        calc_service = CalculatorService(db)
+        
+        route_data = {
+            "distance": distance,
+            "weight": weight,
+            "wagon_type": wagon_type,
+            "container_type": container_type,
+            "station_from": station_from,
+            "station_to": station_to,
+            "service_type": service_type
+        }
+
+        # ВАЖНО: await
+        result_data = await calc_service.calculate_cost(route_data)
+
+        if not result_data.get("success"):
+            return templates.TemplateResponse("partials/calculator_result.html", {
+                "request": request,
+                "error": result_data.get("error", "Ошибка расчета")
+            })
+
+        breakdown = result_data["breakdown"]
+        breakdown["station_from"] = station_from
+        breakdown["station_to"] = station_to
+        
+        return templates.TemplateResponse("partials/calculator_result.html", {
+            "request": request,
+            "result": breakdown
+        })
+
+    except Exception as e:
+        return templates.TemplateResponse("partials/calculator_result.html", {
+            "request": request,
+            "error": f"Системная ошибка: {str(e)}"
+        })
+
 @router.post("/api/calc/preview")
 async def calculator_preview(
     request: Request,
@@ -518,28 +560,9 @@ async def calculator_preview(
     adjusted_base_rate = 0.0
     
     if include_rail_tariff and station_from and station_to:
-        # Используем обновленный сервис
         calc_service = CalculatorService(db)
-        # В старом коде был get_tariff, предположим в новом сервисе он есть или используем аналог
-        # Если в CalculatorService нет get_tariff, используем calculate_cost или старый метод.
-        # Для безопасности (чтобы не сломать) используем логику из CalculatorService, 
-        # но так как это preview и нам нужны компоненты, вызовем специфичный метод тарифа.
-        
-        # Если get_tariff не существует в новом CalculatorService, 
-        # то нужно использовать TariffService напрямую или добавить метод в CalculatorService.
-        # Для простоты здесь предположим, что CalculatorService имеет метод получения тарифа 
-        # или вернемся к PriceCalculator если вы не обновляли код сервиса полностью.
-        
-        # Попытка использовать TariffService напрямую для тарифа, если CalculatorService его прячет
-        # но в вашем коде был вызов calc_service.get_tariff.
-        # Предполагаем наличие метода.
-        try:
-            tariff = await calc_service.rail_tariff_service.get_tariff(station_from, station_to, container_type, service_type)
-        except AttributeError:
-             # Фоллбэк если структура сервиса другая
-             from services.tariff_service import RailTariffService
-             ts = RailTariffService()
-             tariff = ts.get_tariff(station_from, station_to, container_type, service_type)
+        # 🔥 ИСПРАВЛЕНИЕ: Вызываем метод get_tariff напрямую у calc_service через await
+        tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
 
         if tariff:
             base_rate = tariff.rate_no_vat
@@ -555,14 +578,11 @@ async def calculator_preview(
 
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
-    # 🔥 БЕРЕМ НДС ИЗ НАСТРОЕК ИЛИ КОНСТАНТЫ
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
     
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
-    # Расчет маржи
-    # Проверяем тип маржи (строка или Enum)
     m_type = margin_type.value if hasattr(margin_type, 'value') else margin_type
     
     if m_type == MarginType.FIX.value or m_type == "fixed":
@@ -607,16 +627,9 @@ async def _save_calculation_logic(
     adjusted_base_rate = 0.0
     
     if include_rail_tariff:
-        # Аналогичный фоллбэк для сервиса
         calc_service = CalculatorService(db)
-        try:
-             # Пробуем через сервис
-             tariff = await calc_service.rail_tariff_service.get_tariff(station_from, station_to, container_type, service_type)
-        except AttributeError:
-             # Фоллбэк
-             from services.tariff_service import RailTariffService
-             ts = RailTariffService()
-             tariff = ts.get_tariff(station_from, station_to, container_type, service_type)
+        # 🔥 ИСПРАВЛЕНИЕ: Вызываем метод get_tariff напрямую через await
+        tariff = await calc_service.get_tariff(station_from, station_to, container_type, service_type)
 
         base_rate = tariff.rate_no_vat if tariff else 0.0
         
@@ -638,7 +651,6 @@ async def _save_calculation_logic(
     else:
         sales_price_netto = total_cost * (1 + margin_value / 100)
         
-    # 🔥 НДС
     vat_setting = await db.get(SystemSetting, "vat_rate")
     vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
 
@@ -647,8 +659,7 @@ async def _save_calculation_logic(
         result = await db.execute(stmt)
         calc = result.scalar_one_or_none()
         if not calc: return None
-        # Очищаем старые items, чтобы перезаписать
-        # (В SQLAlchemy async удаление коллекций иногда требует явного delete)
+        # Очищаем старые items
         await db.execute(delete(CalculationItem).where(CalculationItem.calculation_id == calc.id))
     else:
         calc = Calculation(created_at=func.now())

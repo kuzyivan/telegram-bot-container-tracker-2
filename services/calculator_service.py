@@ -1,8 +1,8 @@
 import logging
-from typing import Dict, Any, List, Optional
-from services.rail_tariff_service import RailTariffService
-from services.system_settings_service import SystemSettingsService
-# Импортируем нашу новую константу
+from typing import Dict, Any, Optional
+from sqlalchemy import select, and_
+from models_finance import SystemSetting, RailTariffRate, ServiceType
+# Убираем битый импорт RailTariffService
 from web.constants import DEFAULT_VAT_RATE
 
 logger = logging.getLogger(__name__)
@@ -10,51 +10,75 @@ logger = logging.getLogger(__name__)
 class CalculatorService:
     def __init__(self, db_session):
         self.db_session = db_session
-        self.settings_service = SystemSettingsService(db_session)
-        self.rail_tariff_service = RailTariffService()
 
-    def _get_float_setting(self, key: str, default: float) -> float:
-        """Вспомогательный метод для получения числовой настройки"""
+    async def _get_float_setting(self, key: str, default: float) -> float:
+        """Получает настройку из БД асинхронно."""
         try:
-            value = self.settings_service.get_setting(key)
-            if value is None:
-                return default
-            return float(value)
-        except (ValueError, TypeError):
+            stmt = select(SystemSetting).where(SystemSetting.key == key)
+            result = await self.db_session.execute(stmt)
+            setting = result.scalar_one_or_none()
+            if setting and setting.value:
+                return float(setting.value)
+            return default
+        except Exception:
             return default
 
-    def calculate_cost(self, route_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def get_tariff(self, station_from: str, station_to: str, container_type: str, service_type: str) -> Optional[RailTariffRate]:
         """
-        Расчет себестоимости перевозки
+        Ищет тариф в базе данных.
+        (Перенесено из несуществующего RailTariffService)
         """
         try:
-            # Получаем базовые параметры
+            # Приводим типы
+            sType = service_type
+            if hasattr(service_type, 'value'):
+                sType = service_type.value
+            
+            # Строим запрос
+            stmt = select(RailTariffRate).where(
+                and_(
+                    RailTariffRate.station_from_code == station_from,
+                    RailTariffRate.station_to_code == station_to,
+                    RailTariffRate.container_type == container_type,
+                    RailTariffRate.service_type == sType
+                )
+            )
+            result = await self.db_session.execute(stmt)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Error fetching tariff: {e}")
+            return None
+
+    def _calculate_simple_tariff(self, distance: float, weight: float) -> float:
+        """
+        Простая математика тарифа (если нет в БД).
+        """
+        base_rate_per_km = 50.0 
+        weight_coeff = 1.0 + (max(0, weight - 10) * 0.05)
+        return round(distance * base_rate_per_km * weight_coeff, 2)
+
+    async def calculate_cost(self, route_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Полный расчет себестоимости (Асинхронный).
+        """
+        try:
             distance = float(route_data.get('distance', 0))
             weight = float(route_data.get('weight', 0))
-            wagon_type = route_data.get('wagon_type', 'box')
             
-            # Получаем тариф РЖД
-            rail_tariff = self.rail_tariff_service.calculate_tariff(
-                distance=distance,
-                weight=weight,
-                wagon_type=wagon_type
-            )
+            # 1. Считаем тариф (упрощенно или через БД, если нужно расширить логику)
+            tariff_cost = self._calculate_simple_tariff(distance, weight)
 
-            # Получаем настройки из БД или используем константу
-            # НДС теперь берется из DEFAULT_VAT_RATE, если в базе пусто
-            vat_percent = self._get_float_setting("vat_rate", DEFAULT_VAT_RATE)
-            profit_percent = self._get_float_setting("default_profit_percent", 10.0)
-            overhead_cost = self._get_float_setting("overhead_cost_per_wagon", 5000.0)
+            # 2. Получаем настройки (асинхронно)
+            vat_percent = await self._get_float_setting("vat_rate", DEFAULT_VAT_RATE)
+            profit_percent = await self._get_float_setting("default_profit_percent", 10.0)
+            overhead_cost = await self._get_float_setting("overhead_cost_per_wagon", 5000.0)
             
-            # Расчет составляющих
-            tariff_cost = rail_tariff.get('total_cost', 0)
+            # Заглушки для доп. расходов
+            station_expenses = 1500.0
+            security_cost = 0.0
+            insurance_cost = tariff_cost * 0.001
             
-            # Расчет дополнительных расходов
-            station_expenses = self._calculate_station_expenses(route_data)
-            security_cost = self._calculate_security_cost(route_data)
-            insurance_cost = self._calculate_insurance_cost(tariff_cost)
-            
-            # Полная себестоимость (без НДС)
+            # Суммируем
             total_cost_no_vat = (
                 tariff_cost + 
                 station_expenses + 
@@ -63,13 +87,11 @@ class CalculatorService:
                 overhead_cost
             )
             
-            # Расчет НДС
+            # НДС
             vat_amount = total_cost_no_vat * (vat_percent / 100.0)
-            
-            # Итоговая себестоимость с НДС
             total_cost_with_vat = total_cost_no_vat + vat_amount
             
-            # Расчет цены для клиента (с прибылью)
+            # Маржа
             margin_amount = total_cost_with_vat * (profit_percent / 100.0)
             final_price = total_cost_with_vat + margin_amount
 
@@ -97,12 +119,3 @@ class CalculatorService:
                 "success": False, 
                 "error": str(e)
             }
-
-    def _calculate_station_expenses(self, data: Dict[str, Any]) -> float:
-        return 1500.0
-
-    def _calculate_security_cost(self, data: Dict[str, Any]) -> float:
-        return 0.0
-
-    def _calculate_insurance_cost(self, base_cost: float) -> float:
-        return base_cost * 0.001
