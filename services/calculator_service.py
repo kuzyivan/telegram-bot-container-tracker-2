@@ -68,7 +68,7 @@ class PriceCalculator:
         # Получаем маржу из настроек (по умолчанию 10 000 руб, если не задано)
         default_margin = self._get_float_setting("default_margin_fix", 10000.0)
         
-        # НДС (20%)
+        # НДС (22%)
         vat_percent = self._get_float_setting("vat_rate", 22.0)
 
         # --- ФОРМУЛА РАСЧЕТА ---

@@ -23,7 +23,7 @@ async def test():
             print(f"База (Закуп):   {result['base_rate']:,.2f} руб.")
             print(f"Маржа:          {result['margin']:,.2f} руб.")
             print(f"Цена без НДС:   {result['price_no_vat']:,.2f} руб.")
-            print(f"НДС (20%):      {result['vat_amount']:,.2f} руб.")
+            print(f"НДС (22%):      {result['vat_amount']:,.2f} руб.")
             print("-" * 30)
             print(f"💰 ИТОГО:       {result['total_price']:,.2f} руб.")
             print("-" * 30)

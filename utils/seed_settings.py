@@ -14,7 +14,7 @@ async def seed_system_settings():
     async with SessionLocal() as session:
         settings = [
             SystemSetting(key="gondola_coeff", value="0.898", description="Коэффициент тарифа для полувагона"),
-            SystemSetting(key="vat_rate", value="20.0", description="Ставка НДС по умолчанию"),
+            SystemSetting(key="vat_rate", value="22.0", description="Ставка НДС по умолчанию"),
             SystemSetting(key="default_margin_fix", value="20000", description="Маржа по умолчанию (руб)"),
         ]
         
