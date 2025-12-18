@@ -16,7 +16,7 @@ from models_finance import (
     SystemSetting, ServiceType, WagonType, MarginType, CalculationStatus
 )
 
-# ✅ ИСПОЛЬЗУЕМ СЕРВИС РАСЧЕТОВ (теперь он содержит всю логику)
+# Используем сервис расчетов
 from services.calculator_service import CalculatorService
 from services.tariff_service import TariffStation, get_tariff_distance
 from db import TariffSessionLocal
@@ -25,13 +25,13 @@ from db import TariffSessionLocal
 from web.auth import admin_required, manager_required
 from .common import templates, get_db
 
-# --- 1. ИМПОРТ КОНСТАНТЫ ---
-from web.constants import DEFAULT_VAT_RATE
+# --- 1. ИМПОРТ КОНСТАНТ ---
+# Добавили DEFAULT_GONDOLA_COEFF
+from web.constants import DEFAULT_VAT_RATE, DEFAULT_GONDOLA_COEFF
 
 router = APIRouter()
 
 # --- 2. НАСТРОЙКА ШАБЛОНОВ ---
-# Учим шаблоны админки понимать переменную {{ GLOBAL_VAT }}
 templates.env.globals['GLOBAL_VAT'] = int(DEFAULT_VAT_RATE)
 
 
@@ -556,7 +556,7 @@ async def calculator_preview(
     
     base_rate = 0.0
     tariff_found = False
-    gondola_coeff = 1.0
+    gondola_coeff = DEFAULT_GONDOLA_COEFF # 🌟 Дефолтное значение из констант
     adjusted_base_rate = 0.0
     
     if include_rail_tariff and station_from and station_to:
@@ -571,6 +571,8 @@ async def calculator_preview(
         if str(wagon_type) == WagonType.GONDOLA.value or str(wagon_type) == "box":
             setting = await db.get(SystemSetting, "gondola_coeff")
             if setting: gondola_coeff = float(setting.value)
+        else:
+            gondola_coeff = 1.0 # Если не полувагон, то коэффициент не применяем
         
         adjusted_base_rate = base_rate * gondola_coeff
     
@@ -633,10 +635,13 @@ async def _save_calculation_logic(
 
         base_rate = tariff.rate_no_vat if tariff else 0.0
         
-        gondola_coeff = 1.0
+        gondola_coeff = DEFAULT_GONDOLA_COEFF # 🌟 Дефолт
         if str(wagon_type) == WagonType.GONDOLA.value or str(wagon_type) == "box":
             setting = await db.get(SystemSetting, "gondola_coeff")
             if setting: gondola_coeff = float(setting.value)
+        else:
+            gondola_coeff = 1.0
+
         adjusted_base_rate = base_rate * gondola_coeff
     
     final_prr_cost = prr_value if include_prr else 0.0
