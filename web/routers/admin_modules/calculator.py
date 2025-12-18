@@ -516,7 +516,7 @@ async def calculator_preview(
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else 20.0
+    vat_rate = float(vat_setting.value) if vat_setting else 22.0
     
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
