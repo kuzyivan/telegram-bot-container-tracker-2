@@ -231,9 +231,14 @@
                                 </div>
 
                                 <!-- Кнопка сохранения. Сохраняет и стоки, и комментарий -->
-                                <button onclick="saveStockDetails()" class="w-full bg-mono-black text-white py-2 rounded-lg text-xs font-bold hover:bg-gray-800 transition">
-                                    Сохранить привязку стоков и комментарий
-                                </button>
+                                <div class="flex gap-2">
+                                    <button onclick="saveStockDetails()" class="flex-1 bg-mono-black text-white py-2 rounded-lg text-xs font-bold hover:bg-gray-800 transition">
+                                        Сохранить
+                                    </button>
+                                    <button onclick="clearAllStocks()" class="px-3 py-2 bg-white border border-mono-border text-mono-gray hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-lg text-xs font-bold transition" title="Сбросить все стоки">
+                                        Сбросить
+                                    </button>
+                                </div>
                             </div>
                         {% else %}
                             <!-- Только просмотр для других ролей, здесь отобразим сгруппированные данные -->
@@ -479,6 +484,18 @@
         renderStocksByDirection(mode);
     }
     
+    // 2.2.1 Сброс всех стоков
+    window.clearAllStocks = function() {
+        if(currentTrainStocks.size === 0) return;
+        if(!confirm("Сбросить все выбранные стоки?")) return;
+        
+        currentTrainStocks.clear();
+        renderFullStockStructure('view');
+        // Обновляем чекбоксы если фильтр активен
+        const filter = document.getElementById('stockDirectionFilter');
+        if(filter && filter.value) renderStocksByDirection('view');
+    }
+
     // 2.3. Сбор и конвертация в JSON
     function getStockJsonString() {
         const data = [];
