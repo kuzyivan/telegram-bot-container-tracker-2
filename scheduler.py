@@ -6,6 +6,10 @@ from typing import Optional, Mapping
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
+from sqlalchemy import update
+
+from db import SessionLocal
+from models import ScheduledTrain
 
 import config
 from utils.notify import notify_admin
@@ -98,6 +102,30 @@ async def job_daily_terminal_import():
         error_message = (f"❌ <b>Ошибка обновления базы терминала</b>\n<b>Время:</b> {started.strftime('%d.%m %H:%M')}\n<code>{e}</code>")
         await notify_admin(error_message, silent=False, parse_mode="HTML")
 
+async def job_cleanup_old_stocks():
+    """
+    Ежедневная очистка стоков у поездов, дата отправления которых была более 3 дней назад.
+    """
+    logger.info("🧹 Scheduler: Запуск очистки устаревших стоков...")
+    # Очищаем, если прошло 3 дня (<= сегодня - 3 дня)
+    cutoff_date = datetime.now(TZ).date() - timedelta(days=3)
+    
+    async with SessionLocal() as session:
+        try:
+            stmt = (
+                update(ScheduledTrain)
+                .where(ScheduledTrain.schedule_date <= cutoff_date)
+                .where(ScheduledTrain.stock_info.isnot(None))
+                .values(stock_info=None)
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            
+            if result.rowcount > 0:
+                logger.info(f"✅ Очищены стоки у {result.rowcount} поездов (дата рейса по {cutoff_date}).")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при очистке стоков: {e}", exc_info=True)
+
 def start_scheduler(bot: Bot):
     """Регистрирует и запускает все задачи планировщика."""
     
@@ -117,6 +145,9 @@ def start_scheduler(bot: Bot):
     
     # Ваша попытка на 16:35 (исправлено с 05 на 35)
     #scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=35, id="terminal_import_1635", replace_existing=True, jitter=10)
+
+    # 4. ОЧИСТКА СТАРЫХ СТОКОВ (Ежедневно в 01:00)
+    scheduler.add_job(job_cleanup_old_stocks, 'cron', hour=1, minute=0, id="cleanup_stocks_0100", replace_existing=True, jitter=60)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:
