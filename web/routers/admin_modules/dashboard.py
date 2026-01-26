@@ -10,12 +10,21 @@ from model.terminal_container import TerminalContainer
 # 🔥 ИСПРАВЛЕНИЕ 1: Импортируем manager_required
 from web.auth import admin_required, manager_required
 from .common import templates, get_db
+from fastapi_cache import FastAPICache
 
 router = APIRouter()
 
 async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: date):
     """Собирает статистику для дашборда."""
-    
+    cache_key = f"dashboard_stats:{date_from}:{date_to}"
+    try:
+        cached_data = await FastAPICache.get_backend().get(cache_key)
+        if cached_data:
+            return json.loads(cached_data)
+    except Exception:
+        # Если кэш недоступен, продолжаем без него
+        pass
+
     def filter_date(query, column):
         return query.where(column >= date_from).where(column <= date_to)
 
@@ -169,7 +178,7 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         
     sorted_grouped_stocks = dict(sorted(grouped_stocks.items()))
 
-    return {
+    res = {
         "new_users": new_users,
         "active_trains": active_trains,
         "total_sent": total_sent,
@@ -183,6 +192,13 @@ async def get_dashboard_stats(session: AsyncSession, date_from: date, date_to: d
         "req_values": json.dumps(req_values),
         "grouped_stocks": sorted_grouped_stocks
     }
+
+    try:
+        await FastAPICache.get_backend().set(cache_key, json.dumps(res), expire=300)
+    except Exception:
+        pass
+
+    return res
 
 @router.get("/dashboard")
 async def dashboard(

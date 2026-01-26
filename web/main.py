@@ -10,9 +10,12 @@ from fastapi.responses import RedirectResponse
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from contextlib import asynccontextmanager
-from services.railway_graph import railway_graph 
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
+from services.railway_graph import railway_graph
+import config
 
-from web.routers import public, admin, auth, client, profile 
+from web.routers import public, admin, auth, client, profile
 from db import init_db
 from web.auth import login_required
 from web.constants import DEFAULT_VAT_RATE # Импорт для логирования при старте
@@ -24,6 +27,17 @@ async def lifespan(app: FastAPI):
         print(f"🚀 Запуск системы. Базовая ставка НДС: {DEFAULT_VAT_RATE}%")
         await init_db()
         
+        # Инициализация кэша
+        if config.REDIS_URL:
+            from redis import asyncio as aioredis
+            from fastapi_cache.backends.redis import RedisBackend
+            redis = aioredis.from_url(config.REDIS_URL, encoding="utf8", decode_responses=True)
+            FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+            print("🚀 Кэш инициализирован (Redis)")
+        else:
+            FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+            print("🚀 Кэш инициализирован (In-Memory)")
+
         # 🔥 Строим граф дорог
         try:
             await railway_graph.build_graph()

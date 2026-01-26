@@ -49,3 +49,4 @@ passlib[bcrypt]
 
 networkx
 aiohttp
+fastapi-cache2[redis]

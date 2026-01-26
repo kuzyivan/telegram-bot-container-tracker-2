@@ -10,6 +10,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID")) # type: ignore
 RENDER_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME")
 PORT = int(os.environ.get("PORT", 10000))
+REDIS_URL = os.getenv("REDIS_URL")
 OVERPASS_API_URL = "https://overpass-api.de/api/interpreter"
 # =========================
 # Настройки уведомлений
