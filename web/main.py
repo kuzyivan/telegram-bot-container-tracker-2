@@ -10,8 +10,13 @@ from fastapi.responses import RedirectResponse
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from contextlib import asynccontextmanager
-from fastapi_cache import FastAPICache
-from fastapi_cache.backends.inmemory import InMemoryBackend
+try:
+    from fastapi_cache import FastAPICache
+    from fastapi_cache.backends.inmemory import InMemoryBackend
+    HAS_CACHE = True
+except ImportError:
+    HAS_CACHE = False
+
 from services.railway_graph import railway_graph
 import config
 
@@ -28,15 +33,22 @@ async def lifespan(app: FastAPI):
         await init_db()
         
         # Инициализация кэша
-        if config.REDIS_URL:
-            from redis import asyncio as aioredis
-            from fastapi_cache.backends.redis import RedisBackend
-            redis = aioredis.from_url(config.REDIS_URL, encoding="utf8", decode_responses=True)
-            FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
-            print("🚀 Кэш инициализирован (Redis)")
+        if HAS_CACHE:
+            if config.REDIS_URL:
+                try:
+                    from redis import asyncio as aioredis
+                    from fastapi_cache.backends.redis import RedisBackend
+                    redis = aioredis.from_url(config.REDIS_URL, encoding="utf8", decode_responses=True)
+                    FastAPICache.init(RedisBackend(redis), prefix="fastapi-cache")
+                    print("🚀 Кэш инициализирован (Redis)")
+                except Exception as e:
+                    print(f"⚠️ Ошибка инициализации Redis кэша: {e}. Используем In-Memory.")
+                    FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+            else:
+                FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
+                print("🚀 Кэш инициализирован (In-Memory)")
         else:
-            FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
-            print("🚀 Кэш инициализирован (In-Memory)")
+            print("⚠️ Кэширование отключено: библиотека fastapi-cache2 не установлена")
 
         # 🔥 Строим граф дорог
         try:
