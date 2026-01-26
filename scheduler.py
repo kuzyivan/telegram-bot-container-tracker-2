@@ -1,4 +1,6 @@
 # scheduler.py
+import asyncio
+import sys
 from datetime import datetime, time, timedelta
 from typing import Optional, Mapping
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -132,3 +134,46 @@ def start_scheduler(bot: Bot):
     logger.info(f"🕒 Локальное время Владивостока: {local_time}")
     
     return job_dislocation_check_on_start
+
+async def run_scheduler_standalone():
+    """
+    Функция для запуска планировщика как отдельного процесса.
+    Инициализирует бота и запускает задачи.
+    """
+    logger.info("🚀 Запуск планировщика в автономном режиме...")
+    
+    # Инициализируем бота
+    bot = Bot(token=config.TELEGRAM_TOKEN)
+    try:
+        me = await bot.get_me()
+        logger.info(f"🤖 Бот инициализирован: @{me.username} (ID: {me.id})")
+    except Exception as e:
+        logger.error(f"⚠️ Ошибка при проверке токена бота: {e}")
+
+    # Запускаем планировщик
+    on_start_job = start_scheduler(bot)
+    
+    # Выполняем первоначальную проверку
+    if on_start_job:
+        await on_start_job(bot)
+        
+    # Держим цикл живым
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        logger.info("🛑 Планировщик остановлен.")
+        scheduler.shutdown()
+
+if __name__ == "__main__":
+    # Настройка логирования для автономного запуска
+    import logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    try:
+        asyncio.run(run_scheduler_standalone())
+    except (KeyboardInterrupt, SystemExit):
+        pass
