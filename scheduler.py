@@ -146,8 +146,8 @@ def start_scheduler(bot: Bot):
     # Ваша попытка на 16:35 (исправлено с 05 на 35)
     #scheduler.add_job(job_daily_terminal_import, 'cron', hour=16, minute=35, id="terminal_import_1635", replace_existing=True, jitter=10)
 
-    # 4. ОЧИСТКА СТАРЫХ СТОКОВ (Ежедневно в 01:00)
-    scheduler.add_job(job_cleanup_old_stocks, 'cron', hour=1, minute=0, id="cleanup_stocks_0100", replace_existing=True, jitter=60)
+    # 4. ОЧИСТКА СТАРЫХ СТОКОВ (Ежедневно в 17:10)
+    scheduler.add_job(job_cleanup_old_stocks, 'cron', hour=17, minute=10, id="cleanup_stocks_1710", replace_existing=True, jitter=60)
 
     if config.STATIONS_CACHE_CRON_SCHEDULE: 
         try:
