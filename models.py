@@ -75,7 +75,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(PgEnum(UserRole), default=UserRole.VIEWER, nullable=False)
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"))
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
     subscriptions: Mapped[List["Subscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -110,7 +110,7 @@ class UserRequest(Base):
      id: Mapped[int] = mapped_column(primary_key=True)
      user_telegram_id: Mapped[int] = mapped_column(ForeignKey("users.telegram_id", ondelete="CASCADE"))
      query_text: Mapped[str] = mapped_column(Text)
-     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
      user: Mapped["User"] = relationship(back_populates="requests")
 
 # --- 4. Подписки и Трекинг ---
@@ -140,7 +140,7 @@ class Tracking(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     container_number: Mapped[str] = mapped_column(String(11), index=True, nullable=False)
     trip_start_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
-    trip_end_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    trip_end_datetime: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), index=True)
     from_state: Mapped[str | None] = mapped_column(String)
     from_road: Mapped[str | None] = mapped_column(String)
     from_station: Mapped[str | None] = mapped_column(String)
@@ -217,7 +217,7 @@ class Train(Base):
     last_known_station: Mapped[str | None] = mapped_column(String)
     last_known_road: Mapped[str | None] = mapped_column(String)
     last_operation: Mapped[str | None] = mapped_column(String)
-    last_operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    last_operation_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), index=True)
     km_remaining: Mapped[int | None] = mapped_column(Integer)
     eta_days: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
