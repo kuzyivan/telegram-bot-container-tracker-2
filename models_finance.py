@@ -98,7 +98,7 @@ class Calculation(Base):
     margin_type: Mapped[MarginType] = mapped_column(PgEnum(MarginType, name="margintype"), default=MarginType.FIX)
     margin_value: Mapped[float] = mapped_column(Float, default=0.0)
     total_price_netto: Mapped[float] = mapped_column(Float, default=0.0)
-    vat_rate: Mapped[float] = mapped_column(Float, default=20.0)
+    vat_rate: Mapped[float] = mapped_column(Float, default=22.0)
     
     status: Mapped[CalculationStatus] = mapped_column(PgEnum(CalculationStatus, name="calculationstatus"), default=CalculationStatus.DRAFT)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

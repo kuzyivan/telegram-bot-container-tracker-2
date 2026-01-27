@@ -121,6 +121,9 @@
             <div class="font-bold text-mono-black text-sm font-mono">
                 {{ "{:,.0f}".format(((calc.total_price_netto * (1 + calc.vat_rate/100)) / 1000) | round(0, 'ceil') * 1000).replace(',', ' ') }} ₽
             </div>
+            <div class="text-[8px] text-indigo-400 font-medium mt-0.5">
+                НДС {{ (calc.vat_rate or GLOBAL_VAT)|int }}%
+            </div>
         </td>
 
         <!-- Срок действия -->

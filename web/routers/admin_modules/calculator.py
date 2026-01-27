@@ -32,7 +32,7 @@ from web.constants import DEFAULT_VAT_RATE, DEFAULT_GONDOLA_COEFF
 router = APIRouter()
 
 # --- 2. НАСТРОЙКА ШАБЛОНОВ ---
-templates.env.globals['GLOBAL_VAT'] = 22
+templates.env.globals['GLOBAL_VAT'] = int(DEFAULT_VAT_RATE)
 
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
@@ -200,7 +200,7 @@ async def update_vat_to_22_all(
     user: User = Depends(admin_required)
 ):
     # 1. Обновляем все существующие расчеты
-    await db.execute(update(Calculation).values(vat_rate=22.0))
+    await db.execute(update(Calculation).values(vat_rate=DEFAULT_VAT_RATE))
     
     # 2. Обновляем настройку по умолчанию для новых
     stmt = select(SystemSetting).where(SystemSetting.key == "vat_rate")
@@ -208,12 +208,12 @@ async def update_vat_to_22_all(
     setting = result.scalar_one_or_none()
     
     if setting:
-        setting.value = "22.0"
+        setting.value = str(DEFAULT_VAT_RATE)
     else:
-        db.add(SystemSetting(key="vat_rate", value="22.0"))
+        db.add(SystemSetting(key="vat_rate", value=str(DEFAULT_VAT_RATE)))
         
     await db.commit()
-    return RedirectResponse("/admin/calculator?success_msg=НДС обновлен до 22% во всех расчетах", status_code=303)
+    return RedirectResponse(f"/admin/calculator?success_msg=НДС обновлен до {DEFAULT_VAT_RATE}% во всех расчетах", status_code=303)
 
 @router.post("/export/kp", response_class=HTMLResponse)
 async def export_commercial_proposal(
@@ -244,7 +244,7 @@ async def export_commercial_proposal(
         margin = margins_map.get(calc.id, calc.margin_value)
         price_no_vat = calc.total_cost + margin
         
-        current_vat = calc.vat_rate if calc.vat_rate is not None else 22.0
+        current_vat = calc.vat_rate if calc.vat_rate is not None else DEFAULT_VAT_RATE
         
         vat_amount = price_no_vat * (current_vat / 100)
         total_price = price_no_vat + vat_amount
@@ -608,7 +608,7 @@ async def calculator_preview(
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else 22.0
+    vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
     
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
@@ -684,7 +684,7 @@ async def _save_calculation_logic(
         sales_price_netto = total_cost * (1 + margin_value / 100)
         
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else 22.0
+    vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
 
     if calc_id:
         stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
