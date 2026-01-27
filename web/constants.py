@@ -3,4 +3,4 @@ DEFAULT_VAT_RATE = 22.0
 
 # Понижающий коэффициент на полувагоны (0.898)
 # Используется, если тип вагона = "box" (полувагон) или WagonType.GONDOLA
-DEFAULT_GONDOLA_COEFF = 0.898
+DEFAULT_GONDOLA_COEFF = 1

@@ -32,7 +32,7 @@ from web.constants import DEFAULT_VAT_RATE, DEFAULT_GONDOLA_COEFF
 router = APIRouter()
 
 # --- 2. НАСТРОЙКА ШАБЛОНОВ ---
-templates.env.globals['GLOBAL_VAT'] = int(DEFAULT_VAT_RATE)
+templates.env.globals['GLOBAL_VAT'] = 22
 
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
@@ -193,6 +193,28 @@ async def calculator_batch_date(
     
     return RedirectResponse(f"/admin/calculator?type={type_param}", status_code=303)
 
+@router.post("/calculator/update_vat_22")
+async def update_vat_to_22_all(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(admin_required)
+):
+    # 1. Обновляем все существующие расчеты
+    await db.execute(update(Calculation).values(vat_rate=22.0))
+    
+    # 2. Обновляем настройку по умолчанию для новых
+    stmt = select(SystemSetting).where(SystemSetting.key == "vat_rate")
+    result = await db.execute(stmt)
+    setting = result.scalar_one_or_none()
+    
+    if setting:
+        setting.value = "22.0"
+    else:
+        db.add(SystemSetting(key="vat_rate", value="22.0"))
+        
+    await db.commit()
+    return RedirectResponse("/admin/calculator?success_msg=НДС обновлен до 22% во всех расчетах", status_code=303)
+
 @router.post("/export/kp", response_class=HTMLResponse)
 async def export_commercial_proposal(
     request: Request,
@@ -222,7 +244,7 @@ async def export_commercial_proposal(
         margin = margins_map.get(calc.id, calc.margin_value)
         price_no_vat = calc.total_cost + margin
         
-        current_vat = calc.vat_rate if calc.vat_rate is not None else DEFAULT_VAT_RATE
+        current_vat = calc.vat_rate if calc.vat_rate is not None else 22.0
         
         vat_amount = price_no_vat * (current_vat / 100)
         total_price = price_no_vat + vat_amount
@@ -327,9 +349,14 @@ async def calculator_create_page(
         "today": datetime.now().date(),
         "ServiceType": ServiceType, "WagonType": WagonType, "MarginType": MarginType, 
         "stations_from": stations_from,
+        "preloaded_stations_to": [],
         "calc": None,
         "default_service_type": type.upper(), 
-        "CalculationStatus": CalculationStatus 
+        "CalculationStatus": CalculationStatus,
+        "saved_prr": 0.0,
+        "saved_service_rate": 0.0,
+        "include_rail_tariff": False,
+        "include_prr": False
     })
 
 @router.get("/calculator/{calc_id}")
@@ -581,7 +608,7 @@ async def calculator_preview(
     total_cost = adjusted_base_rate + final_prr_cost + service_rate_value + extra_expenses_total
     
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
+    vat_rate = float(vat_setting.value) if vat_setting else 22.0
     
     total_cost_with_vat = total_cost * (1 + vat_rate / 100)
     
@@ -657,7 +684,7 @@ async def _save_calculation_logic(
         sales_price_netto = total_cost * (1 + margin_value / 100)
         
     vat_setting = await db.get(SystemSetting, "vat_rate")
-    vat_rate = float(vat_setting.value) if vat_setting else DEFAULT_VAT_RATE
+    vat_rate = float(vat_setting.value) if vat_setting else 22.0
 
     if calc_id:
         stmt = select(Calculation).options(selectinload(Calculation.items)).where(Calculation.id == calc_id)
