@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
                 FastAPICache.init(InMemoryBackend(), prefix="fastapi-cache")
                 print("🚀 Кэш инициализирован (In-Memory)")
         else:
-            print("⚠️ Кэширование отключено: библиотека fastapi-cache2 не установлена")
+            print("⚠️ Кэширование отключено: библиотека fastapi-cache2 не установлена. Для включения выполните: pip install fastapi-cache2")
 
         # 🔥 Строим граф дорог
         try:
