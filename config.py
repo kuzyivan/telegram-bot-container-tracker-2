@@ -24,6 +24,12 @@ TRACKING_REPORT_COLUMNS = [
 TELEGRAM_SEND_ATTEMPTS = 3
 TELEGRAM_SEND_TIMEOUT = 90.0
 TELEGRAM_RETRY_DELAY_SEC = 2
+# =========================
+# Webhook
+# =========================
+WEBHOOK_HOST = "https://logistrail.ru"
+WEBHOOK_PATH = "/tgbot/17f491a19ee000d8b124/"
+WEBHOOK_PORT = 8050
 # Коэффициент "извилистости" ж/д путей для расчета по прямой
 RAILWAY_WINDING_FACTOR = 1.25
 # =========================

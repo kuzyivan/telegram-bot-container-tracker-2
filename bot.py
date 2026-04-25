@@ -1,4 +1,5 @@
 # bot.py
+import asyncio
 import logging
 from logger import get_logger
 logger = get_logger(__name__)
@@ -10,12 +11,13 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 )
 # 1. 🐞 ИМПОРТИРУЕМ HTTPXRequest
-from telegram.request import HTTPXRequest 
+from telegram.request import HTTPXRequest
+from telegram.ext._updater import Updater
 from dotenv import load_dotenv
 load_dotenv()
 
 # 2. 🐞 ИМПОРТИРУЕМ НАСТРОЙКУ ТАЙМАУТА
-from config import TOKEN, ADMIN_CHAT_ID, TELEGRAM_SEND_TIMEOUT 
+from config import TOKEN, ADMIN_CHAT_ID, TELEGRAM_SEND_TIMEOUT, WEBHOOK_HOST, WEBHOOK_PATH, WEBHOOK_PORT
 from scheduler import start_scheduler
 
 # --- Пользовательские обработчики ---
@@ -95,6 +97,7 @@ def main():
     
     # 3. 🐞 СОЗДАЕМ REQUEST С УВЕЛИЧЕННЫМ ТАЙМАУТОМ (Исправление TimedOut)
     request = HTTPXRequest(
+        connection_pool_size=8,  # Prevent PoolTimeout when concurrent API calls happen at startup
         connect_timeout=20.0,
         read_timeout=TELEGRAM_SEND_TIMEOUT, # 90.0 из config.py
         write_timeout=TELEGRAM_SEND_TIMEOUT, # 90.0 из config.py
@@ -170,21 +173,54 @@ def main():
         await init_db() 
         # ------------------------
         
-        await set_bot_commands(app)
-        
+        asyncio.create_task(set_bot_commands(app))
+
         # Получаем функцию немедленного запуска
         dislocation_check_on_start_func = start_scheduler(app.bot)
         
         if dislocation_check_on_start_func:
-            logger.info("⚡️ Запуск немедленной проверки дислокации после старта...")
-            
-            await dislocation_check_on_start_func(app.bot) 
-            
+            logger.info("⚡️ Запуск проверки дислокации в фоне (не блокирует старт)...")
+            asyncio.create_task(dislocation_check_on_start_func(app.bot))
+
         logger.info("✅ Бот полностью настроен и запущен.")
 
     application.post_init = post_init
     
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_webhook(
+        listen="127.0.0.1",
+        port=WEBHOOK_PORT,
+        url_path=WEBHOOK_PATH,
+        allowed_updates=Update.ALL_TYPES,
+    )
+
+async def _noop_bootstrap(self, *args, **kwargs):
+    """Skip PTB's setWebhook API call — webhook is managed externally via curl/API."""
+    pass
+
+_original_app_start = Application.start
+
+async def _patched_app_start(self, *args, **kwargs):
+    """Fix PTB 22.1 bug: _initialized=True is set before get_me() succeeds.
+    On TimedOut, subsequent initialize() calls are no-ops, leaving _bot_user=None."""
+    if self.bot._bot_user is None:
+        logger.warning("⚠️ bot._bot_user is None before start() — retrying get_me()...")
+        for attempt in range(5):
+            try:
+                self.bot._initialized = False
+                await self.bot.initialize()
+                logger.info("✅ bot re-initialized OK")
+                break
+            except Exception as e:
+                wait = 2 ** attempt
+                logger.warning(f"Re-init attempt {attempt+1}/5 failed: {e}. Waiting {wait}s...")
+                await asyncio.sleep(wait)
+        else:
+            logger.critical("❌ Could not re-initialize bot after 5 attempts. Giving up.")
+            raise RuntimeError("Bot initialization failed: get_me() never succeeded")
+    return await _original_app_start(self, *args, **kwargs)
+
+Updater._bootstrap = _noop_bootstrap
+Application.start = _patched_app_start
 
 if __name__ == "__main__":
     main()
